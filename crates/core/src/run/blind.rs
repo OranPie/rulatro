@@ -25,6 +25,7 @@ impl RunState {
         self.state.blind_score = 0;
         self.state.hands_left = hands;
         self.state.discards_left = discards;
+        self.state.hand_size = self.state.hand_size_base;
         self.state.last_hand = None;
         self.hand.clear();
         self.shop = None;

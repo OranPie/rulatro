@@ -32,6 +32,8 @@ pub struct GameState {
     pub hands_max: u8,
     #[serde(default)]
     pub discards_max: u8,
+    #[serde(default)]
+    pub hand_size_base: usize,
     pub hand_size: usize,
     pub money: i64,
     #[serde(default)]
@@ -56,6 +58,7 @@ impl GameState {
             discards_left: 0,
             hands_max: 0,
             discards_max: 0,
+            hand_size_base: 8,
             hand_size: 8,
             money: 0,
             last_hand: None,

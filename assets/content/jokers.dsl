@@ -472,8 +472,9 @@ joker egg "Egg" Common {
 joker splash "Splash" Common {}
 
 joker turtle_bean "Turtle Bean" Uncommon {
-  on independent when var(init) == 0 { add_hand_size 5; set_var beans 5; set_var init 1 }
-  on round_end when var(beans) > 0 { add_hand_size -1; add_var beans -1 }
+  on independent when var(init) == 0 { set_var beans 5; set_var init 1 }
+  on blind_start when var(beans) > 0 { add_hand_size var(beans) }
+  on round_end when var(beans) > 0 { add_var beans -1 }
 }
 
 joker to_the_moon "To the Moon" Uncommon {
@@ -481,7 +482,7 @@ joker to_the_moon "To the Moon" Uncommon {
 }
 
 joker juggler "Juggler" Common {
-  on independent when var(init) == 0 { add_hand_size 1; set_var init 1 }
+  on blind_start { add_hand_size 1 }
 }
 
 joker trading_card "Trading Card" Uncommon {
@@ -489,18 +490,16 @@ joker trading_card "Trading Card" Uncommon {
 }
 
 joker troubadour "Troubadour" Uncommon {
-  on independent when var(init) == 0 { add_hand_size 2; set_var init 1 }
-  on blind_start { add_hands -1 }
+  on blind_start { add_hand_size 2; add_hands -1 }
 }
 
 joker merry_andy "Merry Andy" Uncommon {
-  on independent when var(init) == 0 { add_hand_size -1; set_var init 1 }
-  on blind_start { add_discards 3 }
+  on blind_start { add_hand_size -1; add_discards 3 }
 }
 
 joker stuntman "Stuntman" Rare {
   on independent { add_chips 250 }
-  on independent when var(init) == 0 { add_hand_size -2; set_var init 1 }
+  on blind_start { add_hand_size -2 }
 }
 
 joker hit_the_road "Hit the Road" Rare {
