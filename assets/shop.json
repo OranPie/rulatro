@@ -1,0 +1,51 @@
+{
+  "card_slots": 2,
+  "booster_slots": 2,
+  "voucher_slots": 1,
+  "prices": {
+    "joker_common": { "min": 1, "max": 6 },
+    "joker_uncommon": { "min": 4, "max": 8 },
+    "joker_rare": { "min": 7, "max": 10 },
+    "joker_legendary": 20,
+    "tarot": 3,
+    "planet": 3,
+    "spectral": 4,
+    "playing_card": 1,
+    "voucher": 10,
+    "reroll_base": 5,
+    "reroll_step": 1,
+    "pack_prices": [
+      { "size": "Normal", "price": 4 },
+      { "size": "Jumbo", "price": 6 },
+      { "size": "Mega", "price": 8 }
+    ]
+  },
+  "card_weights": [
+    { "kind": "Joker", "weight": 20 },
+    { "kind": "Tarot", "weight": 4 },
+    { "kind": "Planet", "weight": 4 }
+  ],
+  "joker_rarity_weights": [
+    { "rarity": "Common", "weight": 70 },
+    { "rarity": "Uncommon", "weight": 25 },
+    { "rarity": "Rare", "weight": 5 },
+    { "rarity": "Legendary", "weight": 0 }
+  ],
+  "pack_weights": [
+    { "kind": "Arcana", "size": "Normal", "weight": 400, "options": 3, "picks": 1 },
+    { "kind": "Arcana", "size": "Jumbo", "weight": 200, "options": 5, "picks": 1 },
+    { "kind": "Arcana", "size": "Mega", "weight": 50, "options": 5, "picks": 2 },
+    { "kind": "Celestial", "size": "Normal", "weight": 400, "options": 3, "picks": 1 },
+    { "kind": "Celestial", "size": "Jumbo", "weight": 200, "options": 5, "picks": 1 },
+    { "kind": "Celestial", "size": "Mega", "weight": 50, "options": 5, "picks": 2 },
+    { "kind": "Standard", "size": "Normal", "weight": 400, "options": 3, "picks": 1 },
+    { "kind": "Standard", "size": "Jumbo", "weight": 200, "options": 5, "picks": 1 },
+    { "kind": "Standard", "size": "Mega", "weight": 50, "options": 5, "picks": 2 },
+    { "kind": "Buffoon", "size": "Normal", "weight": 120, "options": 2, "picks": 1 },
+    { "kind": "Buffoon", "size": "Jumbo", "weight": 60, "options": 4, "picks": 1 },
+    { "kind": "Buffoon", "size": "Mega", "weight": 15, "options": 4, "picks": 2 },
+    { "kind": "Spectral", "size": "Normal", "weight": 60, "options": 2, "picks": 1 },
+    { "kind": "Spectral", "size": "Jumbo", "weight": 30, "options": 4, "picks": 1 },
+    { "kind": "Spectral", "size": "Mega", "weight": 7, "options": 4, "picks": 2 }
+  ]
+}

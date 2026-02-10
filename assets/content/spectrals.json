@@ -1,0 +1,16 @@
+[
+  {
+    "id": "spectral_test",
+    "name": "Spectral Test",
+    "kind": "Spectral",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "Score": { "MultiplyMult": 2 } }
+        ]
+      }
+    ]
+  }
+]

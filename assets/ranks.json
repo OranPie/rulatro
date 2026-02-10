@@ -1,0 +1,16 @@
+[
+  { "rank": "Ace", "chips": 11 },
+  { "rank": "King", "chips": 10 },
+  { "rank": "Queen", "chips": 10 },
+  { "rank": "Jack", "chips": 10 },
+  { "rank": "Ten", "chips": 10 },
+  { "rank": "Nine", "chips": 9 },
+  { "rank": "Eight", "chips": 8 },
+  { "rank": "Seven", "chips": 7 },
+  { "rank": "Six", "chips": 6 },
+  { "rank": "Five", "chips": 5 },
+  { "rank": "Four", "chips": 4 },
+  { "rank": "Three", "chips": 3 },
+  { "rank": "Two", "chips": 2 },
+  { "rank": "Joker", "chips": 0 }
+]

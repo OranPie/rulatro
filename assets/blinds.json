@@ -1,0 +1,23 @@
+[
+  {
+    "kind": "Small",
+    "target_mult": 1.0,
+    "hands": 4,
+    "discards": 3,
+    "can_skip": true
+  },
+  {
+    "kind": "Big",
+    "target_mult": 1.5,
+    "hands": 4,
+    "discards": 3,
+    "can_skip": true
+  },
+  {
+    "kind": "Boss",
+    "target_mult": 2.0,
+    "hands": 4,
+    "discards": 3,
+    "can_skip": false
+  }
+]

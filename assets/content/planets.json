@@ -1,0 +1,17 @@
+[
+  {
+    "id": "planet_test",
+    "name": "Planet Test",
+    "kind": "Planet",
+    "hand": "HighCard",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "Score": { "AddChips": 5 } }
+        ]
+      }
+    ]
+  }
+]

@@ -1,0 +1,8 @@
+[package]
+name = "rulatro-cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rulatro-core = { path = "../core" }
+rulatro-data = { path = "../data" }

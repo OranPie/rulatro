@@ -1,0 +1,9 @@
+{
+  "reward_small": 3,
+  "reward_big": 4,
+  "reward_boss": 5,
+  "per_hand_reward": 1,
+  "interest_step": 5,
+  "interest_per": 1,
+  "interest_cap": 5
+}

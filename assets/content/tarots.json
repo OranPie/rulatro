@@ -1,0 +1,16 @@
+[
+  {
+    "id": "tarot_test",
+    "name": "Tarot Test",
+    "kind": "Tarot",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "AddMoney": 2 }
+        ]
+      }
+    ]
+  }
+]
