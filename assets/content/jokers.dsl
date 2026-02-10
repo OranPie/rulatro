@@ -1,8 +1,8 @@
 # Joker DSL (templates + definitions). One joker per block.
-# Variables: hand, hand_level, blind, played_count, scoring_count, held_count, deck_count,
+# Variables: hand, hand_id, hand_level, blind, played_count, scoring_count, held_count, deck_count,
 #            hands_left, hands_max, discards_left, discards_max, joker_count, joker_slots, empty_joker_slots, hand_play_count,
 #            money, hand_size, ante, blind_score, target, is_boss_blind,
-#            card.rank, card.suit, card.suit_id, card.enhancement, card.edition, card.seal,
+#            card.rank, card.rank_id, card.suit, card.suit_id, card.enhancement, card.edition, card.seal,
 #            card.is_face, card.is_odd, card.is_even, card.is_stone, card.is_wild,
 #            consumable.kind, consumable.id.
 # Functions: contains(hand, Pair|TwoPair|ThreeOfAKind|Straight|Flush|FullHouse|Quads|...),
@@ -524,5 +524,36 @@ joker yorick "Yorick" Legendary {
   on independent when var(mult) == 0 { set_var mult 1 }
   on discard_batch { add_var count count(discarded, all) }
   on discard_batch when var(count) >= 23 { add_var mult 1; add_var count -23 }
+  on independent { mul_mult var(mult) }
+}
+
+joker rocket "Rocket" Uncommon {
+  on independent when var(init) == 0 { set_var payout 1; set_var init 1 }
+  on round_end { add_money var(payout) }
+  on round_end when is_boss_blind { add_var payout 2 }
+}
+
+joker mail_in_rebate "Mail-In Rebate" Common {
+  on blind_start { set_var rank rand(2, 14) }
+  on discard when card.rank_id == var(rank) { add_money 5 }
+}
+
+joker to_do_list "To Do List" Common {
+  on blind_start when var(init) == 0 { set_var target rand(0, 12); set_var init 1 }
+  on round_end { set_var target rand(0, 12) }
+  on played when hand_id == var(target) { add_money 4 }
+}
+
+joker shortcut "Shortcut" Uncommon {}
+
+joker the_idol "The Idol" Uncommon {
+  on blind_start { set_var suit rand(0, 3); set_var rank rand(2, 14) }
+  on scored when card.rank_id == var(rank) && suit_match(var(suit)) { mul_mult 2 }
+}
+
+joker obelisk "Obelisk" Rare {
+  on independent when var(mult) == 0 { set_var mult 1 }
+  on played when hand != most_played_hand { add_var mult 0.2 }
+  on played when hand == most_played_hand { set_var mult 1 }
   on independent { mul_mult var(mult) }
 }

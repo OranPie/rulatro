@@ -66,6 +66,7 @@ pub fn level_kind(kind: HandKind) -> HandKind {
 pub struct HandEvalRules {
     pub smeared_suits: bool,
     pub four_fingers: bool,
+    pub shortcut: bool,
 }
 
 pub fn evaluate_hand(cards: &[Card]) -> HandKind {
@@ -98,8 +99,9 @@ pub fn evaluate_hand_with_rules(cards: &[Card], rules: HandEvalRules) -> HandKin
 
     let is_flush = (len == 5 && suit_counts.len() == 1)
         || (rules.four_fingers && len == 4 && suit_counts.len() == 1);
-    let is_straight = (len == 5 && is_straight_len(&eval_cards, 5))
-        || (rules.four_fingers && len == 4 && is_straight_len(&eval_cards, 4));
+    let max_gap = if rules.shortcut { 2 } else { 1 };
+    let is_straight = (len == 5 && is_straight_len(&eval_cards, 5, max_gap))
+        || (rules.four_fingers && len == 4 && is_straight_len(&eval_cards, 4, max_gap));
 
     if len == 5 {
         if counts == [5] {
@@ -237,7 +239,7 @@ pub fn scoring_cards(cards: &[Card], kind: HandKind) -> Vec<usize> {
     scoring.dedup();
     scoring
 }
-fn is_straight_len(cards: &[Card], required: usize) -> bool {
+fn is_straight_len(cards: &[Card], required: usize, max_gap: u8) -> bool {
     let mut values: Vec<u8> = cards.iter().map(|card| rank_value(card.rank)).collect();
     values.sort_unstable();
     values.dedup();
@@ -250,7 +252,9 @@ fn is_straight_len(cards: &[Card], required: usize) -> bool {
     if required == 4 && values == [2, 3, 4, 14] {
         return true;
     }
-    values.windows(2).all(|w| w[1] == w[0] + 1)
+    values
+        .windows(2)
+        .all(|w| w[1].saturating_sub(w[0]) <= max_gap)
 }
 
 fn is_royal(cards: &[Card]) -> bool {

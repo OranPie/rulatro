@@ -53,6 +53,7 @@ impl RunState {
     pub(super) fn eval_ident(&mut self, ident: &str, ctx: &EvalContext<'_>) -> EvalValue {
         match ident {
             "hand" => EvalValue::Str(normalize(hand_name(ctx.hand_kind))),
+            "hand_id" => EvalValue::Num(hand_id(ctx.hand_kind) as f64),
             "blind" => EvalValue::Str(normalize(blind_name(ctx.blind))),
             "played_count" => EvalValue::Num(ctx.played_count as f64),
             "scoring_count" => EvalValue::Num(ctx.scoring_count as f64),
@@ -86,6 +87,9 @@ impl RunState {
                 EvalValue::Num(count as f64)
             }
             "hand_level" => EvalValue::Num(self.hand_level(ctx.hand_kind) as f64),
+            "most_played_hand" => {
+                EvalValue::Str(normalize(hand_name(self.most_played_hand())))
+            }
             "is_boss_blind" => EvalValue::Bool(self.state.blind == BlindKind::Boss),
             "is_scoring" => EvalValue::Bool(ctx.is_scoring),
             "is_held" => EvalValue::Bool(ctx.is_held),
@@ -94,6 +98,10 @@ impl RunState {
             "card.rank" => ctx
                 .card
                 .map(|card| EvalValue::Str(normalize(rank_name(card.rank))))
+                .unwrap_or(EvalValue::None),
+            "card.rank_id" => ctx
+                .card
+                .map(|card| EvalValue::Num(rank_id(card.rank) as f64))
                 .unwrap_or(EvalValue::None),
             "card.suit" => ctx
                 .card

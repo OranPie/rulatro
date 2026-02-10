@@ -29,6 +29,7 @@ impl RunState {
         HandEvalRules {
             smeared_suits: self.smeared_suits_active(),
             four_fingers: self.four_fingers_active(),
+            shortcut: self.shortcut_active(),
         }
     }
 
@@ -58,6 +59,26 @@ impl RunState {
         } else {
             0
         }
+    }
+
+    pub(super) fn shortcut_active(&self) -> bool {
+        self.has_joker_id("shortcut")
+    }
+
+    pub(super) fn most_played_hand(&self) -> crate::HandKind {
+        let mut best = self
+            .state
+            .last_hand
+            .unwrap_or(crate::HandKind::HighCard);
+        let mut best_count = 0u32;
+        for kind in crate::HandKind::ALL {
+            let count = self.state.hand_play_counts.get(&kind).copied().unwrap_or(0);
+            if count > best_count {
+                best_count = count;
+                best = kind;
+            }
+        }
+        best
     }
 
     pub(super) fn hand_level(&self, kind: crate::HandKind) -> u32 {

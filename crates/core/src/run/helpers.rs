@@ -86,6 +86,24 @@ pub(super) fn hand_name(kind: crate::HandKind) -> &'static str {
     }
 }
 
+pub(super) fn hand_id(kind: crate::HandKind) -> u8 {
+    match kind {
+        crate::HandKind::HighCard => 0,
+        crate::HandKind::Pair => 1,
+        crate::HandKind::TwoPair => 2,
+        crate::HandKind::Trips => 3,
+        crate::HandKind::Straight => 4,
+        crate::HandKind::Flush => 5,
+        crate::HandKind::FullHouse => 6,
+        crate::HandKind::Quads => 7,
+        crate::HandKind::StraightFlush => 8,
+        crate::HandKind::RoyalFlush => 9,
+        crate::HandKind::FiveOfAKind => 10,
+        crate::HandKind::FlushHouse => 11,
+        crate::HandKind::FlushFive => 12,
+    }
+}
+
 pub(super) fn blind_name(kind: BlindKind) -> &'static str {
     match kind {
         BlindKind::Small => "Small",
@@ -110,6 +128,25 @@ pub(super) fn rank_name(rank: crate::Rank) -> &'static str {
         crate::Rank::Queen => "Queen",
         crate::Rank::King => "King",
         crate::Rank::Joker => "Joker",
+    }
+}
+
+pub(super) fn rank_id(rank: crate::Rank) -> u8 {
+    match rank {
+        crate::Rank::Ace => 14,
+        crate::Rank::Two => 2,
+        crate::Rank::Three => 3,
+        crate::Rank::Four => 4,
+        crate::Rank::Five => 5,
+        crate::Rank::Six => 6,
+        crate::Rank::Seven => 7,
+        crate::Rank::Eight => 8,
+        crate::Rank::Nine => 9,
+        crate::Rank::Ten => 10,
+        crate::Rank::Jack => 11,
+        crate::Rank::Queen => 12,
+        crate::Rank::King => 13,
+        crate::Rank::Joker => 0,
     }
 }
 
