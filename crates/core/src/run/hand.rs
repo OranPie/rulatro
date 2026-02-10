@@ -1,5 +1,6 @@
 use super::*;
 use crate::*;
+use super::helpers::*;
 
 impl RunState {
     pub fn prepare_hand(&mut self, events: &mut EventBus) -> Result<(), RunError> {
@@ -57,7 +58,7 @@ impl RunState {
             return Err(RunError::InvalidCardCount);
         }
 
-        let played = take_cards(&mut self.hand, indices)?;
+        let mut played = take_cards(&mut self.hand, indices)?;
         self.state.phase = Phase::Score;
         let eval_rules = self.hand_eval_rules();
         let mut breakdown =
@@ -73,13 +74,35 @@ impl RunState {
             .or_insert(0) += 1;
         let mut total_score = breakdown.total.clone();
         let mut money = self.state.money;
-        let scoring_cards: Vec<Card> = breakdown
+        let mut scoring_cards: Vec<Card> = breakdown
             .scoring_indices
             .iter()
             .map(|&idx| played[idx])
             .collect();
         let held_cards = self.hand.clone();
         let joker_count = self.inventory.jokers.len();
+
+        let is_first_hand = self.state.hands_left == self.state.hands_max;
+        let mut pre_destroyed = Vec::new();
+        if is_first_hand && played.len() == 1 && self.has_joker_id("sixth_sense") {
+            if played[0].rank == crate::Rank::Six
+                && self.inventory.consumables.len() < self.inventory.consumable_slots
+            {
+                pre_destroyed.push(0);
+                if let Some(card) =
+                    self.content
+                        .pick_consumable(crate::ConsumableKind::Spectral, &mut self.rng)
+                {
+                    let _ = self
+                        .inventory
+                        .add_consumable(card.id.clone(), crate::ConsumableKind::Spectral);
+                }
+            }
+        }
+        if is_first_hand && played.len() == 1 && self.has_joker_id("dna") {
+            let copy = played[0];
+            self.hand.push(copy);
+        }
 
         self.apply_boss_blind_effects(&mut total_score, &mut money, breakdown.hand);
 
@@ -104,8 +127,8 @@ impl RunState {
 
         let scored_outcome =
             self.apply_scored_card_pipeline(
-                &played,
-                &scoring_cards,
+                &mut played,
+                &mut scoring_cards,
                 &held_cards,
                 &breakdown,
                 joker_count,
@@ -141,6 +164,7 @@ impl RunState {
         self.state.phase = Phase::Cleanup;
 
         let mut destroyed = scored_outcome.destroyed_indices;
+        destroyed.extend(pre_destroyed);
         destroyed.sort_unstable();
         destroyed.dedup();
         let mut to_discard = Vec::with_capacity(played.len());
@@ -195,8 +219,8 @@ impl RunState {
 
     pub(super) fn apply_scored_card_pipeline(
         &mut self,
-        played: &[Card],
-        scoring_cards: &[Card],
+        played: &mut [Card],
+        scoring_cards: &mut Vec<Card>,
         held_cards: &[Card],
         breakdown: &ScoreBreakdown,
         joker_count: usize,
@@ -204,21 +228,41 @@ impl RunState {
         money: &mut i64,
     ) -> ScoredOutcome {
         let mut destroyed_indices = Vec::new();
-        for &idx in &breakdown.scoring_indices {
-            let card = played[idx];
-            let mut remaining = if card.seal == Some(Seal::Red) { 2 } else { 1 };
+        let hiker_active = self.has_joker_id("hiker");
+        let vampire_active = self.has_joker_id("vampire");
+        let midas_active = self.has_joker_id("midas_mask");
+        for (scoring_pos, &idx) in breakdown.scoring_indices.iter().enumerate() {
+            let mut remaining = if played[idx].seal == Some(Seal::Red) { 2 } else { 1 };
             let mut pending = 0i64;
             while remaining > 0 {
                 remaining -= 1;
+                let was_enhanced = played[idx].enhancement.is_some();
                 let mut results = TriggerResults::default();
                 let destroyed_now = self.apply_card_enhancement_scored(
-                    card,
+                    &mut played[idx],
                     score,
                     money,
                     &mut results,
                     idx,
                     &mut destroyed_indices,
                 );
+                if hiker_active {
+                    played[idx].bonus_chips = played[idx].bonus_chips.saturating_add(5);
+                }
+                if vampire_active && was_enhanced {
+                    played[idx].enhancement = None;
+                    self.add_joker_var_by_id("vampire", "mult", 0.1, 1.0);
+                }
+                if midas_active && is_face(played[idx]) {
+                    played[idx].enhancement = Some(Enhancement::Gold);
+                }
+                if scoring_pos < scoring_cards.len() {
+                    scoring_cards[scoring_pos] = played[idx];
+                }
+                let card = played[idx];
+                if card.bonus_chips > 0 {
+                    score.apply(&crate::RuleEffect::AddChips(card.bonus_chips));
+                }
                 self.apply_card_seal_scored(card, score, money, &mut results);
                 self.apply_card_edition_scored(card, score);
                 let ctx = EvalContext::scoring(
@@ -309,7 +353,7 @@ impl RunState {
 
     pub(super) fn apply_card_enhancement_scored(
         &mut self,
-        card: Card,
+        card: &mut Card,
         score: &mut Score,
         money: &mut i64,
         _results: &mut TriggerResults,

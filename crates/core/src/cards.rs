@@ -65,6 +65,8 @@ pub struct Card {
     pub edition: Option<Edition>,
     #[serde(default)]
     pub seal: Option<Seal>,
+    #[serde(default)]
+    pub bonus_chips: i64,
 }
 
 impl Card {
@@ -75,6 +77,7 @@ impl Card {
             enhancement: None,
             edition: None,
             seal: None,
+            bonus_chips: 0,
         }
     }
 

@@ -108,6 +108,23 @@ impl RunState {
         self.state.money = money;
     }
 
+    pub(super) fn add_joker_var_by_id(
+        &mut self,
+        id: &str,
+        key: &str,
+        delta: f64,
+        default: f64,
+    ) {
+        let key = normalize(key);
+        for joker in &mut self.inventory.jokers {
+            if joker.id != id {
+                continue;
+            }
+            let entry = joker.vars.entry(key.clone()).or_insert(default);
+            *entry += delta;
+        }
+    }
+
     pub(super) fn add_joker_with_trigger(
         &mut self,
         id: String,

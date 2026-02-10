@@ -1,5 +1,5 @@
 # Joker DSL (templates + definitions). One joker per block.
-# Variables: hand, hand_id, hand_level, blind, played_count, scoring_count, held_count, deck_count,
+# Variables: hand, hand_id, hand_level, most_played_hand, blind, played_count, scoring_count, held_count, deck_count,
 #            hands_left, hands_max, discards_left, discards_max, joker_count, joker_slots, empty_joker_slots, hand_play_count,
 #            money, hand_size, ante, blind_score, target, is_boss_blind,
 #            card.rank, card.rank_id, card.suit, card.suit_id, card.enhancement, card.edition, card.seal,
@@ -556,3 +556,15 @@ joker obelisk "Obelisk" Rare {
   on played when hand == most_played_hand { set_var mult 1 }
   on independent { mul_mult var(mult) }
 }
+
+joker hiker "Hiker" Uncommon {}
+
+joker vampire "Vampire" Uncommon {
+  on independent { mul_mult max(1, var(mult)) }
+}
+
+joker midas_mask "Midas Mask" Uncommon {}
+
+joker dna "DNA" Rare {}
+
+joker sixth_sense "Sixth Sense" Uncommon {}
