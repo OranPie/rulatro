@@ -1,7 +1,7 @@
 use rulatro_core::{
-    BlindKind, Card, ConsumableKind, Enhancement, Edition, EventBus, HandKind, JokerRarity,
-    LastConsumable, PackKind, PackOffer, PackSize, Phase, Rank, RunError, RunState, ShopPurchase,
-    Suit,
+    BlindKind, Card, CardWeight, ConsumableKind, Enhancement, Edition, EventBus, HandKind,
+    JokerRarity, LastConsumable, PackKind, PackOffer, PackSize, Phase, Rank, RunError, RunState,
+    ShopCardKind, ShopPurchase, Suit,
 };
 use rulatro_data::{load_content, load_game_config};
 use std::path::PathBuf;
@@ -601,6 +601,68 @@ fn tag_top_up_adds_jokers_to_inventory() {
 }
 
 #[test]
+fn tag_foil_sets_single_joker_edition_and_price() {
+    let mut run = new_run();
+    mark_blind_cleared(&mut run);
+    run.config.shop.card_weights = vec![CardWeight {
+        kind: ShopCardKind::Joker,
+        weight: 1,
+    }];
+    run.state.tags.push("foil_tag".to_string());
+    let mut events = EventBus::default();
+    run.enter_shop(&mut events).expect("enter shop");
+    let shop = run.shop.as_ref().expect("shop");
+    let foil_cards: Vec<_> = shop
+        .cards
+        .iter()
+        .filter(|card| card.edition == Some(Edition::Foil))
+        .collect();
+    assert_eq!(foil_cards.len(), 1);
+    assert_eq!(foil_cards[0].price, 0);
+    assert!(run.state.tags.is_empty());
+}
+
+#[test]
+fn astronomer_sets_planet_and_celestial_prices() {
+    let mut run = new_run();
+    mark_blind_cleared(&mut run);
+    run.config.shop.card_weights = vec![CardWeight {
+        kind: ShopCardKind::Planet,
+        weight: 1,
+    }];
+    run.config
+        .shop
+        .pack_weights
+        .retain(|pack| pack.kind == PackKind::Celestial);
+    run.inventory
+        .add_joker("astronomer".to_string(), JokerRarity::Uncommon, 10)
+        .expect("add joker");
+    let mut events = EventBus::default();
+    run.enter_shop(&mut events).expect("enter shop");
+    let shop = run.shop.as_ref().expect("shop");
+    assert!(shop
+        .cards
+        .iter()
+        .all(|card| matches!(card.kind, ShopCardKind::Planet) && card.price == 0));
+    assert!(shop
+        .packs
+        .iter()
+        .all(|pack| pack.kind == PackKind::Celestial && pack.price == 0));
+
+    run.state.money = 100;
+    run.reroll_shop(&mut events).expect("reroll");
+    let shop = run.shop.as_ref().expect("shop");
+    assert!(shop
+        .cards
+        .iter()
+        .all(|card| matches!(card.kind, ShopCardKind::Planet) && card.price == 0));
+    assert!(shop
+        .packs
+        .iter()
+        .all(|pack| pack.kind == PackKind::Celestial && pack.price == 0));
+}
+
+#[test]
 fn shop_reroll_cost_and_free_rerolls() {
     let mut run = new_run();
     mark_blind_cleared(&mut run);
@@ -732,6 +794,16 @@ fn play_hand_rejects_invalid_count() {
 }
 
 #[test]
+fn play_hand_rejects_no_hands_left() {
+    let mut run = new_run();
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 0;
+    run.hand = make_hand();
+    let err = run.play_hand(&[0, 1, 2, 3, 4], &mut EventBus::default());
+    assert!(matches!(err, Err(RunError::NoHandsLeft)));
+}
+
+#[test]
 fn discard_rejects_invalid_count() {
     let mut run = new_run();
     run.state.phase = Phase::Play;
@@ -739,6 +811,16 @@ fn discard_rejects_invalid_count() {
     run.hand = make_hand();
     let err = run.discard(&[0, 1, 2, 3, 4, 5], &mut EventBus::default());
     assert!(matches!(err, Err(RunError::InvalidCardCount)));
+}
+
+#[test]
+fn discard_rejects_no_discards_left() {
+    let mut run = new_run();
+    run.state.phase = Phase::Play;
+    run.state.discards_left = 0;
+    run.hand = make_hand();
+    let err = run.discard(&[0], &mut EventBus::default());
+    assert!(matches!(err, Err(RunError::NoDiscardsLeft)));
 }
 
 #[test]
