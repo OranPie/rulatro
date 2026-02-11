@@ -51,6 +51,9 @@ impl Deck {
     }
 
     pub fn discard(&mut self, mut cards: Vec<Card>) {
+        for card in &mut cards {
+            card.face_down = false;
+        }
         self.discard.append(&mut cards);
     }
 

@@ -3,6 +3,31 @@ use crate::*;
 use super::helpers::*;
 
 impl RunState {
+    pub(super) fn shop_restrictions(&mut self) -> crate::ShopRestrictions {
+        let mut restrictions = crate::ShopRestrictions::default();
+        restrictions.allow_duplicates = self.rule_flag("shop_allow_duplicates");
+        restrictions.owned_jokers = self
+            .inventory
+            .jokers
+            .iter()
+            .map(|joker| joker.id.clone())
+            .collect();
+        for consumable in &self.inventory.consumables {
+            match consumable.kind {
+                crate::ConsumableKind::Tarot => {
+                    restrictions.owned_tarots.insert(consumable.id.clone());
+                }
+                crate::ConsumableKind::Planet => {
+                    restrictions.owned_planets.insert(consumable.id.clone());
+                }
+                crate::ConsumableKind::Spectral => {
+                    restrictions.owned_spectrals.insert(consumable.id.clone());
+                }
+            }
+        }
+        restrictions
+    }
+
     pub(super) fn default_joker_price(&mut self, rarity: crate::JokerRarity) -> i64 {
         match rarity {
             crate::JokerRarity::Common => {
@@ -44,33 +69,27 @@ impl RunState {
         if !self.blind_cleared() {
             return Err(RunError::BlindNotCleared);
         }
-        let shop = ShopState::generate(&self.config.shop, &self.content, &mut self.rng);
+        let restrictions = self.shop_restrictions();
+        let shop = ShopState::generate(&self.config.shop, &self.content, &mut self.rng, &restrictions);
         let offers = shop.cards.len() + shop.packs.len() + shop.vouchers;
         self.shop = Some(shop);
         self.state.phase = Phase::Shop;
         self.state.shop_free_rerolls = 0;
 
         let hand_kind = self.state.last_hand.unwrap_or(crate::HandKind::HighCard);
-        let ctx = EvalContext::independent(
+        let mut scratch_score = Score::default();
+        let mut money = self.state.money;
+        let mut results = TriggerResults::default();
+        let mut held_view = self.hand.clone();
+        let mut args = HookArgs::independent(
             hand_kind,
             self.state.blind,
-            &[],
-            &[],
-            &[],
-            self.state.hands_left,
-            self.state.discards_left,
-            self.inventory.jokers.len(),
-        );
-        let mut dummy_score = Score::default();
-        let mut results = TriggerResults::default();
-        let mut money = self.state.money;
-        self.apply_joker_effects(
-            ActivationType::OnShopEnter,
-            &ctx,
-            &mut dummy_score,
+            HookInject::held(&mut held_view),
+            &mut scratch_score,
             &mut money,
             &mut results,
         );
+        self.invoke_hooks(HookPoint::ShopEnter, &mut args, events);
         self.state.money = money;
 
         events.push(Event::ShopEntered {
@@ -85,6 +104,7 @@ impl RunState {
             return Err(RunError::InvalidPhase(self.state.phase));
         }
         let money_floor = self.money_floor();
+        let restrictions = self.shop_restrictions();
         let (offers, reroll_cost, cost) = {
             let shop = self.shop.as_mut().ok_or(RunError::ShopNotAvailable)?;
             let mut cost = shop.reroll_cost;
@@ -98,32 +118,25 @@ impl RunState {
                 }
                 self.state.money -= cost;
             }
-            shop.reroll_cards(&self.config.shop, &self.content, &mut self.rng);
+            shop.reroll_cards(&self.config.shop, &self.content, &mut self.rng, &restrictions);
             let offers = shop.cards.len() + shop.packs.len() + shop.vouchers;
             let reroll_cost = shop.reroll_cost;
             (offers, reroll_cost, cost)
         };
         let hand_kind = self.state.last_hand.unwrap_or(crate::HandKind::HighCard);
-        let ctx = EvalContext::independent(
+        let mut scratch_score = Score::default();
+        let mut money = self.state.money;
+        let mut results = TriggerResults::default();
+        let mut held_view = self.hand.clone();
+        let mut args = HookArgs::independent(
             hand_kind,
             self.state.blind,
-            &[],
-            &[],
-            &[],
-            self.state.hands_left,
-            self.state.discards_left,
-            self.inventory.jokers.len(),
-        );
-        let mut dummy_score = Score::default();
-        let mut results = TriggerResults::default();
-        let mut money = self.state.money;
-        self.apply_joker_effects(
-            ActivationType::OnShopReroll,
-            &ctx,
-            &mut dummy_score,
+            HookInject::held(&mut held_view),
+            &mut scratch_score,
             &mut money,
             &mut results,
         );
+        self.invoke_hooks(HookPoint::ShopReroll, &mut args, events);
         self.state.money = money;
         events.push(Event::ShopRerolled {
             offers,
@@ -165,7 +178,12 @@ impl RunState {
             ShopPurchase::Card(card) => match card.kind {
                 crate::ShopCardKind::Joker => {
                     let rarity = card.rarity.unwrap_or(crate::JokerRarity::Common);
-                    self.add_joker_with_trigger(card.item_id.clone(), rarity, card.price)?;
+                    self.add_joker_with_trigger_edition(
+                        card.item_id.clone(),
+                        rarity,
+                        card.price,
+                        card.edition,
+                    )?;
                 }
                 crate::ShopCardKind::Tarot => {
                     self.inventory.add_consumable(
@@ -193,37 +211,39 @@ impl RunState {
             return Err(RunError::InvalidJokerIndex);
         }
         let mut joker = self.inventory.jokers.remove(index);
+        self.mark_rules_dirty();
         let sell_value = self.calc_joker_sell_value(&joker);
         self.state.money += sell_value;
         self.current_joker_counts = build_joker_counts(&self.inventory.jokers);
 
         let hand_kind = self.state.last_hand.unwrap_or(crate::HandKind::HighCard);
-        let ctx = EvalContext::sell(
+        let mut scratch_score = Score::default();
+        let mut money = self.state.money;
+        let mut results = TriggerResults::default();
+        let mut held_view = self.hand.clone();
+        let mut sell_args = HookArgs::sell(
             hand_kind,
             self.state.blind,
             sell_value,
-            self.state.hands_left,
-            self.state.discards_left,
-            self.inventory.jokers.len(),
-        );
-        let mut dummy_score = Score::default();
-        let mut results = TriggerResults::default();
-        let mut money = self.state.money;
-        self.apply_joker_effects_for_joker(
-            &mut joker,
-            ActivationType::OnSell,
-            &ctx,
-            &mut dummy_score,
+            HookInject::held(&mut held_view),
+            &mut scratch_score,
             &mut money,
             &mut results,
+            Some(&mut joker),
         );
-        self.apply_joker_effects(
-            ActivationType::OnAnySell,
-            &ctx,
-            &mut dummy_score,
+        self.invoke_hooks(HookPoint::Sell, &mut sell_args, events);
+        let mut held_view = self.hand.clone();
+        let mut any_sell_args = HookArgs::sell(
+            hand_kind,
+            self.state.blind,
+            sell_value,
+            HookInject::held(&mut held_view),
+            &mut scratch_score,
             &mut money,
             &mut results,
+            None,
         );
+        self.invoke_hooks(HookPoint::AnySell, &mut any_sell_args, events);
         self.state.money = money;
         events.push(Event::JokerSold {
             id: joker.id,
@@ -242,28 +262,28 @@ impl RunState {
             ShopPurchase::Pack(pack) => pack,
             _ => return Err(RunError::PackNotAvailable),
         };
-        let open = open_pack(pack, &self.content, &self.config.shop.joker_rarity_weights, &mut self.rng);
+        let restrictions = self.shop_restrictions();
+        let open = open_pack(
+            pack,
+            &self.content,
+            &self.config.shop.joker_rarity_weights,
+            &mut self.rng,
+            &restrictions,
+        );
         let hand_kind = self.state.last_hand.unwrap_or(crate::HandKind::HighCard);
-        let ctx = EvalContext::independent(
+        let mut scratch_score = Score::default();
+        let mut money = self.state.money;
+        let mut results = TriggerResults::default();
+        let mut held_view = self.hand.clone();
+        let mut args = HookArgs::independent(
             hand_kind,
             self.state.blind,
-            &[],
-            &[],
-            &[],
-            self.state.hands_left,
-            self.state.discards_left,
-            self.inventory.jokers.len(),
-        );
-        let mut dummy_score = Score::default();
-        let mut results = TriggerResults::default();
-        let mut money = self.state.money;
-        self.apply_joker_effects(
-            ActivationType::OnPackOpened,
-            &ctx,
-            &mut dummy_score,
+            HookInject::held(&mut held_view),
+            &mut scratch_score,
             &mut money,
             &mut results,
         );
+        self.invoke_hooks(HookPoint::PackOpened, &mut args, events);
         self.state.money = money;
         events.push(Event::PackOpened {
             kind: purchase.kind(),
@@ -295,7 +315,7 @@ impl RunState {
                     }
                 }
                 crate::PackOption::Consumable(kind, id) => {
-                    if let Some(def) = self
+                    if let Some(_def) = self
                         .content
                         .tarots
                         .iter()
@@ -303,16 +323,14 @@ impl RunState {
                         .chain(self.content.spectrals.iter())
                         .find(|card| card.id == *id)
                     {
-                        let def = def.clone();
-                        if matches!(open.offer.kind, crate::PackKind::Arcana | crate::PackKind::Celestial | crate::PackKind::Spectral) {
-                            self.apply_consumable_effects(&def)?;
-                        } else {
-                            self.inventory.add_consumable(id.clone(), *kind)?;
-                        }
+                        self.inventory.add_consumable(id.clone(), *kind)?;
                     }
                 }
                 crate::PackOption::PlayingCard(card) => {
-                    self.deck.discard(vec![*card]);
+                    let mut card = *card;
+                    self.assign_card_id(&mut card);
+                    self.deck.discard(vec![card]);
+                    self.trigger_on_card_added(card);
                 }
             }
         }
@@ -322,26 +340,19 @@ impl RunState {
 
     pub fn skip_pack(&mut self, _open: &PackOpen, events: &mut EventBus) -> Result<(), RunError> {
         let hand_kind = self.state.last_hand.unwrap_or(crate::HandKind::HighCard);
-        let ctx = EvalContext::independent(
+        let mut scratch_score = Score::default();
+        let mut money = self.state.money;
+        let mut results = TriggerResults::default();
+        let mut held_view = self.hand.clone();
+        let mut args = HookArgs::independent(
             hand_kind,
             self.state.blind,
-            &[],
-            &[],
-            &[],
-            self.state.hands_left,
-            self.state.discards_left,
-            self.inventory.jokers.len(),
-        );
-        let mut dummy_score = Score::default();
-        let mut results = TriggerResults::default();
-        let mut money = self.state.money;
-        self.apply_joker_effects(
-            ActivationType::OnPackSkipped,
-            &ctx,
-            &mut dummy_score,
+            HookInject::held(&mut held_view),
+            &mut scratch_score,
             &mut money,
             &mut results,
         );
+        self.invoke_hooks(HookPoint::PackSkipped, &mut args, events);
         self.state.money = money;
         events.push(Event::PackChosen { picks: 0 });
         Ok(())

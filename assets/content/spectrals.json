@@ -1,14 +1,264 @@
 [
   {
-    "id": "spectral_test",
-    "name": "Spectral Test",
+    "id": "familiar",
+    "name": "Familiar",
     "kind": "Spectral",
     "effects": [
       {
         "trigger": "OnUse",
         "conditions": ["Always"],
         "effects": [
-          { "Score": { "MultiplyMult": 2 } }
+          { "DestroyRandomInHand": { "count": 1 } },
+          { "AddRandomEnhancedCards": { "count": 3, "filter": "Face" } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "grim",
+    "name": "Grim",
+    "kind": "Spectral",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "DestroyRandomInHand": { "count": 1 } },
+          { "AddRandomEnhancedCards": { "count": 2, "filter": "Ace" } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "incantation",
+    "name": "Incantation",
+    "kind": "Spectral",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "DestroyRandomInHand": { "count": 1 } },
+          { "AddRandomEnhancedCards": { "count": 4, "filter": "Numbered" } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "talisman",
+    "name": "Talisman",
+    "kind": "Spectral",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "AddSealToSelected": { "seal": "Gold", "count": 1 } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "aura",
+    "name": "Aura",
+    "kind": "Spectral",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          {
+            "AddEditionToSelected": {
+              "editions": ["Foil", "Holographic", "Polychrome"],
+              "count": 1
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "wraith",
+    "name": "Wraith",
+    "kind": "Spectral",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "AddJoker": { "rarity": "Rare", "count": 1 } },
+          { "SetMoney": 0 }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "sigil",
+    "name": "Sigil",
+    "kind": "Spectral",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          "ConvertHandToRandomSuit"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "ouija",
+    "name": "Ouija",
+    "kind": "Spectral",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          "ConvertHandToRandomRank",
+          { "AddHandSize": -1 }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "ectoplasm",
+    "name": "Ectoplasm",
+    "kind": "Spectral",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "SetRandomJokerEdition": { "edition": "Negative" } },
+          { "AddHandSize": -1 }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "immolate",
+    "name": "Immolate",
+    "kind": "Spectral",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "DestroyRandomInHand": { "count": 5 } },
+          { "AddMoney": 20 }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "hex",
+    "name": "Hex",
+    "kind": "Spectral",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "SetRandomJokerEditionDestroyOthers": { "edition": "Polychrome" } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "ankh",
+    "name": "Ankh",
+    "kind": "Spectral",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "DuplicateRandomJokerDestroyOthers": { "remove_negative": true } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "black_hole",
+    "name": "Black Hole",
+    "kind": "Spectral",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "UpgradeAllHands": { "amount": 1 } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "cryptid",
+    "name": "Cryptid",
+    "kind": "Spectral",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "CopySelected": { "count": 2 } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "deja_vu",
+    "name": "Deja Vu",
+    "kind": "Spectral",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "AddSealToSelected": { "seal": "Red", "count": 1 } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "medium",
+    "name": "Medium",
+    "kind": "Spectral",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "AddSealToSelected": { "seal": "Purple", "count": 1 } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "trance",
+    "name": "Trance",
+    "kind": "Spectral",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "AddSealToSelected": { "seal": "Blue", "count": 1 } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "the_soul",
+    "name": "The Soul",
+    "kind": "Spectral",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "AddJoker": { "rarity": "Legendary", "count": 1 } }
         ]
       }
     ]

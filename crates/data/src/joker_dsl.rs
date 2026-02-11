@@ -1,7 +1,7 @@
 use anyhow::{anyhow, bail, Context, Result};
 use rulatro_core::{
-    Action, ActionOp, ActivationType, BinaryOp, Expr, JokerDef, JokerEffect, JokerRarity,
-    UnaryOp,
+    Action, ActionOp, ActivationType, BinaryOp, BossDef, Expr, JokerDef, JokerEffect,
+    JokerRarity, TagDef, UnaryOp,
 };
 use std::collections::HashMap;
 use std::fs;
@@ -13,10 +13,45 @@ pub fn load_jokers_dsl(path: &Path) -> Result<Vec<JokerDef>> {
     parse_jokers(&expanded)
 }
 
+pub fn load_bosses_dsl(path: &Path) -> Result<Vec<BossDef>> {
+    let raw = fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
+    let expanded = expand_templates(&raw)?;
+    parse_named_defs(&expanded, "boss").map(|defs| {
+        defs.into_iter()
+            .map(|def| BossDef {
+                id: def.id,
+                name: def.name,
+                effects: def.effects,
+            })
+            .collect()
+    })
+}
+
+pub fn load_tags_dsl(path: &Path) -> Result<Vec<TagDef>> {
+    let raw = fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
+    let expanded = expand_templates(&raw)?;
+    parse_named_defs(&expanded, "tag").map(|defs| {
+        defs.into_iter()
+            .map(|def| TagDef {
+                id: def.id,
+                name: def.name,
+                effects: def.effects,
+            })
+            .collect()
+    })
+}
+
 #[derive(Debug, Clone)]
 struct Template {
     params: Vec<String>,
     body: String,
+}
+
+#[derive(Debug, Clone)]
+struct NamedDef {
+    id: String,
+    name: String,
+    effects: Vec<JokerEffect>,
 }
 
 fn expand_templates(src: &str) -> Result<String> {
@@ -131,7 +166,55 @@ fn parse_use(line: &str) -> Result<(String, Vec<String>)> {
 }
 
 fn parse_jokers(src: &str) -> Result<Vec<JokerDef>> {
+    let blocks = parse_blocks(src, "joker")?;
     let mut jokers = Vec::new();
+    for block in blocks {
+        if block.tokens.len() < 4 {
+            bail!("joker header missing id/name/rarity");
+        }
+        let id = token_to_string(block.tokens.get(1))
+            .ok_or_else(|| anyhow!("joker id missing"))?;
+        let name = token_to_string(block.tokens.get(2))
+            .ok_or_else(|| anyhow!("joker name missing"))?;
+        let rarity_str = token_to_string(block.tokens.get(3))
+            .ok_or_else(|| anyhow!("joker rarity missing"))?;
+        let rarity = parse_rarity(&rarity_str)?;
+        let effects = parse_effects(&block.body)?;
+        jokers.push(JokerDef {
+            id,
+            name,
+            rarity,
+            effects,
+        });
+    }
+    Ok(jokers)
+}
+
+fn parse_named_defs(src: &str, keyword: &str) -> Result<Vec<NamedDef>> {
+    let blocks = parse_blocks(src, keyword)?;
+    let mut defs = Vec::new();
+    for block in blocks {
+        if block.tokens.len() < 3 {
+            bail!("{} header missing id/name", keyword);
+        }
+        let id = token_to_string(block.tokens.get(1))
+            .ok_or_else(|| anyhow!("{} id missing", keyword))?;
+        let name = token_to_string(block.tokens.get(2))
+            .ok_or_else(|| anyhow!("{} name missing", keyword))?;
+        let effects = parse_effects(&block.body)?;
+        defs.push(NamedDef { id, name, effects });
+    }
+    Ok(defs)
+}
+
+#[derive(Debug, Clone)]
+struct Block {
+    tokens: Vec<Token>,
+    body: String,
+}
+
+fn parse_blocks(src: &str, keyword: &str) -> Result<Vec<Block>> {
+    let mut blocks = Vec::new();
     let mut lines = src.lines().peekable();
 
     while let Some(line) = lines.next() {
@@ -140,11 +223,20 @@ fn parse_jokers(src: &str) -> Result<Vec<JokerDef>> {
         if trimmed.is_empty() {
             continue;
         }
-        if !trimmed.starts_with("joker ") {
+        if !trimmed.starts_with(keyword) {
             continue;
         }
+        let parts: Vec<&str> = trimmed.splitn(2, '{').collect();
+        let header = parts
+            .get(0)
+            .map(|s| s.trim())
+            .ok_or_else(|| anyhow!("invalid {} header", keyword))?;
+        let remainder = parts.get(1).map(|s| s.to_string()).unwrap_or_default();
+        let tokens = tokenize_simple(header)?;
+        if tokens.is_empty() || tokens[0] != Token::Ident(keyword.to_string()) {
+            bail!("{} header must start with '{}'", keyword, keyword);
+        }
 
-        let (id, name, rarity, remainder) = parse_joker_header(trimmed)?;
         let mut body = String::new();
         let mut depth = 1;
         if !remainder.is_empty() {
@@ -153,13 +245,7 @@ fn parse_jokers(src: &str) -> Result<Vec<JokerDef>> {
             body.push('\n');
             depth = new_depth;
             if done {
-                let effects = parse_effects(&body)?;
-                jokers.push(JokerDef {
-                    id,
-                    name,
-                    rarity,
-                    effects,
-                });
+                blocks.push(Block { tokens, body });
                 continue;
             }
         }
@@ -167,7 +253,7 @@ fn parse_jokers(src: &str) -> Result<Vec<JokerDef>> {
         while depth > 0 {
             let next_line = lines
                 .next()
-                .ok_or_else(|| anyhow!("unterminated joker block"))?;
+                .ok_or_else(|| anyhow!("unterminated {} block", keyword))?;
             let clean = strip_comments(next_line);
             let (chunk, new_depth, done) = consume_until_close(&clean, depth);
             if !chunk.trim().is_empty() {
@@ -179,43 +265,10 @@ fn parse_jokers(src: &str) -> Result<Vec<JokerDef>> {
                 break;
             }
         }
-
-        let effects = parse_effects(&body)?;
-        jokers.push(JokerDef {
-            id,
-            name,
-            rarity,
-            effects,
-        });
+        blocks.push(Block { tokens, body });
     }
 
-    Ok(jokers)
-}
-
-fn parse_joker_header(line: &str) -> Result<(String, String, JokerRarity, String)> {
-    let parts: Vec<&str> = line.splitn(2, '{').collect();
-    let header = parts
-        .get(0)
-        .map(|s| s.trim())
-        .ok_or_else(|| anyhow!("invalid joker header"))?;
-    let remainder = parts.get(1).map(|s| s.to_string()).unwrap_or_default();
-
-    let tokens = tokenize_simple(header)?;
-    if tokens.is_empty() || tokens[0] != Token::Ident("joker".to_string()) {
-        bail!("joker header must start with 'joker'");
-    }
-    let mut idx = 1;
-    let id = token_to_string(tokens.get(idx))
-        .ok_or_else(|| anyhow!("joker id missing"))?;
-    idx += 1;
-    let name = token_to_string(tokens.get(idx))
-        .ok_or_else(|| anyhow!("joker name missing"))?;
-    idx += 1;
-    let rarity_str = token_to_string(tokens.get(idx))
-        .ok_or_else(|| anyhow!("joker rarity missing"))?;
-    let rarity = parse_rarity(&rarity_str)?;
-
-    Ok((id, name, rarity, remainder))
+    Ok(blocks)
 }
 
 fn parse_effects(body: &str) -> Result<Vec<JokerEffect>> {
@@ -330,16 +383,21 @@ fn parse_action_target(input: &str) -> Result<String> {
 fn parse_trigger(input: &str) -> Result<ActivationType> {
     match input.trim().to_lowercase().as_str() {
         "played" => Ok(ActivationType::OnPlayed),
+        "scored_pre" | "score_pre" | "scored_before" => Ok(ActivationType::OnScoredPre),
         "scored" => Ok(ActivationType::OnScored),
         "held" => Ok(ActivationType::OnHeld),
         "independent" => Ok(ActivationType::Independent),
         "discard" | "discarded" => Ok(ActivationType::OnDiscard),
         "discard_batch" | "discarded_batch" | "discard_group" => Ok(ActivationType::OnDiscardBatch),
         "destroyed" | "card_destroyed" | "carddestroyed" => Ok(ActivationType::OnCardDestroyed),
+        "card_added" | "cardadded" | "deck_added" | "deckadded" => Ok(ActivationType::OnCardAdded),
         "round_end" | "roundend" => Ok(ActivationType::OnRoundEnd),
+        "hand_end" | "handend" | "hand_scored" | "handscored" => Ok(ActivationType::OnHandEnd),
         "blind_start" | "blindstart" | "blind_selected" | "blindselect" => Ok(ActivationType::OnBlindStart),
+        "blind_failed" | "blindfail" | "blind_fail" => Ok(ActivationType::OnBlindFailed),
         "shop_enter" | "shopenter" | "shop_start" | "shopstart" => Ok(ActivationType::OnShopEnter),
         "shop_reroll" | "shopreroll" => Ok(ActivationType::OnShopReroll),
+        "shop_exit" | "shopexit" | "shop_end" | "shopend" => Ok(ActivationType::OnShopExit),
         "pack_opened" | "packopen" | "pack_open" | "booster_opened" => Ok(ActivationType::OnPackOpened),
         "pack_skipped" | "pack_skip" | "booster_skipped" => Ok(ActivationType::OnPackSkipped),
         "use" => Ok(ActivationType::OnUse),

@@ -8,9 +8,12 @@ Data files for core flow and scoring.
 - `shop.json`: shop slot counts, weighted offer pools, and price placeholders.
 - `content/`: starter content definitions (jokers/consumables); currently a stub set.
   - `content/jokers.dsl`: Joker definitions in DSL form (templates + per-joker blocks). The DSL
-    supports expressions, deck/hand counts, per-joker variables, hand upgrades, and deck mutation
-    actions, along with consumable creation, discard batch / destroy / sell / use triggers and
-    shop enter / reroll / pack opened / pack skipped / acquire / any-sell triggers.
+    supports expressions, deck/hand counts, per-joker variables, hand upgrades, rule flags,
+    card mutation actions, and deck mutation actions, along with scored_pre / discard batch /
+    destroy / sell / use triggers and shop enter / reroll / pack opened / pack skipped / acquire
+    / any-sell triggers.
+  - `content/bosses.dsl`: Boss blind effect definitions (DSL).
+  - `content/tags.dsl`: Tag effect definitions (DSL).
 
 Base targets currently match the legacy (pre-2026) table; confirm if you want
 to target a different version.

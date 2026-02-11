@@ -1,8 +1,9 @@
 use crate::{
-    Content, ConsumableKind, JokerRarity, PackKind, PackPrice, PackSize, PackWeight, PriceRange,
-    RngState, ShopCardKind, ShopPrices, ShopRule,
+    Content, ConsumableKind, Edition, JokerRarity, PackKind, PackPrice, PackSize, PackWeight,
+    PriceRange, RngState, ShopCardKind, ShopPrices, ShopRule,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use thiserror::Error;
 
 #[derive(Debug, Clone)]
@@ -11,6 +12,7 @@ pub struct CardOffer {
     pub item_id: String,
     pub rarity: Option<JokerRarity>,
     pub price: i64,
+    pub edition: Option<Edition>,
 }
 
 #[derive(Debug, Clone)]
@@ -44,6 +46,15 @@ pub struct ShopState {
     pub reroll_cost: i64,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct ShopRestrictions {
+    pub allow_duplicates: bool,
+    pub owned_jokers: HashSet<String>,
+    pub owned_tarots: HashSet<String>,
+    pub owned_planets: HashSet<String>,
+    pub owned_spectrals: HashSet<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct PackOpen {
     pub offer: PackOffer,
@@ -66,8 +77,13 @@ pub enum PackError {
 }
 
 impl ShopState {
-    pub fn generate(rule: &ShopRule, content: &Content, rng: &mut RngState) -> Self {
-        let cards = generate_cards(rule, content, rng);
+    pub fn generate(
+        rule: &ShopRule,
+        content: &Content,
+        rng: &mut RngState,
+        restrictions: &ShopRestrictions,
+    ) -> Self {
+        let cards = generate_cards(rule, content, rng, restrictions);
         let packs = generate_packs(rule, rng);
         Self {
             cards,
@@ -77,8 +93,14 @@ impl ShopState {
         }
     }
 
-    pub fn reroll_cards(&mut self, rule: &ShopRule, content: &Content, rng: &mut RngState) {
-        self.cards = generate_cards(rule, content, rng);
+    pub fn reroll_cards(
+        &mut self,
+        rule: &ShopRule,
+        content: &Content,
+        rng: &mut RngState,
+        restrictions: &ShopRestrictions,
+    ) {
+        self.cards = generate_cards(rule, content, rng, restrictions);
         self.reroll_cost += rule.prices.reroll_step;
     }
 
@@ -165,29 +187,45 @@ pub fn open_pack(
     content: &Content,
     rarity_weights: &[crate::JokerRarityWeight],
     rng: &mut RngState,
+    restrictions: &ShopRestrictions,
 ) -> PackOpen {
     let mut options = Vec::with_capacity(offer.options as usize);
     for _ in 0..offer.options {
         match offer.kind {
             PackKind::Arcana => {
-                if let Some(card) = content.pick_consumable(ConsumableKind::Tarot, rng) {
+                if let Some(card) = pick_consumable_restricted(
+                    content,
+                    ConsumableKind::Tarot,
+                    rng,
+                    restrictions,
+                ) {
                     options.push(PackOption::Consumable(ConsumableKind::Tarot, card.id.clone()));
                 }
             }
             PackKind::Buffoon => {
                 if let Some(rarity) = pick_weighted_rarity(rarity_weights, rng) {
-                    if let Some(joker) = content.pick_joker(rarity, rng) {
+                    if let Some(joker) = pick_joker_restricted(content, rarity, rng, restrictions) {
                         options.push(PackOption::Joker(joker.id.clone()));
                     }
                 }
             }
             PackKind::Celestial => {
-                if let Some(card) = content.pick_consumable(ConsumableKind::Planet, rng) {
+                if let Some(card) = pick_consumable_restricted(
+                    content,
+                    ConsumableKind::Planet,
+                    rng,
+                    restrictions,
+                ) {
                     options.push(PackOption::Consumable(ConsumableKind::Planet, card.id.clone()));
                 }
             }
             PackKind::Spectral => {
-                if let Some(card) = content.pick_consumable(ConsumableKind::Spectral, rng) {
+                if let Some(card) = pick_consumable_restricted(
+                    content,
+                    ConsumableKind::Spectral,
+                    rng,
+                    restrictions,
+                ) {
                     options.push(PackOption::Consumable(ConsumableKind::Spectral, card.id.clone()));
                 }
             }
@@ -220,41 +258,59 @@ pub fn pick_pack_options(open: &PackOpen, indices: &[usize]) -> Result<Vec<PackO
     Ok(unique.into_iter().map(|idx| open.options[idx].clone()).collect())
 }
 
-fn generate_cards(rule: &ShopRule, content: &Content, rng: &mut RngState) -> Vec<CardOffer> {
+fn generate_cards(
+    rule: &ShopRule,
+    content: &Content,
+    rng: &mut RngState,
+    restrictions: &ShopRestrictions,
+) -> Vec<CardOffer> {
     let mut cards = Vec::new();
     for _ in 0..rule.card_slots {
         if let Some(kind) = pick_weighted_card(&rule.card_weights, rng) {
             match kind {
                 ShopCardKind::Joker => {
                     if let Some(rarity) = pick_weighted_rarity(&rule.joker_rarity_weights, rng) {
-                        if let Some(joker) = content.pick_joker(rarity, rng) {
+                        if let Some(joker) = pick_joker_restricted(content, rarity, rng, restrictions) {
                             let price = price_for_joker_rarity(rarity, &rule.prices, rng);
                             cards.push(CardOffer {
                                 kind,
                                 item_id: joker.id.clone(),
                                 rarity: Some(rarity),
                                 price,
+                                edition: None,
                             });
                         }
                     }
                 }
                 ShopCardKind::Tarot => {
-                    if let Some(tarot) = content.pick_consumable(ConsumableKind::Tarot, rng) {
+                    if let Some(tarot) = pick_consumable_restricted(
+                        content,
+                        ConsumableKind::Tarot,
+                        rng,
+                        restrictions,
+                    ) {
                         cards.push(CardOffer {
                             kind,
                             item_id: tarot.id.clone(),
                             rarity: None,
                             price: rule.prices.tarot,
+                            edition: None,
                         });
                     }
                 }
                 ShopCardKind::Planet => {
-                    if let Some(planet) = content.pick_consumable(ConsumableKind::Planet, rng) {
+                    if let Some(planet) = pick_consumable_restricted(
+                        content,
+                        ConsumableKind::Planet,
+                        rng,
+                        restrictions,
+                    ) {
                         cards.push(CardOffer {
                             kind,
                             item_id: planet.id.clone(),
                             rarity: None,
                             price: rule.prices.planet,
+                            edition: None,
                         });
                     }
                 }
@@ -272,6 +328,55 @@ fn generate_packs(rule: &ShopRule, rng: &mut RngState) -> Vec<PackOffer> {
         }
     }
     packs
+}
+
+fn pick_joker_restricted<'a>(
+    content: &'a Content,
+    rarity: JokerRarity,
+    rng: &mut RngState,
+    restrictions: &ShopRestrictions,
+) -> Option<&'a crate::JokerDef> {
+    if restrictions.allow_duplicates {
+        return content.pick_joker(rarity, rng);
+    }
+    let indices: Vec<usize> = content
+        .jokers
+        .iter()
+        .enumerate()
+        .filter(|(_, joker)| {
+            joker.rarity == rarity && !restrictions.owned_jokers.contains(&joker.id)
+        })
+        .map(|(idx, _)| idx)
+        .collect();
+    pick_index(&indices, rng).and_then(|idx| content.jokers.get(idx))
+}
+
+fn pick_consumable_restricted<'a>(
+    content: &'a Content,
+    kind: ConsumableKind,
+    rng: &mut RngState,
+    restrictions: &ShopRestrictions,
+) -> Option<&'a crate::ConsumableDef> {
+    if restrictions.allow_duplicates {
+        return content.pick_consumable(kind, rng);
+    }
+    let owned = match kind {
+        ConsumableKind::Tarot => &restrictions.owned_tarots,
+        ConsumableKind::Planet => &restrictions.owned_planets,
+        ConsumableKind::Spectral => &restrictions.owned_spectrals,
+    };
+    let pool = match kind {
+        ConsumableKind::Tarot => &content.tarots,
+        ConsumableKind::Planet => &content.planets,
+        ConsumableKind::Spectral => &content.spectrals,
+    };
+    let indices: Vec<usize> = pool
+        .iter()
+        .enumerate()
+        .filter(|(_, card)| !owned.contains(&card.id))
+        .map(|(idx, _)| idx)
+        .collect();
+    pick_index(&indices, rng).and_then(|idx| pool.get(idx))
 }
 
 fn price_for_joker_rarity(rarity: JokerRarity, prices: &ShopPrices, rng: &mut RngState) -> i64 {
@@ -331,6 +436,14 @@ fn pick_weighted<T: Clone>(
         roll -= weight;
     }
     None
+}
+
+fn pick_index(indices: &[usize], rng: &mut RngState) -> Option<usize> {
+    if indices.is_empty() {
+        return None;
+    }
+    let idx = (rng.next_u64() % indices.len() as u64) as usize;
+    indices.get(idx).copied()
 }
 
 fn pick_range(range: PriceRange, rng: &mut RngState) -> i64 {

@@ -1,10 +1,16 @@
 use super::*;
+use super::helpers::{is_face, normalize};
 use crate::*;
 
 impl RunState {
     pub fn new(config: GameConfig, content: Content, seed: u64) -> Self {
         let mut rng = RngState::from_seed(seed);
         let mut deck = Deck::standard52();
+        let mut next_card_id = 1u32;
+        for card in &mut deck.draw {
+            card.id = next_card_id;
+            next_card_id = next_card_id.saturating_add(1);
+        }
         deck.shuffle(&mut rng);
         let tables = ScoreTables::from_config(&config);
         Self {
@@ -22,47 +28,142 @@ impl RunState {
             current_joker_snapshot: Vec::new(),
             pending_joker_removals: Vec::new(),
             pending_joker_additions: Vec::new(),
+            last_destroyed_sell_value: 0,
+            boss_disable_pending: false,
+            boss_disabled: false,
+            prevent_death: false,
+            rule_vars: HashMap::new(),
+            rule_dirty: true,
+            refreshing_rules: false,
+            next_card_id,
+            copy_depth: 0,
+            copy_stack: Vec::new(),
+            joker_effect_depth: 0,
+            deferred_card_added: Vec::new(),
+            hooks: HookRegistry::with_defaults(),
         }
     }
 
-    pub(super) fn hand_eval_rules(&self) -> HandEvalRules {
+    pub(super) fn hand_eval_rules(&mut self) -> HandEvalRules {
+        self.ensure_rule_vars();
         HandEvalRules {
-            smeared_suits: self.smeared_suits_active(),
-            four_fingers: self.four_fingers_active(),
-            shortcut: self.shortcut_active(),
+            smeared_suits: self.rule_flag("smeared_suits"),
+            four_fingers: self.rule_flag("four_fingers"),
+            shortcut: self.rule_flag("shortcut"),
         }
     }
 
-    pub(super) fn has_joker_id(&self, id: &str) -> bool {
-        self.inventory.jokers.iter().any(|joker| joker.id == id)
+    pub(super) fn mark_rules_dirty(&mut self) {
+        self.rule_dirty = true;
     }
 
-    pub(super) fn smeared_suits_active(&self) -> bool {
-        self.has_joker_id("smeared_joker")
+    pub(super) fn set_rule_var(&mut self, key: &str, value: f64) {
+        let key = normalize(key);
+        self.rule_vars.insert(key, value);
     }
 
-    pub(super) fn four_fingers_active(&self) -> bool {
-        self.has_joker_id("four_fingers")
+    pub(super) fn add_rule_var(&mut self, key: &str, delta: f64) {
+        let key = normalize(key);
+        let entry = self.rule_vars.entry(key).or_insert(0.0);
+        *entry += delta;
     }
 
-    pub(super) fn pareidolia_active(&self) -> bool {
-        self.has_joker_id("pareidolia")
+    pub(super) fn rule_value_or(&mut self, key: &str, default: f64) -> f64 {
+        self.ensure_rule_vars();
+        let key = normalize(key);
+        self.rule_vars.get(&key).copied().unwrap_or(default)
     }
 
-    pub(super) fn splash_active(&self) -> bool {
-        self.has_joker_id("splash")
+    pub(super) fn rule_value(&mut self, key: &str) -> f64 {
+        self.ensure_rule_vars();
+        let key = normalize(key);
+        self.rule_vars.get(&key).copied().unwrap_or(0.0)
     }
 
-    pub(super) fn money_floor(&self) -> i64 {
-        if self.has_joker_id("credit_card") {
-            -20
-        } else {
-            0
+    pub(super) fn rule_flag(&mut self, key: &str) -> bool {
+        self.rule_value(key) != 0.0
+    }
+
+    pub(super) fn smeared_suits_active(&mut self) -> bool {
+        self.rule_flag("smeared_suits")
+    }
+
+    pub(super) fn pareidolia_active(&mut self) -> bool {
+        self.rule_flag("pareidolia")
+    }
+
+    pub(super) fn splash_active(&mut self) -> bool {
+        self.rule_flag("splash")
+    }
+
+    pub(super) fn money_floor(&mut self) -> i64 {
+        let floor = self.rule_value("money_floor").floor() as i64;
+        if floor < 0 { floor } else { 0 }
+    }
+
+    pub(super) fn alloc_card_id(&mut self) -> u32 {
+        let id = self.next_card_id;
+        self.next_card_id = self.next_card_id.saturating_add(1);
+        id
+    }
+
+    pub(super) fn assign_card_id(&mut self, card: &mut crate::Card) {
+        if card.id == 0 {
+            card.id = self.alloc_card_id();
         }
     }
 
-    pub(super) fn shortcut_active(&self) -> bool {
-        self.has_joker_id("shortcut")
+    pub(super) fn is_card_debuffed(&mut self, card: crate::Card) -> bool {
+        if self.rule_flag("debuff_face") && is_face(card) {
+            return true;
+        }
+        if self.rule_flag("debuff_suit_spades") && card.suit == crate::Suit::Spades {
+            return true;
+        }
+        if self.rule_flag("debuff_suit_hearts") && card.suit == crate::Suit::Hearts {
+            return true;
+        }
+        if self.rule_flag("debuff_suit_clubs") && card.suit == crate::Suit::Clubs {
+            return true;
+        }
+        if self.rule_flag("debuff_suit_diamonds") && card.suit == crate::Suit::Diamonds {
+            return true;
+        }
+        if self.rule_flag("debuff_played_ante")
+            && self.state.played_card_ids_ante.contains(&card.id)
+        {
+            return true;
+        }
+        false
+    }
+
+    pub(super) fn boss_disabled(&self) -> bool {
+        self.boss_disabled
+    }
+
+    fn ensure_rule_vars(&mut self) {
+        if !self.rule_dirty || self.refreshing_rules {
+            return;
+        }
+        self.rule_dirty = false;
+        self.refreshing_rules = true;
+        self.rule_vars.clear();
+        let hand_kind = self.state.last_hand.unwrap_or(crate::HandKind::HighCard);
+        let mut scratch_score = Score::default();
+        let mut scratch_money = self.state.money;
+        let mut scratch_results = TriggerResults::default();
+        let mut held_view = self.hand.clone();
+        let mut args = HookArgs::independent(
+            hand_kind,
+            self.state.blind,
+            HookInject::held(&mut held_view),
+            &mut scratch_score,
+            &mut scratch_money,
+            &mut scratch_results,
+        );
+        let mut scratch_events = EventBus::default();
+        self.invoke_hooks(HookPoint::Passive, &mut args, &mut scratch_events);
+        self.refreshing_rules = false;
     }
 
     pub(super) fn most_played_hand(&self) -> crate::HandKind {
@@ -117,7 +218,13 @@ impl RunState {
         if sides == 0 {
             return false;
         }
-        self.rng.next_u64() % sides == 0
+        let mut multiplier = 1u64;
+        let count = self.rule_value("roll_bonus").floor().max(0.0) as u32;
+        for _ in 0..count {
+            multiplier = multiplier.saturating_mul(2);
+        }
+        let successes = sides.min(multiplier);
+        self.rng.next_u64() % sides < successes
     }
 
 }

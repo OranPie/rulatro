@@ -1,21 +1,27 @@
 # Joker DSL (templates + definitions). One joker per block.
 # Variables: hand, hand_id, hand_level, most_played_hand, blind, played_count, scoring_count, held_count, deck_count,
 #            hands_left, hands_max, discards_left, discards_max, joker_count, joker_slots, empty_joker_slots, hand_play_count,
-#            money, hand_size, ante, blind_score, target, is_boss_blind,
-#            card.rank, card.rank_id, card.suit, card.suit_id, card.enhancement, card.edition, card.seal,
+#            money, hand_size, ante, blind_score, target, is_boss_blind, boss_disabled,
+#            blinds_skipped, hands_played, unused_discards, unique_planets_used,
+#            last_destroyed_sell_value, other_joker_sell_value,
+#            card.rank, card.rank_id, card.suit, card.suit_id, card.enhancement, card.edition, card.seal, card.lucky_triggers,
 #            card.is_face, card.is_odd, card.is_even, card.is_stone, card.is_wild,
 #            consumable.kind, consumable.id.
 # Functions: contains(hand, Pair|TwoPair|ThreeOfAKind|Straight|Flush|FullHouse|Quads|...),
-#            count(played|scoring|held|discarded|deck, target),
+#            count(played|scoring|held|discarded|deck, target), count_rarity(rarity),
 #            count_joker("joker_id"|"Joker Name"), suit_match(suit|id),
 #            hand_count(hand), var(name), lowest_rank(scope),
-#            min(...), max(...), floor(x), ceil(x),
+#            min(...), max(...), floor(x), ceil(x), pow(base, exp),
 #            roll(sides), rand(min, max).
 # Actions: add_chips, add_mult, mul_mult, mul_chips, add_money, add_hand_size,
 #          add_hands, add_discards, set_discards, retrigger_scored, retrigger_held, add_stone_card,
-#          add_tarot, add_planet, add_spectral, add_free_reroll, set_shop_price,
+#          add_tarot, add_planet, add_spectral, add_free_reroll, set_shop_price, add_sell_bonus,
 #          add_joker, destroy_random_joker, destroy_joker_right, destroy_joker_left, destroy_self,
-#          upgrade_hand, duplicate_random_joker, set_var, add_var.
+#          upgrade_hand, upgrade_random_hand, duplicate_random_joker, duplicate_random_consumable,
+#          add_random_hand_card, disable_boss, prevent_death, copy_joker_right, copy_joker_leftmost,
+#          add_tag, duplicate_next_tag, add_pack, add_shop_joker, add_voucher,
+#          set_reroll_cost, set_shop_joker_edition, reroll_boss,
+#          set_var, add_var.
 
 template indep_add_mult(id, name, rarity, mult) {
   joker $id $name $rarity {
@@ -68,6 +74,58 @@ template scored_face_chips(id, name, rarity, chips) {
 template scored_face_mult(id, name, rarity, mult) {
   joker $id $name $rarity {
     on scored when card.is_face { add_mult $mult }
+  }
+}
+
+template copy_right_all(id, name, rarity) {
+  joker $id $name $rarity {
+    on played { copy_joker_right }
+    on scored { copy_joker_right }
+    on held { copy_joker_right }
+    on independent { copy_joker_right }
+    on discard { copy_joker_right }
+    on discard_batch { copy_joker_right }
+    on card_destroyed { copy_joker_right }
+    on card_added { copy_joker_right }
+    on round_end { copy_joker_right }
+    on hand_end { copy_joker_right }
+    on blind_start { copy_joker_right }
+    on blind_failed { copy_joker_right }
+    on shop_enter { copy_joker_right }
+    on shop_reroll { copy_joker_right }
+    on shop_exit { copy_joker_right }
+    on pack_opened { copy_joker_right }
+    on pack_skipped { copy_joker_right }
+    on use { copy_joker_right }
+    on sell { copy_joker_right }
+    on any_sell { copy_joker_right }
+    on acquire { copy_joker_right }
+  }
+}
+
+template copy_leftmost_all(id, name, rarity) {
+  joker $id $name $rarity {
+    on played { copy_joker_leftmost }
+    on scored { copy_joker_leftmost }
+    on held { copy_joker_leftmost }
+    on independent { copy_joker_leftmost }
+    on discard { copy_joker_leftmost }
+    on discard_batch { copy_joker_leftmost }
+    on card_destroyed { copy_joker_leftmost }
+    on card_added { copy_joker_leftmost }
+    on round_end { copy_joker_leftmost }
+    on hand_end { copy_joker_leftmost }
+    on blind_start { copy_joker_leftmost }
+    on blind_failed { copy_joker_leftmost }
+    on shop_enter { copy_joker_leftmost }
+    on shop_reroll { copy_joker_leftmost }
+    on shop_exit { copy_joker_leftmost }
+    on pack_opened { copy_joker_leftmost }
+    on pack_skipped { copy_joker_leftmost }
+    on use { copy_joker_leftmost }
+    on sell { copy_joker_leftmost }
+    on any_sell { copy_joker_leftmost }
+    on acquire { copy_joker_leftmost }
   }
 }
 
@@ -250,8 +308,8 @@ joker invisible_joker "Invisible Joker" Rare {
   on sell when var(rounds) >= 2 { duplicate_random_joker 1 }
 }
 
-# Effect handled by core hand evaluation (smeared suits).
 joker smeared_joker "Smeared Joker" Uncommon {
+  on passive { set_rule smeared_suits 1 }
 }
 
 joker eight_ball "8 Ball" Common {
@@ -455,21 +513,29 @@ joker joker_stencil "Joker Stencil" Uncommon {
   on independent { mul_mult max(1, empty_joker_slots + 1) }
 }
 
-joker four_fingers "Four Fingers" Uncommon {}
+joker four_fingers "Four Fingers" Uncommon {
+  on passive { set_rule four_fingers 1 }
+}
 
-joker credit_card "Credit Card" Common {}
+joker credit_card "Credit Card" Common {
+  on passive { set_rule money_floor -20 }
+}
 
 joker delayed_gratification "Delayed Gratification" Common {
   on round_end when discards_left == discards_max { add_money discards_left * 2 }
 }
 
-joker pareidolia "Pareidolia" Uncommon {}
+joker pareidolia "Pareidolia" Uncommon {
+  on passive { set_rule pareidolia 1 }
+}
 
 joker egg "Egg" Common {
   on round_end { add_var sell_bonus 3 }
 }
 
-joker splash "Splash" Common {}
+joker splash "Splash" Common {
+  on passive { set_rule splash 1 }
+}
 
 joker turtle_bean "Turtle Bean" Uncommon {
   on independent when var(init) == 0 { set_var beans 5; set_var init 1 }
@@ -543,7 +609,9 @@ joker to_do_list "To Do List" Common {
   on played when hand_id == var(target) { add_money 4 }
 }
 
-joker shortcut "Shortcut" Uncommon {}
+joker shortcut "Shortcut" Uncommon {
+  on passive { set_rule shortcut 1 }
+}
 
 joker the_idol "The Idol" Uncommon {
   on blind_start { set_var suit rand(0, 3); set_var rank rand(2, 14) }
@@ -557,14 +625,112 @@ joker obelisk "Obelisk" Rare {
   on independent { mul_mult var(mult) }
 }
 
-joker hiker "Hiker" Uncommon {}
+joker hiker "Hiker" Uncommon {
+  on scored_pre { add_card_bonus 5 }
+}
 
 joker vampire "Vampire" Uncommon {
+  on scored_pre when card.has_enhancement { clear_card_enhancement; add_var mult 0.1 }
   on independent { mul_mult max(1, var(mult)) }
 }
 
-joker midas_mask "Midas Mask" Uncommon {}
+joker midas_mask "Midas Mask" Uncommon {
+  on scored_pre when card.is_face { set_card_enhancement Gold }
+}
 
-joker dna "DNA" Rare {}
+joker dna "DNA" Rare {
+  on blind_start { set_var used 0 }
+  on scored_pre when hands_left == hands_max && played_count == 1 && var(used) == 0 { copy_played_card; set_var used 1 }
+}
 
-joker sixth_sense "Sixth Sense" Uncommon {}
+joker sixth_sense "Sixth Sense" Uncommon {
+  on blind_start { set_var used 0 }
+  on scored_pre when hands_left == hands_max && played_count == 1 && card.rank_id == 6 && consumable_count < consumable_slots && var(used) == 0 { destroy_card; add_spectral 1; set_var used 1 }
+}
+
+joker ceremonial_dagger "Ceremonial Dagger" Uncommon {
+  on blind_start { destroy_joker_right 1; add_var mult last_destroyed_sell_value * 2 }
+  on independent { add_mult var(mult) }
+}
+
+joker seance "Seance" Uncommon {
+  on independent when contains(hand, StraightFlush) { add_spectral 1 }
+}
+
+joker hologram "Hologram" Uncommon {
+  on acquire when var(init) == 0 { set_var mult 1; set_var init 1 }
+  on card_added { add_var mult 0.25 }
+  on independent { mul_mult var(mult) }
+}
+
+joker luchador "Luchador" Uncommon {
+  on sell { disable_boss }
+}
+
+joker gift_card "Gift Card" Uncommon {
+  on round_end { add_sell_bonus all 1 }
+}
+
+joker lucky_cat "Lucky Cat" Uncommon {
+  on independent when var(init) == 0 { set_var mult 1; set_var init 1 }
+  on scored when card.enhancement == Lucky && card.lucky_triggers > 0 { add_var mult card.lucky_triggers * 0.25 }
+  on independent { mul_mult var(mult) }
+}
+
+joker baseball_card "Baseball Card" Rare {
+  on independent { mul_mult pow(1.5, count_rarity(Uncommon)) }
+}
+
+joker diet_cola "Diet Cola" Uncommon {
+  on sell { add_tag double 1 }
+}
+
+joker seltzer "Seltzer" Uncommon {
+  on acquire { set_var remaining 10 }
+  on scored when var(remaining) > 0 { retrigger_scored 1 }
+  on hand_end when var(remaining) > 0 { add_var remaining -1 }
+}
+
+joker mr_bones "Mr. Bones" Uncommon {
+  on blind_failed when blind_score >= target * 0.25 { prevent_death 1; destroy_self }
+}
+
+joker swashbuckler "Swashbuckler" Common {
+  on independent { add_mult other_joker_sell_value }
+}
+
+joker certificate "Certificate" Uncommon {
+  on blind_start { add_random_hand_card 1 }
+}
+
+joker throwback "Throwback" Uncommon {
+  on independent { mul_mult (1 + blinds_skipped * 0.25) }
+}
+
+joker showman "Showman" Uncommon {
+  on passive { set_rule shop_allow_duplicates 1 }
+}
+
+use copy_right_all(blueprint, "Blueprint", Rare)
+
+joker oops_all_6s "Oops! All 6s" Uncommon {
+  on passive { add_rule roll_bonus 1 }
+}
+
+joker matador "Matador" Uncommon {
+  on played when is_boss_blind && !boss_disabled { add_money 8 }
+}
+
+use copy_leftmost_all(brainstorm, "Brainstorm", Rare)
+
+joker satellite "Satellite" Uncommon {
+  on round_end { add_money unique_planets_used }
+}
+
+joker chicot "Chicot" Legendary {
+  on blind_start when is_boss_blind { disable_boss }
+}
+
+joker perkeo "Perkeo" Legendary {
+  on shop_exit { duplicate_random_consumable 1 }
+}

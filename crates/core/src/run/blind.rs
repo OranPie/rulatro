@@ -8,6 +8,24 @@ impl RunState {
         blind: BlindKind,
         events: &mut EventBus,
     ) -> Result<(), RunError> {
+        let prev_ante = self.state.ante;
+        if self.state.phase == Phase::Shop {
+            let hand_kind = self.state.last_hand.unwrap_or(crate::HandKind::HighCard);
+            let mut scratch_score = Score::default();
+            let mut money = self.state.money;
+            let mut results = TriggerResults::default();
+            let mut held_view = self.hand.clone();
+            let mut args = HookArgs::independent(
+                hand_kind,
+                self.state.blind,
+                HookInject::held(&mut held_view),
+                &mut scratch_score,
+                &mut money,
+                &mut results,
+            );
+            self.invoke_hooks(HookPoint::ShopExit, &mut args, events);
+            self.state.money = money;
+        }
         let (hands, discards) = self
             .config
             .blind_rule(blind)
@@ -27,29 +45,39 @@ impl RunState {
         self.state.discards_left = discards;
         self.state.hand_size = self.state.hand_size_base;
         self.state.last_hand = None;
+        self.state.round_hand_types.clear();
+        self.state.round_hand_lock = None;
+        if blind == BlindKind::Small && ante != prev_ante {
+            self.state.played_card_ids_ante.clear();
+        }
         self.hand.clear();
         self.shop = None;
+        self.boss_disabled = false;
+        self.state.boss_id = None;
+        if blind == BlindKind::Boss && self.boss_disable_pending {
+            self.boss_disabled = true;
+            self.boss_disable_pending = false;
+        }
+        if blind == BlindKind::Boss && !self.boss_disabled() {
+            if let Some(boss) = self.content.pick_boss(&mut self.rng) {
+                self.state.boss_id = Some(boss.id.clone());
+            }
+        }
+        self.mark_rules_dirty();
 
-        let ctx = EvalContext::independent(
+        let mut scratch_score = Score::default();
+        let mut money = self.state.money;
+        let mut results = TriggerResults::default();
+        let mut held_view = self.hand.clone();
+        let mut args = HookArgs::independent(
             crate::HandKind::HighCard,
             self.state.blind,
-            &[],
-            &[],
-            &[],
-            self.state.hands_left,
-            self.state.discards_left,
-            self.inventory.jokers.len(),
-        );
-        let mut dummy_score = Score::default();
-        let mut results = TriggerResults::default();
-        let mut money = self.state.money;
-        self.apply_joker_effects(
-            ActivationType::OnBlindStart,
-            &ctx,
-            &mut dummy_score,
+            HookInject::held(&mut held_view),
+            &mut scratch_score,
             &mut money,
             &mut results,
         );
+        self.invoke_hooks(HookPoint::BlindStart, &mut args, events);
         self.state.money = money;
         self.state.hands_max = self.state.hands_left;
         self.state.discards_max = self.state.discards_left;
@@ -106,7 +134,7 @@ impl RunState {
     pub(super) fn check_outcome(&mut self, events: &mut EventBus) -> Option<BlindOutcome> {
         match self.blind_outcome() {
             Some(BlindOutcome::Cleared) => {
-                self.resolve_round_end_effects();
+                self.resolve_round_end_effects(events);
                 let reward = self.reward_for_clear();
                 self.state.money += reward;
                 events.push(Event::BlindCleared {
@@ -117,7 +145,35 @@ impl RunState {
                 Some(BlindOutcome::Cleared)
             }
             Some(BlindOutcome::Failed) => {
-                self.resolve_round_end_effects();
+                self.prevent_death = false;
+                let hand_kind = self.state.last_hand.unwrap_or(crate::HandKind::HighCard);
+                let mut scratch_score = Score::default();
+                let mut money = self.state.money;
+                let mut results = TriggerResults::default();
+                let mut held_view = self.hand.clone();
+                let mut args = HookArgs::independent(
+                    hand_kind,
+                    self.state.blind,
+                    HookInject::held(&mut held_view),
+                    &mut scratch_score,
+                    &mut money,
+                    &mut results,
+                );
+                self.invoke_hooks(HookPoint::BlindFailed, &mut args, events);
+                self.state.money = money;
+                if self.prevent_death {
+                    self.prevent_death = false;
+                    self.state.blind_score = self.state.target;
+                    self.resolve_round_end_effects(events);
+                    let reward = 0;
+                    events.push(Event::BlindCleared {
+                        score: self.state.blind_score,
+                        reward,
+                        money: self.state.money,
+                    });
+                    return Some(BlindOutcome::Cleared);
+                }
+                self.resolve_round_end_effects(events);
                 events.push(Event::BlindFailed {
                     score: self.state.blind_score,
                 });

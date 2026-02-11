@@ -2,7 +2,7 @@ use crate::schema::{
     AnteRule, BlindRule, ConsumableDef, Content, ContentPack, EconomyRule, GameConfig, HandRule,
     RankRule, ShopRule,
 };
-use crate::joker_dsl::load_jokers_dsl;
+use crate::joker_dsl::{load_bosses_dsl, load_jokers_dsl, load_tags_dsl};
 use anyhow::Context;
 use serde::de::DeserializeOwned;
 use std::fs;
@@ -37,12 +37,19 @@ pub fn load_content(dir: &Path) -> anyhow::Result<Content> {
     let jokers_path = base.join("jokers.dsl");
     let jokers = load_jokers_dsl(&jokers_path)
         .with_context(|| format!("parse {}", jokers_path.display()))?;
+    let bosses_path = base.join("bosses.dsl");
+    let bosses = load_bosses_dsl(&bosses_path)
+        .with_context(|| format!("parse {}", bosses_path.display()))?;
+    let tags_path = base.join("tags.dsl");
+    let tags = load_tags_dsl(&tags_path).with_context(|| format!("parse {}", tags_path.display()))?;
     let tarots: Vec<ConsumableDef> = load_json(base.join("tarots.json"))?;
     let planets: Vec<ConsumableDef> = load_json(base.join("planets.json"))?;
     let spectrals: Vec<ConsumableDef> = load_json(base.join("spectrals.json"))?;
 
     Ok(Content {
         jokers,
+        bosses,
+        tags,
         tarots,
         planets,
         spectrals,

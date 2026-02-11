@@ -8,6 +8,7 @@ use std::collections::HashMap;
 
 mod helpers;
 mod context;
+mod hooks;
 mod state;
 mod blind;
 mod shop;
@@ -16,6 +17,8 @@ mod joker;
 mod eval;
 
 use context::{EvalContext, EvalValue};
+#[allow(unused_imports)]
+use hooks::{HookArgs, HookInject, HookPoint, HookPriority, HookRegistry, HookResult, RuleHook};
 
 #[derive(Debug, Error)]
 pub enum RunError {
@@ -33,6 +36,8 @@ pub enum RunError {
     InvalidSelection,
     #[error("invalid card count")]
     InvalidCardCount,
+    #[error("hand type not allowed")]
+    HandNotAllowed,
     #[error("not enough money")]
     NotEnoughMoney,
     #[error("shop not available")]
@@ -65,6 +70,19 @@ pub struct RunState {
     current_joker_snapshot: Vec<JokerSnapshot>,
     pending_joker_removals: Vec<usize>,
     pending_joker_additions: Vec<crate::JokerInstance>,
+    last_destroyed_sell_value: i64,
+    boss_disable_pending: bool,
+    boss_disabled: bool,
+    prevent_death: bool,
+    rule_vars: HashMap<String, f64>,
+    rule_dirty: bool,
+    refreshing_rules: bool,
+    next_card_id: u32,
+    copy_depth: u8,
+    copy_stack: Vec<usize>,
+    joker_effect_depth: u8,
+    deferred_card_added: Vec<crate::Card>,
+    hooks: HookRegistry,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -77,6 +95,7 @@ pub enum BlindOutcome {
 struct TriggerResults {
     scored_retriggers: i64,
     held_retriggers: i64,
+    destroyed_current: bool,
 }
 
 #[derive(Debug, Default)]

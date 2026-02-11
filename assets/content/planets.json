@@ -1,7 +1,7 @@
 [
   {
-    "id": "planet_test",
-    "name": "Planet Test",
+    "id": "pluto",
+    "name": "Pluto",
     "kind": "Planet",
     "hand": "HighCard",
     "effects": [
@@ -9,7 +9,172 @@
         "trigger": "OnUse",
         "conditions": ["Always"],
         "effects": [
-          { "Score": { "AddChips": 5 } }
+          { "UpgradeHand": { "hand": "HighCard", "amount": 1 } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "mercury",
+    "name": "Mercury",
+    "kind": "Planet",
+    "hand": "Pair",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "UpgradeHand": { "hand": "Pair", "amount": 1 } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "uranus",
+    "name": "Uranus",
+    "kind": "Planet",
+    "hand": "TwoPair",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "UpgradeHand": { "hand": "TwoPair", "amount": 1 } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "venus",
+    "name": "Venus",
+    "kind": "Planet",
+    "hand": "Trips",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "UpgradeHand": { "hand": "Trips", "amount": 1 } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "saturn",
+    "name": "Saturn",
+    "kind": "Planet",
+    "hand": "Straight",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "UpgradeHand": { "hand": "Straight", "amount": 1 } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "jupiter",
+    "name": "Jupiter",
+    "kind": "Planet",
+    "hand": "Flush",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "UpgradeHand": { "hand": "Flush", "amount": 1 } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "earth",
+    "name": "Earth",
+    "kind": "Planet",
+    "hand": "FullHouse",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "UpgradeHand": { "hand": "FullHouse", "amount": 1 } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "mars",
+    "name": "Mars",
+    "kind": "Planet",
+    "hand": "Quads",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "UpgradeHand": { "hand": "Quads", "amount": 1 } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "neptune",
+    "name": "Neptune",
+    "kind": "Planet",
+    "hand": "StraightFlush",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "UpgradeHand": { "hand": "StraightFlush", "amount": 1 } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "planet_x",
+    "name": "Planet X",
+    "kind": "Planet",
+    "hand": "FiveOfAKind",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "UpgradeHand": { "hand": "FiveOfAKind", "amount": 1 } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "ceres",
+    "name": "Ceres",
+    "kind": "Planet",
+    "hand": "FlushHouse",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "UpgradeHand": { "hand": "FlushHouse", "amount": 1 } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "eris",
+    "name": "Eris",
+    "kind": "Planet",
+    "hand": "FlushFive",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "UpgradeHand": { "hand": "FlushFive", "amount": 1 } }
         ]
       }
     ]

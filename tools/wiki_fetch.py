@@ -14,7 +14,6 @@ PAGES_DIR = os.path.join(CACHE_DIR, "pages")
 
 SEEDS = [
     "/w/Jokers",
-    "/w/Rules",
     "/w/Hands",
     "/w/Scoring",
     "/w/Blind",
@@ -23,10 +22,17 @@ SEEDS = [
     "/w/Shop",
     "/w/Booster_Pack",
     "/w/Booster_Packs",
+    "/w/Tarot_Cards",
+    "/w/Planet_Cards",
+    "/w/Spectral_Cards",
+    "/w/Tags",
+    "/w/Tag",
+    "/w/Tarot",
+    "/w/Planet",
+    "/w/Spectral",
 ]
 
 RULE_SLUGS = {
-    "Rules",
     "Hands",
     "Scoring",
     "Blind",
@@ -35,6 +41,23 @@ RULE_SLUGS = {
     "Shop",
     "Booster_Pack",
     "Booster_Packs",
+    "Tarot_Cards",
+    "Planet_Cards",
+    "Spectral_Cards",
+    "Tags",
+    "Tag",
+    "Tarot",
+    "Planet",
+    "Spectral",
+}
+
+LISTING_SLUGS = {
+    "Jokers",
+    "Tarot_Cards",
+    "Planet_Cards",
+    "Spectral_Cards",
+    "Tags",
+    "Tag",
 }
 
 USER_AGENT = "rulatro-bot/0.2 (local cache for rules research)"
@@ -96,8 +119,51 @@ def is_joker_slug(slug: str, joker_slugs: set[str]) -> bool:
     return slug in joker_slugs or "joker" in slug.lower()
 
 
-def allowed_slug(slug: str, joker_slugs: set[str]) -> bool:
-    return is_joker_slug(slug, joker_slugs) or slug in RULE_SLUGS or slug == "Jokers"
+def extract_listing_slugs(html: str) -> set[str]:
+    try:
+        from bs4 import BeautifulSoup  # type: ignore
+    except Exception:
+        return set()
+
+    soup = BeautifulSoup(html, "html.parser")
+    content = soup.find(id="mw-content-text") or soup
+    slugs: set[str] = set()
+
+    for table in content.find_all("table"):
+        for row in table.find_all("tr"):
+            link = row.find("a", href=True)
+            if not link:
+                continue
+            href = link.get("href", "")
+            if not href.startswith("/w/"):
+                continue
+            if ":" in href or "#" in href:
+                continue
+            slug = href.split("/w/", 1)[1]
+            if slug:
+                slugs.add(slug)
+
+    for gallery in content.find_all("div", class_=lambda c: c and "gallery" in c):
+        for link in gallery.find_all("a", href=True):
+            href = link.get("href", "")
+            if not href.startswith("/w/"):
+                continue
+            if ":" in href or "#" in href:
+                continue
+            slug = href.split("/w/", 1)[1]
+            if slug:
+                slugs.add(slug)
+
+    return slugs
+
+
+def allowed_slug(slug: str, joker_slugs: set[str], extra_slugs: set[str]) -> bool:
+    return (
+        is_joker_slug(slug, joker_slugs)
+        or slug in extra_slugs
+        or slug in RULE_SLUGS
+        or slug in LISTING_SLUGS
+    )
 
 
 def save_page(page: Page, html: str) -> None:
@@ -150,6 +216,7 @@ def main() -> None:
     visited_slugs: set[str] = set()
     pages: list[Page] = []
     joker_slugs: set[str] = set()
+    extra_slugs: set[str] = set()
 
     index_path = os.path.join(CACHE_DIR, "index.json")
     if os.path.exists(index_path):
@@ -163,11 +230,13 @@ def main() -> None:
                 pages.append(Page(url=url, slug=slug, path=path))
                 visited_urls.add(url)
                 visited_slugs.add(slug)
-                if slug == "Jokers" and os.path.exists(path):
+                if slug in LISTING_SLUGS and os.path.exists(path):
                     try:
                         with open(path, "r", encoding="utf-8") as html_file:
                             html = html_file.read()
-                        joker_slugs.update(extract_joker_slugs(html))
+                        if slug == "Jokers":
+                            joker_slugs.update(extract_joker_slugs(html))
+                        extra_slugs.update(extract_listing_slugs(html))
                     except Exception:
                         pass
 
@@ -206,14 +275,20 @@ def main() -> None:
         visited_slugs.add(slug)
         print(f"saved: {slug}")
 
-        if slug == "Jokers":
-            new_slugs = extract_joker_slugs(html)
+        if slug in LISTING_SLUGS:
+            new_slugs = set()
+            if slug == "Jokers":
+                new_slugs.update(extract_joker_slugs(html))
+            new_slugs.update(extract_listing_slugs(html))
             added = 0
-            for joker_slug in sorted(new_slugs):
-                if joker_slug in joker_slugs:
+            for item_slug in sorted(new_slugs):
+                if item_slug in joker_slugs or item_slug in extra_slugs:
                     continue
-                joker_slugs.add(joker_slug)
-                url = normalize_url(f"/w/{joker_slug}")
+                if is_joker_slug(item_slug, joker_slugs):
+                    joker_slugs.add(item_slug)
+                else:
+                    extra_slugs.add(item_slug)
+                url = normalize_url(f"/w/{item_slug}")
                 if url and url not in visited_urls:
                     queue.append((url, depth + 1))
                     added += 1
@@ -225,7 +300,7 @@ def main() -> None:
                     if not normalized:
                         continue
                     link_slug = slug_from_path(urlparse(normalized).path)
-                    if not allowed_slug(link_slug, joker_slugs):
+                    if not allowed_slug(link_slug, joker_slugs, extra_slugs):
                         continue
                     if normalized not in visited_urls:
                         queue.append((normalized, depth + 1))

@@ -57,6 +57,8 @@ pub enum Seal {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct Card {
+    #[serde(default)]
+    pub id: u32,
     pub suit: Suit,
     pub rank: Rank,
     #[serde(default)]
@@ -67,17 +69,21 @@ pub struct Card {
     pub seal: Option<Seal>,
     #[serde(default)]
     pub bonus_chips: i64,
+    #[serde(default)]
+    pub face_down: bool,
 }
 
 impl Card {
     pub fn standard(suit: Suit, rank: Rank) -> Self {
         Self {
+            id: 0,
             suit,
             rank,
             enhancement: None,
             edition: None,
             seal: None,
             bonus_chips: 0,
+            face_down: false,
         }
     }
 

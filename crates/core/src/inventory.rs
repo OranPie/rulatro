@@ -28,6 +28,10 @@ pub struct JokerInstance {
 pub struct ConsumableInstance {
     pub id: String,
     pub kind: ConsumableKind,
+    #[serde(default)]
+    pub edition: Option<Edition>,
+    #[serde(default)]
+    pub sell_bonus: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -47,6 +51,17 @@ pub enum InventoryError {
 }
 
 impl Inventory {
+    pub fn joker_capacity(&self) -> usize {
+        self.joker_slots + self.negative_joker_bonus()
+    }
+
+    pub fn negative_joker_bonus(&self) -> usize {
+        self.jokers
+            .iter()
+            .filter(|joker| joker.edition == Some(Edition::Negative))
+            .count()
+    }
+
     pub fn new() -> Self {
         Self {
             joker_slots: 5,
@@ -62,13 +77,27 @@ impl Inventory {
         rarity: JokerRarity,
         buy_price: i64,
     ) -> Result<(), InventoryError> {
-        if self.jokers.len() >= self.joker_slots {
+        self.add_joker_with_edition(id, rarity, buy_price, None)
+    }
+
+    pub fn add_joker_with_edition(
+        &mut self,
+        id: String,
+        rarity: JokerRarity,
+        buy_price: i64,
+        edition: Option<Edition>,
+    ) -> Result<(), InventoryError> {
+        let mut capacity = self.joker_capacity();
+        if edition == Some(Edition::Negative) {
+            capacity = capacity.saturating_add(1);
+        }
+        if self.jokers.len() >= capacity {
             return Err(InventoryError::NoJokerSlots);
         }
         self.jokers.push(JokerInstance {
             id,
             rarity,
-            edition: None,
+            edition,
             stickers: JokerStickers::default(),
             buy_price,
             vars: HashMap::new(),
@@ -81,10 +110,32 @@ impl Inventory {
         id: String,
         kind: ConsumableKind,
     ) -> Result<(), InventoryError> {
-        if self.consumables.len() >= self.consumable_slots {
+        self.add_consumable_with_edition(id, kind, None, 0.0)
+    }
+
+    pub fn add_consumable_with_edition(
+        &mut self,
+        id: String,
+        kind: ConsumableKind,
+        edition: Option<Edition>,
+        sell_bonus: f64,
+    ) -> Result<(), InventoryError> {
+        if edition != Some(Edition::Negative) && self.consumable_count() >= self.consumable_slots {
             return Err(InventoryError::NoConsumableSlots);
         }
-        self.consumables.push(ConsumableInstance { id, kind });
+        self.consumables.push(ConsumableInstance {
+            id,
+            kind,
+            edition,
+            sell_bonus,
+        });
         Ok(())
+    }
+
+    pub fn consumable_count(&self) -> usize {
+        self.consumables
+            .iter()
+            .filter(|item| item.edition != Some(Edition::Negative))
+            .count()
     }
 }

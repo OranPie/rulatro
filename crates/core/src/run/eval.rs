@@ -51,6 +51,10 @@ impl RunState {
     }
 
     pub(super) fn eval_ident(&mut self, ident: &str, ctx: &EvalContext<'_>) -> EvalValue {
+        let card_debuffed = ctx
+            .card
+            .map(|card| self.is_card_debuffed(card))
+            .unwrap_or(false);
         match ident {
             "hand" => EvalValue::Str(normalize(hand_name(ctx.hand_kind))),
             "hand_id" => EvalValue::Num(hand_id(ctx.hand_kind) as f64),
@@ -65,15 +69,24 @@ impl RunState {
             "hands_max" => EvalValue::Num(self.state.hands_max as f64),
             "discards_max" => EvalValue::Num(self.state.discards_max as f64),
             "money" => EvalValue::Num(self.state.money as f64),
+            "blinds_skipped" => EvalValue::Num(self.state.blinds_skipped as f64),
+            "hands_played" => {
+                let total: u32 = self.state.hand_play_counts.values().copied().sum();
+                EvalValue::Num(total as f64)
+            }
+            "unused_discards" => EvalValue::Num(self.state.unused_discards as f64),
+            "unique_planets_used" => EvalValue::Num(self.state.planets_used.len() as f64),
             "hand_size" => EvalValue::Num(self.state.hand_size as f64),
             "ante" => EvalValue::Num(self.state.ante as f64),
             "blind_score" => EvalValue::Num(self.state.blind_score as f64),
             "target" => EvalValue::Num(self.state.target as f64),
-            "joker_slots" => EvalValue::Num(self.inventory.joker_slots as f64),
+            "joker_slots" => EvalValue::Num(self.inventory.joker_capacity() as f64),
+            "consumable_slots" => EvalValue::Num(self.inventory.consumable_slots as f64),
+            "consumable_count" => EvalValue::Num(self.inventory.consumable_count() as f64),
             "empty_joker_slots" => {
                 let empty = self
                     .inventory
-                    .joker_slots
+                    .joker_capacity()
                     .saturating_sub(ctx.joker_count);
                 EvalValue::Num(empty as f64)
             }
@@ -91,10 +104,15 @@ impl RunState {
                 EvalValue::Str(normalize(hand_name(self.most_played_hand())))
             }
             "is_boss_blind" => EvalValue::Bool(self.state.blind == BlindKind::Boss),
+            "boss_disabled" => EvalValue::Bool(self.boss_disabled()),
             "is_scoring" => EvalValue::Bool(ctx.is_scoring),
             "is_held" => EvalValue::Bool(ctx.is_held),
             "is_played" => EvalValue::Bool(ctx.is_played),
             "sold_value" => EvalValue::Num(ctx.sold_value.unwrap_or(0) as f64),
+            "last_destroyed_sell_value" => EvalValue::Num(self.last_destroyed_sell_value as f64),
+            "other_joker_sell_value" => {
+                EvalValue::Num(self.other_joker_sell_value(ctx.joker_index) as f64)
+            }
             "card.rank" => ctx
                 .card
                 .map(|card| EvalValue::Str(normalize(rank_name(card.rank))))
@@ -113,30 +131,66 @@ impl RunState {
                 .unwrap_or(EvalValue::None),
             "card.enhancement" => ctx
                 .card
-                .and_then(|card| card.enhancement.map(enhancement_name))
+                .and_then(|card| {
+                    if card_debuffed {
+                        None
+                    } else {
+                        card.enhancement.map(enhancement_name)
+                    }
+                })
                 .map(|value| EvalValue::Str(normalize(value)))
                 .unwrap_or(EvalValue::None),
+            "card.has_enhancement" => EvalValue::Bool(
+                !card_debuffed
+                    && ctx
+                        .card
+                        .map(|card| card.enhancement.is_some())
+                        .unwrap_or(false),
+            ),
             "card.edition" => ctx
                 .card
-                .and_then(|card| card.edition.map(edition_name))
+                .and_then(|card| {
+                    if card_debuffed {
+                        None
+                    } else {
+                        card.edition.map(edition_name)
+                    }
+                })
                 .map(|value| EvalValue::Str(normalize(value)))
                 .unwrap_or(EvalValue::None),
             "card.seal" => ctx
                 .card
-                .and_then(|card| card.seal.map(seal_name))
+                .and_then(|card| {
+                    if card_debuffed {
+                        None
+                    } else {
+                        card.seal.map(seal_name)
+                    }
+                })
                 .map(|value| EvalValue::Str(normalize(value)))
                 .unwrap_or(EvalValue::None),
+            "card.lucky_triggers" => EvalValue::Num(ctx.card_lucky_triggers as f64),
             "card.is_face" => {
-                if self.pareidolia_active() {
+                if card_debuffed {
+                    EvalValue::Bool(false)
+                } else if self.pareidolia_active() {
                     EvalValue::Bool(ctx.card.map(|card| !card.is_stone()).unwrap_or(false))
                 } else {
                     EvalValue::Bool(ctx.card.map(is_face).unwrap_or(false))
                 }
             }
-            "card.is_odd" => EvalValue::Bool(ctx.card.map(is_odd).unwrap_or(false)),
-            "card.is_even" => EvalValue::Bool(ctx.card.map(is_even).unwrap_or(false)),
-            "card.is_stone" => EvalValue::Bool(ctx.card.map(|card| card.is_stone()).unwrap_or(false)),
-            "card.is_wild" => EvalValue::Bool(ctx.card.map(|card| card.is_wild()).unwrap_or(false)),
+            "card.is_odd" => EvalValue::Bool(
+                !card_debuffed && ctx.card.map(is_odd).unwrap_or(false),
+            ),
+            "card.is_even" => EvalValue::Bool(
+                !card_debuffed && ctx.card.map(is_even).unwrap_or(false),
+            ),
+            "card.is_stone" => EvalValue::Bool(
+                !card_debuffed && ctx.card.map(|card| card.is_stone()).unwrap_or(false),
+            ),
+            "card.is_wild" => EvalValue::Bool(
+                !card_debuffed && ctx.card.map(|card| card.is_wild()).unwrap_or(false),
+            ),
             "consumable.kind" => ctx
                 .consumable_kind
                 .map(consumable_kind_name)
@@ -213,24 +267,15 @@ impl RunState {
                 let target = self.eval_expr(&args[1], ctx);
                 let scope_str = scope.as_string().unwrap_or("");
                 let target_str = target.as_string().unwrap_or("");
-                let target_norm = normalize(target_str);
-                if target_norm == "face" && self.pareidolia_active() {
-                    let count = match normalize(scope_str).as_str() {
-                        "deck" | "full_deck" => self.count_face_deck(ctx),
-                        _ => scope_cards(ctx, scope_str)
-                            .iter()
-                            .filter(|card| !card.is_stone())
-                            .count(),
-                    };
-                    return EvalValue::Num(count as f64);
-                }
                 match normalize(scope_str).as_str() {
                     "deck" | "full_deck" => {
                         EvalValue::Num(self.count_matching_deck(ctx, target_str) as f64)
                     }
                     _ => {
                         let cards = scope_cards(ctx, scope_str);
-                        EvalValue::Num(count_matching(cards, target_str, smeared) as f64)
+                        EvalValue::Num(
+                            self.count_matching_with_debuff(cards, target_str, smeared) as f64,
+                        )
                     }
                 }
             }
@@ -241,6 +286,31 @@ impl RunState {
                 let query = self.eval_expr(&args[0], ctx);
                 let query_str = query.as_string().unwrap_or("");
                 EvalValue::Num(self.count_joker(query_str) as f64)
+            }
+            "count_rarity" | "count_joker_rarity" => {
+                if args.len() != 1 {
+                    return EvalValue::Num(0.0);
+                }
+                let query = self.eval_expr(&args[0], ctx);
+                let query_str = normalize(query.as_string().unwrap_or(""));
+                let rarity = match query_str.as_str() {
+                    "common" => Some(crate::JokerRarity::Common),
+                    "uncommon" => Some(crate::JokerRarity::Uncommon),
+                    "rare" => Some(crate::JokerRarity::Rare),
+                    "legendary" => Some(crate::JokerRarity::Legendary),
+                    _ => None,
+                };
+                if let Some(rarity) = rarity {
+                    let count = self
+                        .inventory
+                        .jokers
+                        .iter()
+                        .filter(|joker| joker.rarity == rarity)
+                        .count();
+                    EvalValue::Num(count as f64)
+                } else {
+                    EvalValue::Num(0.0)
+                }
             }
             "suit_match" => {
                 if args.len() != 1 {
@@ -376,6 +446,18 @@ impl RunState {
                 let value = self.eval_expr(&args[0], ctx).as_number();
                 value.map(|v| EvalValue::Num(v.ceil())).unwrap_or(EvalValue::None)
             }
+            "pow" => {
+                if args.len() != 2 {
+                    return EvalValue::None;
+                }
+                let base = self.eval_expr(&args[0], ctx).as_number();
+                let exp = self.eval_expr(&args[1], ctx).as_number();
+                if let (Some(base), Some(exp)) = (base, exp) {
+                    EvalValue::Num(base.powf(exp))
+                } else {
+                    EvalValue::None
+                }
+            }
             _ => EvalValue::None,
         }
     }
@@ -405,29 +487,131 @@ impl RunState {
             + ctx.discarded_cards.len()
     }
 
-    pub(super) fn count_matching_deck(&self, ctx: &EvalContext<'_>, target: &str) -> usize {
+    pub(super) fn count_matching_deck(&mut self, ctx: &EvalContext<'_>, target: &str) -> usize {
         let smeared = self.smeared_suits_active();
+        let draw = self.deck.draw.clone();
+        let discard = self.deck.discard.clone();
         let mut total = 0;
-        total += count_matching(&self.deck.draw, target, smeared);
-        total += count_matching(&self.deck.discard, target, smeared);
-        total += count_matching(ctx.held_cards, target, smeared);
-        total += count_matching(ctx.played_cards, target, smeared);
-        total += count_matching(ctx.discarded_cards, target, smeared);
+        total += self.count_matching_with_debuff(&draw, target, smeared);
+        total += self.count_matching_with_debuff(&discard, target, smeared);
+        total += self.count_matching_with_debuff(ctx.held_cards, target, smeared);
+        total += self.count_matching_with_debuff(ctx.played_cards, target, smeared);
+        total += self.count_matching_with_debuff(ctx.discarded_cards, target, smeared);
         total
     }
 
-    pub(super) fn count_face_deck(&self, ctx: &EvalContext<'_>) -> usize {
-        let mut total = 0;
-        total += self.deck.draw.iter().filter(|card| !card.is_stone()).count();
-        total += self.deck.discard.iter().filter(|card| !card.is_stone()).count();
-        total += ctx.held_cards.iter().filter(|card| !card.is_stone()).count();
-        total += ctx.played_cards.iter().filter(|card| !card.is_stone()).count();
-        total += ctx.discarded_cards.iter().filter(|card| !card.is_stone()).count();
-        total
+    fn count_matching_with_debuff(&mut self, cards: &[Card], target: &str, smeared: bool) -> usize {
+        let target_norm = normalize(target);
+        match target_norm.as_str() {
+            "any" | "all" => cards.len(),
+            "face" => cards
+                .iter()
+                .filter(|card| {
+                    if card.is_stone() || self.is_card_debuffed(**card) {
+                        return false;
+                    }
+                    if self.pareidolia_active() {
+                        true
+                    } else {
+                        is_face(**card)
+                    }
+                })
+                .count(),
+            "odd" => cards
+                .iter()
+                .filter(|card| {
+                    !card.is_stone() && !self.is_card_debuffed(**card) && is_odd(**card)
+                })
+                .count(),
+            "even" => cards
+                .iter()
+                .filter(|card| {
+                    !card.is_stone() && !self.is_card_debuffed(**card) && is_even(**card)
+                })
+                .count(),
+            "wild" => cards
+                .iter()
+                .filter(|card| !self.is_card_debuffed(**card) && card.is_wild())
+                .count(),
+            "stone" => cards
+                .iter()
+                .filter(|card| card.is_stone() && !self.is_card_debuffed(**card))
+                .count(),
+            "enhanced" => cards
+                .iter()
+                .filter(|card| !self.is_card_debuffed(**card) && card.enhancement.is_some())
+                .count(),
+            "black" => cards
+                .iter()
+                .filter(|card| !card.is_stone() && is_black(**card))
+                .count(),
+            "red" => cards
+                .iter()
+                .filter(|card| !card.is_stone() && is_red(**card))
+                .count(),
+            _ => {
+                if let Some(suit) = suit_from_str(&target_norm) {
+                    if smeared {
+                        let target_group = smeared_suit_group(suit);
+                        return cards
+                            .iter()
+                            .filter(|card| {
+                                if card.is_stone() {
+                                    return false;
+                                }
+                                let debuffed = self.is_card_debuffed(**card);
+                                let is_wild = !debuffed && card.is_wild();
+                                is_wild || smeared_suit_group(card.suit) == target_group
+                            })
+                            .count();
+                    }
+                    return cards
+                        .iter()
+                        .filter(|card| {
+                            if card.is_stone() {
+                                return false;
+                            }
+                            let debuffed = self.is_card_debuffed(**card);
+                            let is_wild = !debuffed && card.is_wild();
+                            is_wild || card.suit == suit
+                        })
+                        .count();
+                }
+                if let Some(rank) = rank_from_str(&target_norm) {
+                    return cards
+                        .iter()
+                        .filter(|card| !card.is_stone() && card.rank == rank)
+                        .count();
+                }
+                if let Some(kind) = enhancement_from_str(&target_norm) {
+                    return cards
+                        .iter()
+                        .filter(|card| {
+                            !self.is_card_debuffed(**card) && card.enhancement == Some(kind)
+                        })
+                        .count();
+                }
+                if let Some(kind) = edition_from_str(&target_norm) {
+                    return cards
+                        .iter()
+                        .filter(|card| {
+                            !self.is_card_debuffed(**card) && card.edition == Some(kind)
+                        })
+                        .count();
+                }
+                if let Some(kind) = seal_from_str(&target_norm) {
+                    return cards
+                        .iter()
+                        .filter(|card| !self.is_card_debuffed(**card) && card.seal == Some(kind))
+                        .count();
+                }
+                0
+            }
+        }
     }
 
     pub(super) fn json_conditions_met(
-        &self,
+        &mut self,
         conditions: &[Condition],
         hand_kind: crate::HandKind,
         card: Option<Card>,
@@ -435,6 +619,7 @@ impl RunState {
         if conditions.is_empty() {
             return true;
         }
+        let card_debuffed = card.map(|c| self.is_card_debuffed(c)).unwrap_or(false);
         for condition in conditions {
             let matched = match condition {
                 Condition::Always => true,
@@ -453,19 +638,55 @@ impl RunState {
                     .unwrap_or(false),
                 Condition::CardRank(rank) => card.map(|c| c.rank == *rank).unwrap_or(false),
                 Condition::CardIsFace => card
-                    .map(|c| matches!(c.rank, crate::Rank::Jack | crate::Rank::Queen | crate::Rank::King))
+                    .map(|c| {
+                        !card_debuffed
+                            && matches!(
+                                c.rank,
+                                crate::Rank::Jack | crate::Rank::Queen | crate::Rank::King
+                            )
+                    })
                     .unwrap_or(false),
                 Condition::CardIsOdd => card
-                    .map(|c| matches!(c.rank, crate::Rank::Ace | crate::Rank::Three | crate::Rank::Five | crate::Rank::Seven | crate::Rank::Nine))
+                    .map(|c| {
+                        !card_debuffed
+                            && matches!(
+                                c.rank,
+                                crate::Rank::Ace
+                                    | crate::Rank::Three
+                                    | crate::Rank::Five
+                                    | crate::Rank::Seven
+                                    | crate::Rank::Nine
+                            )
+                    })
                     .unwrap_or(false),
                 Condition::CardIsEven => card
-                    .map(|c| matches!(c.rank, crate::Rank::Two | crate::Rank::Four | crate::Rank::Six | crate::Rank::Eight | crate::Rank::Ten))
+                    .map(|c| {
+                        !card_debuffed
+                            && matches!(
+                                c.rank,
+                                crate::Rank::Two
+                                    | crate::Rank::Four
+                                    | crate::Rank::Six
+                                    | crate::Rank::Eight
+                                    | crate::Rank::Ten
+                            )
+                    })
                     .unwrap_or(false),
-                Condition::CardHasEnhancement(kind) => card.map(|c| c.enhancement == Some(*kind)).unwrap_or(false),
-                Condition::CardHasEdition(kind) => card.map(|c| c.edition == Some(*kind)).unwrap_or(false),
-                Condition::CardHasSeal(kind) => card.map(|c| c.seal == Some(*kind)).unwrap_or(false),
-                Condition::CardIsStone => card.map(|c| c.is_stone()).unwrap_or(false),
-                Condition::CardIsWild => card.map(|c| c.is_wild()).unwrap_or(false),
+                Condition::CardHasEnhancement(kind) => card
+                    .map(|c| !card_debuffed && c.enhancement == Some(*kind))
+                    .unwrap_or(false),
+                Condition::CardHasEdition(kind) => card
+                    .map(|c| !card_debuffed && c.edition == Some(*kind))
+                    .unwrap_or(false),
+                Condition::CardHasSeal(kind) => card
+                    .map(|c| !card_debuffed && c.seal == Some(*kind))
+                    .unwrap_or(false),
+                Condition::CardIsStone => card
+                    .map(|c| !card_debuffed && c.is_stone())
+                    .unwrap_or(false),
+                Condition::CardIsWild => card
+                    .map(|c| !card_debuffed && c.is_wild())
+                    .unwrap_or(false),
                 Condition::IsBossBlind => self.state.blind == BlindKind::Boss,
                 Condition::IsScoringCard | Condition::IsHeldCard | Condition::IsPlayedCard => false,
             };

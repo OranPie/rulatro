@@ -54,6 +54,7 @@ Based on the wiki activation sequence, scoring follows this order:
 
 Activation types (for effect definitions):
 - On Played: triggers before scoring.
+- On Scored Pre: triggers per scored card before base card modifiers.
 - On Scored: triggers per scored card.
 - On Held: triggers per card in hand after scoring.
 - Independent: triggers after scoring completes.
@@ -70,6 +71,7 @@ Activation types (for effect definitions):
 - On Any Sell: triggers when any joker is sold.
 - On Acquire: triggers when a joker is acquired.
 - On Use: triggers when a consumable is used (tarot/planet/spectral).
+- Passive: triggers when recomputing rule flags (no score/money side effects).
 
 ## Card Modifiers (Baseline)
 
@@ -95,6 +97,13 @@ Editions:
 - Polychrome: x1.5 mult.
 - Negative: +1 Joker slot (handled on acquisition).
 
+Debuffed cards:
+- Debuffed cards ignore enhancements/editions/seals and do not trigger per-card hooks.
+- Rank/suit still count for hand evaluation and suit-based counts.
+
+Face-down cards:
+- Cards can be marked face-down when drawn (boss effects); this is a visibility flag only.
+
 ## Hand Levels (Baseline)
 
 Hands start at level 1 each run. Level ups increase base chips/mult by the
@@ -104,3 +113,7 @@ consumables can trigger level upgrades during play.
 ## Data Files
 
 See `assets/README.md`. Joker effects are defined in `assets/content/jokers.dsl`.
+
+## TODO (Notes)
+
+- Use mixin rule modules to replace the most complex Joker DSL definitions and reduce code size.

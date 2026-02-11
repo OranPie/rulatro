@@ -1,14 +1,313 @@
 [
   {
-    "id": "tarot_test",
-    "name": "Tarot Test",
+    "id": "the_fool",
+    "name": "The Fool",
     "kind": "Tarot",
     "effects": [
       {
         "trigger": "OnUse",
         "conditions": ["Always"],
         "effects": [
-          { "AddMoney": 2 }
+          { "CreateLastConsumable": { "exclude": "the_fool" } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "the_magician",
+    "name": "The Magician",
+    "kind": "Tarot",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "EnhanceSelected": { "enhancement": "Lucky", "count": 2 } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "the_high_priestess",
+    "name": "The High Priestess",
+    "kind": "Tarot",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "AddRandomConsumable": { "kind": "Planet", "count": 2 } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "the_empress",
+    "name": "The Empress",
+    "kind": "Tarot",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "EnhanceSelected": { "enhancement": "Mult", "count": 2 } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "the_emperor",
+    "name": "The Emperor",
+    "kind": "Tarot",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "AddRandomConsumable": { "kind": "Tarot", "count": 2 } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "the_hierophant",
+    "name": "The Hierophant",
+    "kind": "Tarot",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "EnhanceSelected": { "enhancement": "Bonus", "count": 2 } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "the_lovers",
+    "name": "The Lovers",
+    "kind": "Tarot",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "EnhanceSelected": { "enhancement": "Wild", "count": 1 } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "the_chariot",
+    "name": "The Chariot",
+    "kind": "Tarot",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "EnhanceSelected": { "enhancement": "Steel", "count": 1 } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "justice",
+    "name": "Justice",
+    "kind": "Tarot",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "EnhanceSelected": { "enhancement": "Glass", "count": 1 } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "the_hermit",
+    "name": "The Hermit",
+    "kind": "Tarot",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "DoubleMoney": { "cap": 20 } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "the_wheel_of_fortune",
+    "name": "The Wheel of Fortune",
+    "kind": "Tarot",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          {
+            "RandomJokerEdition": {
+              "editions": ["Foil", "Holographic", "Polychrome"],
+              "chance": 0.25
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "strength",
+    "name": "Strength",
+    "kind": "Tarot",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "IncreaseSelectedRank": { "count": 2, "delta": 1 } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "the_hanged_man",
+    "name": "The Hanged Man",
+    "kind": "Tarot",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "DestroySelected": { "count": 2 } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "death",
+    "name": "Death",
+    "kind": "Tarot",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          "ConvertLeftIntoRight"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "temperance",
+    "name": "Temperance",
+    "kind": "Tarot",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "AddMoneyFromJokers": { "cap": 50 } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "the_devil",
+    "name": "The Devil",
+    "kind": "Tarot",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "EnhanceSelected": { "enhancement": "Gold", "count": 1 } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "the_tower",
+    "name": "The Tower",
+    "kind": "Tarot",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "EnhanceSelected": { "enhancement": "Stone", "count": 1 } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "the_star",
+    "name": "The Star",
+    "kind": "Tarot",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "ConvertSelectedSuit": { "suit": "Diamonds", "count": 3 } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "the_moon",
+    "name": "The Moon",
+    "kind": "Tarot",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "ConvertSelectedSuit": { "suit": "Clubs", "count": 3 } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "the_sun",
+    "name": "The Sun",
+    "kind": "Tarot",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "ConvertSelectedSuit": { "suit": "Hearts", "count": 3 } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "judgement",
+    "name": "Judgement",
+    "kind": "Tarot",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "AddRandomJoker": { "count": 1 } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "the_world",
+    "name": "The World",
+    "kind": "Tarot",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "ConvertSelectedSuit": { "suit": "Spades", "count": 3 } }
         ]
       }
     ]

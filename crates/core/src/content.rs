@@ -9,6 +9,20 @@ pub struct JokerDef {
     pub effects: Vec<JokerEffect>,
 }
 
+#[derive(Debug, Clone)]
+pub struct BossDef {
+    pub id: String,
+    pub name: String,
+    pub effects: Vec<JokerEffect>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TagDef {
+    pub id: String,
+    pub name: String,
+    pub effects: Vec<JokerEffect>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConsumableDef {
     pub id: String,
@@ -22,6 +36,8 @@ pub struct ConsumableDef {
 #[derive(Debug, Clone)]
 pub struct Content {
     pub jokers: Vec<JokerDef>,
+    pub bosses: Vec<BossDef>,
+    pub tags: Vec<TagDef>,
     pub tarots: Vec<ConsumableDef>,
     pub planets: Vec<ConsumableDef>,
     pub spectrals: Vec<ConsumableDef>,
@@ -73,6 +89,22 @@ impl Content {
             return pick_index(&indices, rng).map(|idx| &self.planets[idx]);
         }
         self.pick_consumable(ConsumableKind::Planet, rng)
+    }
+
+    pub fn pick_boss<'a>(&'a self, rng: &mut crate::RngState) -> Option<&'a BossDef> {
+        if self.bosses.is_empty() {
+            return None;
+        }
+        let idx = (rng.next_u64() % self.bosses.len() as u64) as usize;
+        self.bosses.get(idx)
+    }
+
+    pub fn boss_by_id(&self, id: &str) -> Option<&BossDef> {
+        self.bosses.iter().find(|boss| boss.id == id)
+    }
+
+    pub fn tag_by_id(&self, id: &str) -> Option<&TagDef> {
+        self.tags.iter().find(|tag| tag.id == id)
     }
 
     pub fn random_standard_card(&self, rng: &mut crate::RngState) -> crate::Card {
