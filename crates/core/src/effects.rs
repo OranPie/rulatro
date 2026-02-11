@@ -16,7 +16,7 @@ pub enum ConsumableKind {
     Spectral,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum ActivationType {
     OnPlayed,
     OnScoredPre,

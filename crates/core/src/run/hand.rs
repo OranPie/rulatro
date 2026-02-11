@@ -685,6 +685,30 @@ impl RunState {
         self.pending_effects.clear();
     }
 
+    pub(super) fn apply_effect_blocks(
+        &mut self,
+        blocks: &[EffectBlock],
+        trigger: ActivationType,
+        hand_kind: crate::HandKind,
+        card: Option<Card>,
+        selected: &[usize],
+        score: &mut Score,
+        money: &mut i64,
+        events: &mut EventBus,
+    ) -> Result<(), RunError> {
+        for block in blocks {
+            if block.trigger != trigger {
+                continue;
+            }
+            if !self.json_conditions_met(&block.conditions, hand_kind, card) {
+                continue;
+            }
+            self.validate_effect_selection(&block.effects, selected)?;
+            self.apply_effect_ops(&block.effects, selected, score, money, events)?;
+        }
+        Ok(())
+    }
+
     pub fn use_consumable(
         &mut self,
         index: usize,
@@ -742,263 +766,7 @@ impl RunState {
             if !self.json_conditions_met(&block.conditions, crate::HandKind::HighCard, None) {
                 continue;
             }
-            for effect in &block.effects {
-                match effect {
-                    EffectOp::Score(rule) => self.pending_effects.push(EffectOp::Score(rule.clone())),
-                    EffectOp::AddMoney(value) => money += value,
-                    EffectOp::SetMoney(value) => money = *value,
-                    EffectOp::DoubleMoney { cap } => {
-                        let gain = money.min(*cap);
-                        money = money.saturating_add(gain);
-                    }
-                    EffectOp::AddMoneyFromJokers { cap } => {
-                        let total = self
-                            .inventory
-                            .jokers
-                            .iter()
-                            .map(|joker| self.calc_joker_sell_value(joker))
-                            .sum::<i64>();
-                        money = money.saturating_add(total.min(*cap));
-                    }
-                    EffectOp::AddHandSize(value) => {
-                        let next = (self.state.hand_size as i64 + value).max(0) as usize;
-                        self.state.hand_size = next;
-                    }
-                    EffectOp::UpgradeHand { hand, amount } => {
-                        self.upgrade_hand_level(*hand, *amount);
-                    }
-                    EffectOp::UpgradeAllHands { amount } => {
-                        self.upgrade_all_hands(*amount);
-                    }
-                    EffectOp::AddRandomConsumable { kind, count } => {
-                        for _ in 0..*count {
-                            if let Some(card) = self.content.pick_consumable(*kind, &mut self.rng) {
-                                let _ = self.inventory.add_consumable(card.id.clone(), *kind);
-                            }
-                        }
-                    }
-                    EffectOp::AddJoker { rarity, count } => {
-                        for _ in 0..*count {
-                            self.add_joker_from_rarity(*rarity);
-                        }
-                    }
-                    EffectOp::AddRandomJoker { count } => {
-                        for _ in 0..*count {
-                            let idx = if self.content.jokers.is_empty() {
-                                None
-                            } else {
-                                Some((self.rng.next_u64() % self.content.jokers.len() as u64) as usize)
-                            };
-                            if let Some(idx) = idx {
-                                if let Some(def) = self.content.jokers.get(idx) {
-                                    self.add_joker_from_rarity(def.rarity);
-                                }
-                            }
-                        }
-                    }
-                    EffectOp::RandomJokerEdition { editions, chance } => {
-                        if editions.is_empty() {
-                            continue;
-                        }
-                        let roll = (self.rng.next_u64() % 1000) as f64 / 1000.0;
-                        if roll > *chance {
-                            continue;
-                        }
-                        let candidates: Vec<usize> = self
-                            .inventory
-                            .jokers
-                            .iter()
-                            .enumerate()
-                            .filter(|(_, joker)| joker.edition.is_none())
-                            .map(|(idx, _)| idx)
-                            .collect();
-                        if candidates.is_empty() {
-                            continue;
-                        }
-                        let pick = candidates[(self.rng.next_u64() % candidates.len() as u64) as usize];
-                        let edition = editions[(self.rng.next_u64() % editions.len() as u64) as usize];
-                        if let Some(joker) = self.inventory.jokers.get_mut(pick) {
-                            joker.edition = Some(edition);
-                        }
-                        self.mark_rules_dirty();
-                    }
-                    EffectOp::SetRandomJokerEdition { edition } => {
-                        let Some(pick) = random_joker_index(&mut self.rng, self.inventory.jokers.len()) else {
-                            continue;
-                        };
-                        if let Some(joker) = self.inventory.jokers.get_mut(pick) {
-                            joker.edition = Some(*edition);
-                        }
-                        self.mark_rules_dirty();
-                    }
-                    EffectOp::SetRandomJokerEditionDestroyOthers { edition } => {
-                        if self.inventory.jokers.is_empty() {
-                            continue;
-                        }
-                        let pick = (self.rng.next_u64() % self.inventory.jokers.len() as u64) as usize;
-                        if let Some(joker) = self.inventory.jokers.get_mut(pick) {
-                            joker.edition = Some(*edition);
-                        }
-                        let keep = self.inventory.jokers.get(pick).cloned();
-                        self.inventory.jokers.clear();
-                        if let Some(joker) = keep {
-                            self.inventory.jokers.push(joker);
-                        }
-                        self.mark_rules_dirty();
-                    }
-                    EffectOp::DuplicateRandomJokerDestroyOthers { remove_negative } => {
-                        if self.inventory.jokers.is_empty() {
-                            continue;
-                        }
-                        let pick = (self.rng.next_u64() % self.inventory.jokers.len() as u64) as usize;
-                        let original = self.inventory.jokers.get(pick).cloned();
-                        let mut copy = original.clone();
-                        if let Some(copy) = copy.as_mut() {
-                            if *remove_negative && copy.edition == Some(Edition::Negative) {
-                                copy.edition = None;
-                            }
-                        }
-                        self.inventory.jokers.clear();
-                        if let Some(joker) = original {
-                            self.inventory.jokers.push(joker);
-                        }
-                        if let Some(copy) = copy {
-                            if self.inventory.jokers.len() < self.inventory.joker_capacity() {
-                                self.inventory.jokers.push(copy);
-                            }
-                        }
-                        self.mark_rules_dirty();
-                    }
-                    EffectOp::EnhanceSelected { enhancement, count } => {
-                        let indices = self.select_indices(selected, *count as usize, true)?;
-                        for idx in indices {
-                            if let Some(card) = self.hand.get_mut(idx) {
-                                card.enhancement = Some(*enhancement);
-                            }
-                        }
-                    }
-                    EffectOp::AddEditionToSelected { editions, count } => {
-                        if editions.is_empty() {
-                            continue;
-                        }
-                        let indices = self.select_indices(selected, *count as usize, true)?;
-                        for idx in indices {
-                            if let Some(card) = self.hand.get_mut(idx) {
-                                let pick = (self.rng.next_u64() % editions.len() as u64) as usize;
-                                card.edition = Some(editions[pick]);
-                            }
-                        }
-                    }
-                    EffectOp::AddSealToSelected { seal, count } => {
-                        let indices = self.select_indices(selected, *count as usize, true)?;
-                        for idx in indices {
-                            if let Some(card) = self.hand.get_mut(idx) {
-                                card.seal = Some(*seal);
-                            }
-                        }
-                    }
-                    EffectOp::ConvertSelectedSuit { suit, count } => {
-                        let indices = self.select_indices(selected, *count as usize, true)?;
-                        for idx in indices {
-                            if let Some(card) = self.hand.get_mut(idx) {
-                                card.suit = *suit;
-                            }
-                        }
-                    }
-                    EffectOp::IncreaseSelectedRank { count, delta } => {
-                        let indices = self.select_indices(selected, *count as usize, true)?;
-                        for idx in indices {
-                            if let Some(card) = self.hand.get_mut(idx) {
-                                card.rank = shift_rank(card.rank, *delta);
-                            }
-                        }
-                    }
-                    EffectOp::DestroySelected { count } => {
-                        let indices = self.select_indices(selected, *count as usize, true)?;
-                        self.destroy_hand_cards(&indices, events);
-                    }
-                    EffectOp::DestroyRandomInHand { count } => {
-                        let indices = self.random_indices(*count as usize);
-                        self.destroy_hand_cards(&indices, events);
-                    }
-                    EffectOp::CopySelected { count } => {
-                        if *count == 0 {
-                            continue;
-                        }
-                        let indices = self.select_indices(selected, 1, true)?;
-                        let Some(&idx) = indices.first() else {
-                            continue;
-                        };
-                        let Some(card) = self.hand.get(idx).copied() else {
-                            continue;
-                        };
-                        for _ in 0..*count {
-                            let mut copy = card;
-                            copy.face_down = false;
-                            self.assign_card_id(&mut copy);
-                            self.hand.push(copy);
-                            self.trigger_on_card_added(copy);
-                        }
-                    }
-                    EffectOp::ConvertLeftIntoRight => {
-                        let (left, right) = self.select_pair(selected, true)?;
-                        let Some(right_card) = self.hand.get(right).copied() else {
-                            continue;
-                        };
-                        if let Some(left_card) = self.hand.get_mut(left) {
-                            left_card.suit = right_card.suit;
-                            left_card.rank = right_card.rank;
-                            left_card.enhancement = right_card.enhancement;
-                            left_card.edition = right_card.edition;
-                            left_card.seal = right_card.seal;
-                            left_card.bonus_chips = right_card.bonus_chips;
-                        }
-                    }
-                    EffectOp::ConvertHandToRandomRank => {
-                        if self.hand.is_empty() {
-                            continue;
-                        }
-                        let rank = random_standard_rank(&mut self.rng);
-                        for card in &mut self.hand {
-                            card.rank = rank;
-                        }
-                    }
-                    EffectOp::ConvertHandToRandomSuit => {
-                        if self.hand.is_empty() {
-                            continue;
-                        }
-                        let suit = random_standard_suit(&mut self.rng);
-                        for card in &mut self.hand {
-                            card.suit = suit;
-                        }
-                    }
-                    EffectOp::AddRandomEnhancedCards { count, filter } => {
-                        for _ in 0..*count {
-                            let mut card = crate::Card::standard(
-                                random_standard_suit(&mut self.rng),
-                                random_rank_filtered(&mut self.rng, *filter),
-                            );
-                            card.enhancement = Some(random_enhancement(&mut self.rng));
-                            self.assign_card_id(&mut card);
-                            self.hand.push(card);
-                            self.trigger_on_card_added(card);
-                        }
-                    }
-                    EffectOp::CreateLastConsumable { exclude } => {
-                        if let Some(last) = &self.state.last_consumable {
-                            if let Some(exclude) = exclude {
-                                if exclude.eq_ignore_ascii_case(&last.id) {
-                                    continue;
-                                }
-                            }
-                            let _ = self
-                                .inventory
-                                .add_consumable(last.id.clone(), last.kind);
-                        }
-                    }
-                    EffectOp::RetriggerScored(_) | EffectOp::RetriggerHeld(_) => {}
-                }
-            }
+            self.apply_effect_ops(&block.effects, selected, &mut scratch_score, &mut money, events)?;
         }
         self.state.money = money;
         if matches!(
@@ -1014,44 +782,322 @@ impl RunState {
         Ok(())
     }
 
+    fn apply_effect_ops(
+        &mut self,
+        effects: &[EffectOp],
+        selected: &[usize],
+        _score: &mut Score,
+        money: &mut i64,
+        events: &mut EventBus,
+    ) -> Result<(), RunError> {
+        for effect in effects {
+            match effect {
+                EffectOp::Score(rule) => self.pending_effects.push(EffectOp::Score(rule.clone())),
+                EffectOp::AddMoney(value) => *money += value,
+                EffectOp::SetMoney(value) => *money = *value,
+                EffectOp::DoubleMoney { cap } => {
+                    let gain = (*money).min(*cap);
+                    *money = money.saturating_add(gain);
+                }
+                EffectOp::AddMoneyFromJokers { cap } => {
+                    let total = self
+                        .inventory
+                        .jokers
+                        .iter()
+                        .map(|joker| self.calc_joker_sell_value(joker))
+                        .sum::<i64>();
+                    *money = money.saturating_add(total.min(*cap));
+                }
+                EffectOp::AddHandSize(value) => {
+                    let next = (self.state.hand_size as i64 + value).max(0) as usize;
+                    self.state.hand_size = next;
+                }
+                EffectOp::UpgradeHand { hand, amount } => {
+                    self.upgrade_hand_level(*hand, *amount);
+                }
+                EffectOp::UpgradeAllHands { amount } => {
+                    self.upgrade_all_hands(*amount);
+                }
+                EffectOp::AddRandomConsumable { kind, count } => {
+                    for _ in 0..*count {
+                        if let Some(card) = self.content.pick_consumable(*kind, &mut self.rng) {
+                            let _ = self.inventory.add_consumable(card.id.clone(), *kind);
+                        }
+                    }
+                }
+                EffectOp::AddJoker { rarity, count } => {
+                    for _ in 0..*count {
+                        self.add_joker_from_rarity(*rarity);
+                    }
+                }
+                EffectOp::AddRandomJoker { count } => {
+                    for _ in 0..*count {
+                        let idx = if self.content.jokers.is_empty() {
+                            None
+                        } else {
+                            Some((self.rng.next_u64() % self.content.jokers.len() as u64) as usize)
+                        };
+                        if let Some(idx) = idx {
+                            if let Some(def) = self.content.jokers.get(idx) {
+                                self.add_joker_from_rarity(def.rarity);
+                            }
+                        }
+                    }
+                }
+                EffectOp::RandomJokerEdition { editions, chance } => {
+                    if editions.is_empty() {
+                        continue;
+                    }
+                    let roll = (self.rng.next_u64() % 1000) as f64 / 1000.0;
+                    if roll > *chance {
+                        continue;
+                    }
+                    let candidates: Vec<usize> = self
+                        .inventory
+                        .jokers
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, joker)| joker.edition.is_none())
+                        .map(|(idx, _)| idx)
+                        .collect();
+                    if candidates.is_empty() {
+                        continue;
+                    }
+                    let pick = candidates[(self.rng.next_u64() % candidates.len() as u64) as usize];
+                    let edition = editions[(self.rng.next_u64() % editions.len() as u64) as usize];
+                    if let Some(joker) = self.inventory.jokers.get_mut(pick) {
+                        joker.edition = Some(edition);
+                    }
+                    self.mark_rules_dirty();
+                }
+                EffectOp::SetRandomJokerEdition { edition } => {
+                    let Some(pick) = random_joker_index(&mut self.rng, self.inventory.jokers.len()) else {
+                        continue;
+                    };
+                    if let Some(joker) = self.inventory.jokers.get_mut(pick) {
+                        joker.edition = Some(*edition);
+                    }
+                    self.mark_rules_dirty();
+                }
+                EffectOp::SetRandomJokerEditionDestroyOthers { edition } => {
+                    if self.inventory.jokers.is_empty() {
+                        continue;
+                    }
+                    let pick = (self.rng.next_u64() % self.inventory.jokers.len() as u64) as usize;
+                    if let Some(joker) = self.inventory.jokers.get_mut(pick) {
+                        joker.edition = Some(*edition);
+                    }
+                    let keep = self.inventory.jokers.get(pick).cloned();
+                    self.inventory.jokers.clear();
+                    if let Some(joker) = keep {
+                        self.inventory.jokers.push(joker);
+                    }
+                    self.mark_rules_dirty();
+                }
+                EffectOp::DuplicateRandomJokerDestroyOthers { remove_negative } => {
+                    if self.inventory.jokers.is_empty() {
+                        continue;
+                    }
+                    let pick = (self.rng.next_u64() % self.inventory.jokers.len() as u64) as usize;
+                    let original = self.inventory.jokers.get(pick).cloned();
+                    let mut copy = original.clone();
+                    if let Some(copy) = copy.as_mut() {
+                        if *remove_negative && copy.edition == Some(Edition::Negative) {
+                            copy.edition = None;
+                        }
+                    }
+                    self.inventory.jokers.clear();
+                    if let Some(joker) = original {
+                        self.inventory.jokers.push(joker);
+                    }
+                    if let Some(copy) = copy {
+                        if self.inventory.jokers.len() < self.inventory.joker_capacity() {
+                            self.inventory.jokers.push(copy);
+                        }
+                    }
+                    self.mark_rules_dirty();
+                }
+                EffectOp::EnhanceSelected { enhancement, count } => {
+                    let indices = self.select_indices(selected, *count as usize, true)?;
+                    for idx in indices {
+                        if let Some(card) = self.hand.get_mut(idx) {
+                            card.enhancement = Some(*enhancement);
+                        }
+                    }
+                }
+                EffectOp::AddEditionToSelected { editions, count } => {
+                    if editions.is_empty() {
+                        continue;
+                    }
+                    let indices = self.select_indices(selected, *count as usize, true)?;
+                    for idx in indices {
+                        if let Some(card) = self.hand.get_mut(idx) {
+                            let pick = (self.rng.next_u64() % editions.len() as u64) as usize;
+                            card.edition = Some(editions[pick]);
+                        }
+                    }
+                }
+                EffectOp::AddSealToSelected { seal, count } => {
+                    let indices = self.select_indices(selected, *count as usize, true)?;
+                    for idx in indices {
+                        if let Some(card) = self.hand.get_mut(idx) {
+                            card.seal = Some(*seal);
+                        }
+                    }
+                }
+                EffectOp::ConvertSelectedSuit { suit, count } => {
+                    let indices = self.select_indices(selected, *count as usize, true)?;
+                    for idx in indices {
+                        if let Some(card) = self.hand.get_mut(idx) {
+                            card.suit = *suit;
+                        }
+                    }
+                }
+                EffectOp::IncreaseSelectedRank { count, delta } => {
+                    let indices = self.select_indices(selected, *count as usize, true)?;
+                    for idx in indices {
+                        if let Some(card) = self.hand.get_mut(idx) {
+                            card.rank = shift_rank(card.rank, *delta);
+                        }
+                    }
+                }
+                EffectOp::DestroySelected { count } => {
+                    let indices = self.select_indices(selected, *count as usize, true)?;
+                    self.destroy_hand_cards(&indices, events);
+                }
+                EffectOp::DestroyRandomInHand { count } => {
+                    let indices = self.random_indices(*count as usize);
+                    self.destroy_hand_cards(&indices, events);
+                }
+                EffectOp::CopySelected { count } => {
+                    if *count == 0 {
+                        continue;
+                    }
+                    let indices = self.select_indices(selected, 1, true)?;
+                    let Some(&idx) = indices.first() else {
+                        continue;
+                    };
+                    let Some(card) = self.hand.get(idx).copied() else {
+                        continue;
+                    };
+                    for _ in 0..*count {
+                        let mut copy = card;
+                        copy.face_down = false;
+                        self.assign_card_id(&mut copy);
+                        self.hand.push(copy);
+                        self.trigger_on_card_added(copy);
+                    }
+                }
+                EffectOp::ConvertLeftIntoRight => {
+                    let (left, right) = self.select_pair(selected, true)?;
+                    let Some(right_card) = self.hand.get(right).copied() else {
+                        continue;
+                    };
+                    if let Some(left_card) = self.hand.get_mut(left) {
+                        left_card.suit = right_card.suit;
+                        left_card.rank = right_card.rank;
+                        left_card.enhancement = right_card.enhancement;
+                        left_card.edition = right_card.edition;
+                        left_card.seal = right_card.seal;
+                        left_card.bonus_chips = right_card.bonus_chips;
+                    }
+                }
+                EffectOp::ConvertHandToRandomRank => {
+                    if self.hand.is_empty() {
+                        continue;
+                    }
+                    let rank = random_standard_rank(&mut self.rng);
+                    for card in &mut self.hand {
+                        card.rank = rank;
+                    }
+                }
+                EffectOp::ConvertHandToRandomSuit => {
+                    if self.hand.is_empty() {
+                        continue;
+                    }
+                    let suit = random_standard_suit(&mut self.rng);
+                    for card in &mut self.hand {
+                        card.suit = suit;
+                    }
+                }
+                EffectOp::AddRandomEnhancedCards { count, filter } => {
+                    for _ in 0..*count {
+                        let mut card = crate::Card::standard(
+                            random_standard_suit(&mut self.rng),
+                            random_rank_filtered(&mut self.rng, *filter),
+                        );
+                        card.enhancement = Some(random_enhancement(&mut self.rng));
+                        self.assign_card_id(&mut card);
+                        self.hand.push(card);
+                        self.trigger_on_card_added(card);
+                    }
+                }
+                EffectOp::CreateLastConsumable { exclude } => {
+                    let Some(last) = self.state.last_consumable.clone() else {
+                        continue;
+                    };
+                    if exclude
+                        .as_ref()
+                        .map(|value| value.eq_ignore_ascii_case(&last.id))
+                        .unwrap_or(false)
+                    {
+                        continue;
+                    }
+                    let _ = self.inventory.add_consumable(last.id, last.kind);
+                }
+                EffectOp::RetriggerScored(_) | EffectOp::RetriggerHeld(_) => {}
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_effect_selection(
+        &self,
+        effects: &[EffectOp],
+        selected: &[usize],
+    ) -> Result<(), RunError> {
+        let mut requires_selection = false;
+        for effect in effects {
+            match effect {
+                EffectOp::EnhanceSelected { count, .. }
+                | EffectOp::AddEditionToSelected { count, .. }
+                | EffectOp::AddSealToSelected { count, .. }
+                | EffectOp::ConvertSelectedSuit { count, .. }
+                | EffectOp::IncreaseSelectedRank { count, .. }
+                | EffectOp::DestroySelected { count }
+                | EffectOp::CopySelected { count } => {
+                    if *count > 0 {
+                        requires_selection = true;
+                        if !selected.is_empty() && selected.len() > *count as usize {
+                            return Err(RunError::InvalidCardCount);
+                        }
+                    }
+                }
+                EffectOp::ConvertLeftIntoRight => {
+                    requires_selection = true;
+                    if !selected.is_empty() && selected.len() != 2 {
+                        return Err(RunError::InvalidCardCount);
+                    }
+                }
+                _ => {}
+            }
+        }
+        if requires_selection && selected.is_empty() {
+            return Err(RunError::InvalidSelection);
+        }
+        Ok(())
+    }
+
     fn validate_consumable_selection(
         &self,
         def: &crate::ConsumableDef,
         selected: &[usize],
     ) -> Result<(), RunError> {
-        let mut requires_selection = false;
         for block in &def.effects {
             if block.trigger != ActivationType::OnUse {
                 continue;
             }
-            for effect in &block.effects {
-                match effect {
-                    EffectOp::EnhanceSelected { count, .. }
-                    | EffectOp::AddEditionToSelected { count, .. }
-                    | EffectOp::AddSealToSelected { count, .. }
-                    | EffectOp::ConvertSelectedSuit { count, .. }
-                    | EffectOp::IncreaseSelectedRank { count, .. }
-                    | EffectOp::DestroySelected { count }
-                    | EffectOp::CopySelected { count } => {
-                        if *count > 0 {
-                            requires_selection = true;
-                            if !selected.is_empty() && selected.len() > *count as usize {
-                                return Err(RunError::InvalidCardCount);
-                            }
-                        }
-                    }
-                    EffectOp::ConvertLeftIntoRight => {
-                        requires_selection = true;
-                        if !selected.is_empty() && selected.len() != 2 {
-                            return Err(RunError::InvalidCardCount);
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-        if requires_selection && selected.is_empty() {
-            return Err(RunError::InvalidSelection);
+            self.validate_effect_selection(&block.effects, selected)?;
         }
         Ok(())
     }

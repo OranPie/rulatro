@@ -429,6 +429,7 @@ impl HookRegistry {
         registry.register(Box::new(BossHook::new()));
         registry.register(Box::new(TagHook::new()));
         registry.register(Box::new(JokerDslHook::new()));
+        registry.register(Box::new(ModRuntimeHook::new()));
         registry
     }
 
@@ -487,6 +488,87 @@ struct JokerDslHook;
 impl JokerDslHook {
     fn new() -> Self {
         Self
+    }
+}
+
+struct ModRuntimeHook;
+
+impl ModRuntimeHook {
+    fn new() -> Self {
+        Self
+    }
+}
+
+impl RuleHook for ModRuntimeHook {
+    fn id(&self) -> &'static str {
+        "mod_runtime"
+    }
+
+    fn priority(&self) -> HookPriority {
+        HookPriority::Post
+    }
+
+    fn on_hook(
+        &mut self,
+        point: HookPoint,
+        run: &mut RunState,
+        events: &mut EventBus,
+        args: &mut HookArgs<'_>,
+    ) -> HookResult {
+        let Some(runtime) = run.mod_runtime.as_mut() else {
+            return HookResult::Continue;
+        };
+        let Some(trigger) = activation_for(point) else {
+            return HookResult::Continue;
+        };
+        let inject = std::mem::replace(&mut args.inject, HookInject::none());
+        let view = HookView::from_parts(
+            args.hand_kind,
+            args.blind,
+            args.card,
+            args.card_lucky_triggers,
+            args.sold_value,
+            args.consumable_kind,
+            args.consumable_id,
+            &inject,
+        );
+        let ctx = crate::ModHookContext {
+            trigger,
+            state: &run.state,
+            hand_kind: view.hand_kind,
+            blind: view.blind,
+            played: view.played,
+            scoring: view.scoring,
+            held: view.held,
+            discarded: view.discarded,
+            card: view.card,
+            card_lucky_triggers: view.card_lucky_triggers,
+            sold_value: view.sold_value,
+            consumable_kind: view.consumable_kind,
+            consumable_id: view.consumable_id,
+            joker_count: run.inventory.jokers.len(),
+        };
+        let mut result = runtime.on_hook(&ctx);
+        if !result.effects.is_empty() {
+            for effect in result.effects.drain(..) {
+                let _ = run.apply_effect_blocks(
+                    std::slice::from_ref(&effect.block),
+                    trigger,
+                    view.hand_kind,
+                    view.card,
+                    &effect.selected,
+                    args.score,
+                    args.money,
+                    events,
+                );
+            }
+        }
+        args.inject = inject;
+        if result.stop {
+            HookResult::Stop
+        } else {
+            HookResult::Continue
+        }
     }
 }
 

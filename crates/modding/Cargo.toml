@@ -4,5 +4,21 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+rulatro-core = { path = "../core" }
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 thiserror = "1"
+
+[features]
+default = ["mod_lua"]
+mod_lua = ["dep:mlua"]
+mod_wasm = ["dep:wasmtime"]
+
+[dependencies.mlua]
+version = "0.9"
+features = ["lua54", "serialize", "vendored"]
+optional = true
+
+[dependencies.wasmtime]
+version = "19"
+optional = true

@@ -1,0 +1,11 @@
+{
+  "meta": {
+    "id": "sample",
+    "name": "Sample Mod",
+    "version": "0.1.0"
+  },
+  "entry": "scripts/main.lua",
+  "content": {
+    "root": "content"
+  }
+}

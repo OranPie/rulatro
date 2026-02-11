@@ -1,13 +1,29 @@
 use rulatro_core::{BlindKind, BlindOutcome, EventBus, RunState, ShopOfferRef};
-use rulatro_data::{load_content, load_game_config};
+use rulatro_data::{load_content_with_mods, load_game_config};
+use rulatro_modding::ModManager;
 use std::path::Path;
 
 fn main() {
     let mut events = EventBus::default();
     let config = load_game_config(Path::new("assets")).expect("load config");
 
-    let content = load_content(Path::new("assets")).expect("load content");
-    let mut run = RunState::new(config, content, 0xC0FFEE);
+    let modded = load_content_with_mods(Path::new("assets"), Path::new("mods"))
+        .expect("load content");
+    if !modded.mods.is_empty() {
+        println!("mods loaded: {}", modded.mods.len());
+        for item in &modded.mods {
+            println!("mod: {}", item.manifest.meta.id);
+        }
+    }
+    for warning in &modded.warnings {
+        eprintln!("mod warning: {}", warning);
+    }
+    let mut runtime = ModManager::new();
+    runtime
+        .load_mods(&modded.mods)
+        .expect("load mod runtime");
+    let mut run = RunState::new(config, modded.content, 0xC0FFEE);
+    run.set_mod_runtime(Some(Box::new(runtime)));
     run.start_blind(1, BlindKind::Small, &mut events)
         .expect("start blind");
 

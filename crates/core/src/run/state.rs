@@ -40,8 +40,13 @@ impl RunState {
             copy_stack: Vec::new(),
             joker_effect_depth: 0,
             deferred_card_added: Vec::new(),
+            mod_runtime: None,
             hooks: HookRegistry::with_defaults(),
         }
+    }
+
+    pub fn set_mod_runtime(&mut self, runtime: Option<Box<dyn ModRuntime>>) {
+        self.mod_runtime = runtime;
     }
 
     pub(super) fn hand_eval_rules(&mut self) -> HandEvalRules {

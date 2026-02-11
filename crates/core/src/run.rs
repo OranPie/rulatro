@@ -1,8 +1,9 @@
 use crate::{
     BlindKind, Content, Deck, EffectOp, GameConfig, GameState, Inventory, InventoryError, Phase,
-    RngState, ScoreTables, ShopState,
+    ModRuntime, RngState, ScoreTables, ShopState,
 };
 use thiserror::Error;
+use std::fmt;
 use std::collections::HashMap;
 
 
@@ -54,7 +55,6 @@ pub enum RunError {
     Inventory(#[from] InventoryError),
 }
 
-#[derive(Debug)]
 pub struct RunState {
     pub config: GameConfig,
     pub tables: ScoreTables,
@@ -82,7 +82,19 @@ pub struct RunState {
     copy_stack: Vec<usize>,
     joker_effect_depth: u8,
     deferred_card_added: Vec<crate::Card>,
+    mod_runtime: Option<Box<dyn ModRuntime>>,
     hooks: HookRegistry,
+}
+
+impl fmt::Debug for RunState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RunState")
+            .field("state", &self.state)
+            .field("hand", &self.hand.len())
+            .field("inventory", &self.inventory)
+            .field("mod_runtime", &self.mod_runtime.is_some())
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

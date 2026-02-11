@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 rulatro-core = { path = "../core" }
 rulatro-data = { path = "../data" }
+rulatro-modding = { path = "../modding" }
