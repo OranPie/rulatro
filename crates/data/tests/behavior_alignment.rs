@@ -1,8 +1,9 @@
 use rulatro_core::{
     Action, ActionOp, ActivationType, BlindKind, BossDef, Card, CardWeight, ConsumableKind,
-    Enhancement, Edition, EventBus, Expr, HandKind, JokerDef, JokerEffect, JokerRarity,
-    LastConsumable, PackKind, PackOffer, PackSize, Phase, Rank, RunError, RunState, ShopCardKind,
-    ShopOfferRef, ShopPurchase, Suit,
+    Enhancement, Edition, Seal, EventBus, Expr, HandKind, JokerDef, JokerEffect, JokerRarity,
+    LastConsumable, PackKind, PackOffer, PackSize, Phase, Rank, RunError, RunState, ScoreTables,
+    ShopCardKind, ShopOfferRef, ShopPurchase, Suit, evaluate_hand, evaluate_hand_with_rules,
+    scoring_cards, score_hand, HandEvalRules,
 };
 use rulatro_data::{load_content, load_game_config};
 use std::path::PathBuf;
@@ -38,6 +39,13 @@ fn make_hand() -> Vec<Card> {
     ]
 }
 
+fn make_cards(specs: &[(Suit, Rank)]) -> Vec<Card> {
+    specs
+        .iter()
+        .map(|(suit, rank)| Card::standard(*suit, *rank))
+        .collect()
+}
+
 fn use_consumable(run: &mut RunState, id: &str, kind: ConsumableKind, selected: &[usize]) {
     run.inventory.consumables.clear();
     run.inventory
@@ -56,6 +64,26 @@ fn hand_level(run: &RunState, kind: HandKind) -> u32 {
 fn mark_blind_cleared(run: &mut RunState) {
     run.state.target = 1;
     run.state.blind_score = 1;
+}
+
+fn add_rule_joker(run: &mut RunState, id: &str, key: &str, value: f64) {
+    run.content.jokers.push(JokerDef {
+        id: id.to_string(),
+        name: id.to_string(),
+        rarity: JokerRarity::Common,
+        effects: vec![JokerEffect {
+            trigger: ActivationType::Passive,
+            when: Expr::Bool(true),
+            actions: vec![Action {
+                op: ActionOp::SetRule,
+                target: Some(key.to_string()),
+                value: Expr::Number(value),
+            }],
+        }],
+    });
+    run.inventory
+        .add_joker(id.to_string(), JokerRarity::Common, 1)
+        .expect("add joker");
 }
 
 macro_rules! test_play_hand_invalid_phase {
@@ -241,6 +269,259 @@ fn content_counts_and_ids() {
     for id in spectral_ids {
         assert!(content.spectrals.iter().any(|card| card.id == id));
     }
+}
+
+#[test]
+fn evaluate_hand_high_card() {
+    let cards = make_cards(&[
+        (Suit::Spades, Rank::Ace),
+        (Suit::Hearts, Rank::Nine),
+        (Suit::Clubs, Rank::Seven),
+        (Suit::Diamonds, Rank::Four),
+        (Suit::Hearts, Rank::Two),
+    ]);
+    assert_eq!(evaluate_hand(&cards), HandKind::HighCard);
+}
+
+#[test]
+fn evaluate_hand_pair() {
+    let cards = make_cards(&[
+        (Suit::Spades, Rank::Ace),
+        (Suit::Hearts, Rank::Ace),
+        (Suit::Clubs, Rank::Seven),
+        (Suit::Diamonds, Rank::Four),
+        (Suit::Hearts, Rank::Two),
+    ]);
+    assert_eq!(evaluate_hand(&cards), HandKind::Pair);
+}
+
+#[test]
+fn evaluate_hand_two_pair() {
+    let cards = make_cards(&[
+        (Suit::Spades, Rank::Ace),
+        (Suit::Hearts, Rank::Ace),
+        (Suit::Clubs, Rank::Seven),
+        (Suit::Diamonds, Rank::Seven),
+        (Suit::Hearts, Rank::Two),
+    ]);
+    assert_eq!(evaluate_hand(&cards), HandKind::TwoPair);
+}
+
+#[test]
+fn evaluate_hand_trips() {
+    let cards = make_cards(&[
+        (Suit::Spades, Rank::Ace),
+        (Suit::Hearts, Rank::Ace),
+        (Suit::Clubs, Rank::Ace),
+        (Suit::Diamonds, Rank::Four),
+        (Suit::Hearts, Rank::Two),
+    ]);
+    assert_eq!(evaluate_hand(&cards), HandKind::Trips);
+}
+
+#[test]
+fn evaluate_hand_straight() {
+    let cards = make_cards(&[
+        (Suit::Spades, Rank::Two),
+        (Suit::Hearts, Rank::Three),
+        (Suit::Clubs, Rank::Four),
+        (Suit::Diamonds, Rank::Five),
+        (Suit::Hearts, Rank::Six),
+    ]);
+    assert_eq!(evaluate_hand(&cards), HandKind::Straight);
+}
+
+#[test]
+fn evaluate_hand_flush() {
+    let cards = make_cards(&[
+        (Suit::Spades, Rank::Two),
+        (Suit::Spades, Rank::Seven),
+        (Suit::Spades, Rank::Nine),
+        (Suit::Spades, Rank::Jack),
+        (Suit::Spades, Rank::King),
+    ]);
+    assert_eq!(evaluate_hand(&cards), HandKind::Flush);
+}
+
+#[test]
+fn evaluate_hand_full_house() {
+    let cards = make_cards(&[
+        (Suit::Spades, Rank::Ace),
+        (Suit::Hearts, Rank::Ace),
+        (Suit::Clubs, Rank::Ace),
+        (Suit::Diamonds, Rank::King),
+        (Suit::Hearts, Rank::King),
+    ]);
+    assert_eq!(evaluate_hand(&cards), HandKind::FullHouse);
+}
+
+#[test]
+fn evaluate_hand_quads() {
+    let cards = make_cards(&[
+        (Suit::Spades, Rank::Nine),
+        (Suit::Hearts, Rank::Nine),
+        (Suit::Clubs, Rank::Nine),
+        (Suit::Diamonds, Rank::Nine),
+        (Suit::Hearts, Rank::Two),
+    ]);
+    assert_eq!(evaluate_hand(&cards), HandKind::Quads);
+}
+
+#[test]
+fn evaluate_hand_straight_flush() {
+    let cards = make_cards(&[
+        (Suit::Hearts, Rank::Five),
+        (Suit::Hearts, Rank::Six),
+        (Suit::Hearts, Rank::Seven),
+        (Suit::Hearts, Rank::Eight),
+        (Suit::Hearts, Rank::Nine),
+    ]);
+    assert_eq!(evaluate_hand(&cards), HandKind::StraightFlush);
+}
+
+#[test]
+fn evaluate_hand_royal_flush() {
+    let cards = make_cards(&[
+        (Suit::Spades, Rank::Ten),
+        (Suit::Spades, Rank::Jack),
+        (Suit::Spades, Rank::Queen),
+        (Suit::Spades, Rank::King),
+        (Suit::Spades, Rank::Ace),
+    ]);
+    assert_eq!(evaluate_hand(&cards), HandKind::RoyalFlush);
+}
+
+#[test]
+fn evaluate_hand_five_of_a_kind() {
+    let cards = make_cards(&[
+        (Suit::Spades, Rank::Ace),
+        (Suit::Hearts, Rank::Ace),
+        (Suit::Clubs, Rank::Ace),
+        (Suit::Diamonds, Rank::Ace),
+        (Suit::Spades, Rank::Ace),
+    ]);
+    assert_eq!(evaluate_hand(&cards), HandKind::FiveOfAKind);
+}
+
+#[test]
+fn evaluate_hand_flush_house() {
+    let cards = make_cards(&[
+        (Suit::Clubs, Rank::Ace),
+        (Suit::Clubs, Rank::Ace),
+        (Suit::Clubs, Rank::Ace),
+        (Suit::Clubs, Rank::King),
+        (Suit::Clubs, Rank::King),
+    ]);
+    assert_eq!(evaluate_hand(&cards), HandKind::FlushHouse);
+}
+
+#[test]
+fn evaluate_hand_flush_five() {
+    let cards = make_cards(&[
+        (Suit::Hearts, Rank::Ace),
+        (Suit::Hearts, Rank::Ace),
+        (Suit::Hearts, Rank::Ace),
+        (Suit::Hearts, Rank::Ace),
+        (Suit::Hearts, Rank::Ace),
+    ]);
+    assert_eq!(evaluate_hand(&cards), HandKind::FlushFive);
+}
+
+#[test]
+fn evaluate_hand_smeared_suits_flush() {
+    let cards = make_cards(&[
+        (Suit::Hearts, Rank::Two),
+        (Suit::Hearts, Rank::Four),
+        (Suit::Diamonds, Rank::Six),
+        (Suit::Diamonds, Rank::Eight),
+        (Suit::Hearts, Rank::Ten),
+    ]);
+    let rules = HandEvalRules {
+        smeared_suits: true,
+        four_fingers: false,
+        shortcut: false,
+    };
+    assert_eq!(evaluate_hand_with_rules(&cards, rules), HandKind::Flush);
+    assert_eq!(evaluate_hand(&cards), HandKind::HighCard);
+}
+
+#[test]
+fn evaluate_hand_four_fingers_straight() {
+    let cards = make_cards(&[
+        (Suit::Spades, Rank::Ace),
+        (Suit::Hearts, Rank::Two),
+        (Suit::Clubs, Rank::Three),
+        (Suit::Diamonds, Rank::Four),
+    ]);
+    let rules = HandEvalRules {
+        smeared_suits: false,
+        four_fingers: true,
+        shortcut: false,
+    };
+    assert_eq!(evaluate_hand_with_rules(&cards, rules), HandKind::Straight);
+    assert_eq!(evaluate_hand(&cards), HandKind::HighCard);
+}
+
+#[test]
+fn evaluate_hand_shortcut_straight() {
+    let cards = make_cards(&[
+        (Suit::Spades, Rank::Two),
+        (Suit::Hearts, Rank::Four),
+        (Suit::Clubs, Rank::Six),
+        (Suit::Diamonds, Rank::Eight),
+        (Suit::Hearts, Rank::Ten),
+    ]);
+    let rules = HandEvalRules {
+        smeared_suits: false,
+        four_fingers: false,
+        shortcut: true,
+    };
+    assert_eq!(evaluate_hand_with_rules(&cards, rules), HandKind::Straight);
+    assert_eq!(evaluate_hand(&cards), HandKind::HighCard);
+}
+
+#[test]
+fn scoring_cards_include_stone() {
+    let mut cards = make_cards(&[
+        (Suit::Spades, Rank::Two),
+        (Suit::Hearts, Rank::Two),
+        (Suit::Clubs, Rank::Three),
+        (Suit::Diamonds, Rank::Four),
+        (Suit::Spades, Rank::Five),
+    ]);
+    cards[2].enhancement = Some(Enhancement::Stone);
+    let scoring = scoring_cards(&cards, HandKind::Pair);
+    assert_eq!(scoring.len(), 3);
+    assert!(scoring.contains(&2));
+}
+
+#[test]
+fn score_hand_ignores_stone_rank_chips() {
+    let config = load_game_config(&assets_root()).expect("load config");
+    let tables = ScoreTables::from_config(&config);
+    let cards = make_cards(&[
+        (Suit::Spades, Rank::Ace),
+        (Suit::Hearts, Rank::Ace),
+        (Suit::Clubs, Rank::King),
+        (Suit::Diamonds, Rank::Queen),
+        (Suit::Spades, Rank::Jack),
+    ]);
+    let mut cards_stone = cards.clone();
+    cards_stone[2].enhancement = Some(Enhancement::Stone);
+    let normal = score_hand(&cards, &tables);
+    let with_stone = score_hand(&cards_stone, &tables);
+    assert_eq!(normal.hand, HandKind::Pair);
+    assert_eq!(with_stone.hand, HandKind::Pair);
+    assert_eq!(with_stone.rank_chips, normal.rank_chips);
+}
+
+#[test]
+fn score_tables_level_scaling() {
+    let config = load_game_config(&assets_root()).expect("load config");
+    let tables = ScoreTables::from_config(&config);
+    let (chips, mult) = tables.hand_base_for_level(HandKind::Pair, 3);
+    assert_eq!(chips, 40);
+    assert_eq!(mult, 4.0);
 }
 
 #[test]
@@ -1751,4 +2032,321 @@ fn leave_shop_resets_state() {
     assert!(run.shop.is_none());
     assert_eq!(run.state.phase, Phase::Deal);
     assert_eq!(run.state.shop_free_rerolls, 0);
+}
+
+#[test]
+fn rule_smeared_suits_from_joker() {
+    let mut run = new_run();
+    add_rule_joker(&mut run, "rule_smeared", "smeared_suits", 1.0);
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    run.hand = make_cards(&[
+        (Suit::Spades, Rank::Ace),
+        (Suit::Clubs, Rank::King),
+        (Suit::Spades, Rank::Nine),
+        (Suit::Clubs, Rank::Five),
+        (Suit::Spades, Rank::Two),
+    ]);
+    let breakdown = run
+        .play_hand(&[0, 1, 2, 3, 4], &mut EventBus::default())
+        .expect("play hand");
+    assert_eq!(breakdown.hand, HandKind::Flush);
+}
+
+#[test]
+fn rule_four_fingers_from_joker() {
+    let mut run = new_run();
+    add_rule_joker(&mut run, "rule_four_fingers", "four_fingers", 1.0);
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    run.hand = make_cards(&[
+        (Suit::Hearts, Rank::Ace),
+        (Suit::Hearts, Rank::Nine),
+        (Suit::Hearts, Rank::Seven),
+        (Suit::Hearts, Rank::Two),
+    ]);
+    let breakdown = run
+        .play_hand(&[0, 1, 2, 3], &mut EventBus::default())
+        .expect("play hand");
+    assert_eq!(breakdown.hand, HandKind::Flush);
+}
+
+#[test]
+fn rule_shortcut_from_joker() {
+    let mut run = new_run();
+    add_rule_joker(&mut run, "rule_shortcut", "shortcut", 1.0);
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    run.hand = make_cards(&[
+        (Suit::Spades, Rank::Two),
+        (Suit::Hearts, Rank::Four),
+        (Suit::Clubs, Rank::Six),
+        (Suit::Diamonds, Rank::Eight),
+        (Suit::Spades, Rank::Ten),
+    ]);
+    let breakdown = run
+        .play_hand(&[0, 1, 2, 3, 4], &mut EventBus::default())
+        .expect("play hand");
+    assert_eq!(breakdown.hand, HandKind::Straight);
+}
+
+#[test]
+fn rule_single_hand_type_enforced() {
+    let mut run = new_run();
+    add_rule_joker(&mut run, "rule_single", "single_hand_type", 1.0);
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 2;
+    run.hand = make_cards(&[
+        (Suit::Spades, Rank::Ace),
+        (Suit::Hearts, Rank::Ace),
+        (Suit::Clubs, Rank::King),
+        (Suit::Diamonds, Rank::Seven),
+        (Suit::Spades, Rank::Four),
+    ]);
+    run.play_hand(&[0, 1, 2, 3, 4], &mut EventBus::default())
+        .expect("play hand");
+
+    run.state.phase = Phase::Play;
+    run.hand = make_cards(&[
+        (Suit::Spades, Rank::King),
+        (Suit::Hearts, Rank::Nine),
+        (Suit::Clubs, Rank::Eight),
+        (Suit::Diamonds, Rank::Seven),
+        (Suit::Spades, Rank::Six),
+    ]);
+    let err = run
+        .play_hand(&[0, 1, 2, 3, 4], &mut EventBus::default())
+        .unwrap_err();
+    assert!(matches!(err, RunError::HandNotAllowed));
+}
+
+#[test]
+fn rule_no_repeat_hand_enforced() {
+    let mut run = new_run();
+    add_rule_joker(&mut run, "rule_no_repeat", "no_repeat_hand", 1.0);
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 2;
+    let cards = make_cards(&[
+        (Suit::Spades, Rank::Ace),
+        (Suit::Hearts, Rank::Ace),
+        (Suit::Clubs, Rank::King),
+        (Suit::Diamonds, Rank::Seven),
+        (Suit::Spades, Rank::Four),
+    ]);
+    run.hand = cards.clone();
+    run.play_hand(&[0, 1, 2, 3, 4], &mut EventBus::default())
+        .expect("play hand");
+
+    run.state.phase = Phase::Play;
+    run.hand = cards;
+    let err = run
+        .play_hand(&[0, 1, 2, 3, 4], &mut EventBus::default())
+        .unwrap_err();
+    assert!(matches!(err, RunError::HandNotAllowed));
+}
+
+#[test]
+fn rule_required_play_count_enforced() {
+    let mut run = new_run();
+    add_rule_joker(&mut run, "rule_required", "required_play_count", 5.0);
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    run.hand = make_cards(&[
+        (Suit::Spades, Rank::Ace),
+        (Suit::Hearts, Rank::King),
+        (Suit::Clubs, Rank::Queen),
+        (Suit::Diamonds, Rank::Jack),
+        (Suit::Spades, Rank::Nine),
+    ]);
+    let err = run
+        .play_hand(&[0, 1, 2, 3], &mut EventBus::default())
+        .unwrap_err();
+    assert!(matches!(err, RunError::InvalidCardCount));
+}
+
+#[test]
+fn rule_discard_held_after_hand() {
+    let mut run = new_run();
+    add_rule_joker(&mut run, "rule_discard_held", "discard_held_after_hand", 3.0);
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    run.hand = make_hand();
+    run.play_hand(&[0, 1, 2, 3, 4], &mut EventBus::default())
+        .expect("play hand");
+    assert_eq!(run.hand.len(), 0);
+}
+
+#[test]
+fn rule_draw_after_play() {
+    let mut run = new_run();
+    add_rule_joker(&mut run, "rule_draw_play", "draw_after_play", 1.0);
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    run.hand = make_cards(&[
+        (Suit::Spades, Rank::Ace),
+        (Suit::Hearts, Rank::King),
+        (Suit::Clubs, Rank::Queen),
+        (Suit::Diamonds, Rank::Jack),
+        (Suit::Spades, Rank::Nine),
+    ]);
+    run.deck.draw = vec![Card::standard(Suit::Hearts, Rank::Two)];
+    run.play_hand(&[0, 1, 2, 3, 4], &mut EventBus::default())
+        .expect("play hand");
+    assert_eq!(run.hand.len(), 1);
+}
+
+#[test]
+fn rule_draw_after_discard() {
+    let mut run = new_run();
+    add_rule_joker(&mut run, "rule_draw_discard", "draw_after_discard", 1.0);
+    run.state.phase = Phase::Play;
+    run.state.discards_left = 1;
+    run.hand = make_cards(&[
+        (Suit::Spades, Rank::Ace),
+        (Suit::Hearts, Rank::King),
+        (Suit::Clubs, Rank::Queen),
+    ]);
+    run.deck.draw = vec![Card::standard(Suit::Diamonds, Rank::Two)];
+    run.discard(&[0], &mut EventBus::default())
+        .expect("discard");
+    assert_eq!(run.hand.len(), 3);
+}
+
+#[test]
+fn rule_base_chips_mult_scales() {
+    let config = load_game_config(&assets_root()).expect("load config");
+    let tables = ScoreTables::from_config(&config);
+    let mut run = new_run();
+    add_rule_joker(&mut run, "rule_base_chips", "base_chips_mult", 2.0);
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    run.hand = make_cards(&[
+        (Suit::Spades, Rank::Ace),
+        (Suit::Hearts, Rank::Ace),
+        (Suit::Clubs, Rank::King),
+        (Suit::Diamonds, Rank::Seven),
+        (Suit::Spades, Rank::Four),
+    ]);
+    let breakdown = run
+        .play_hand(&[0, 1, 2, 3, 4], &mut EventBus::default())
+        .expect("play hand");
+    let (base_chips, base_mult) = tables.hand_base_for_level(HandKind::Pair, 1);
+    assert_eq!(breakdown.base.chips, base_chips * 2);
+    assert_eq!(breakdown.base.mult, base_mult);
+}
+
+#[test]
+fn rule_base_mult_mult_scales() {
+    let config = load_game_config(&assets_root()).expect("load config");
+    let tables = ScoreTables::from_config(&config);
+    let mut run = new_run();
+    add_rule_joker(&mut run, "rule_base_mult", "base_mult_mult", 3.0);
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    run.hand = make_cards(&[
+        (Suit::Spades, Rank::Ace),
+        (Suit::Hearts, Rank::Ace),
+        (Suit::Clubs, Rank::King),
+        (Suit::Diamonds, Rank::Seven),
+        (Suit::Spades, Rank::Four),
+    ]);
+    let breakdown = run
+        .play_hand(&[0, 1, 2, 3, 4], &mut EventBus::default())
+        .expect("play hand");
+    let (base_chips, base_mult) = tables.hand_base_for_level(HandKind::Pair, 1);
+    assert_eq!(breakdown.base.chips, base_chips);
+    assert_eq!(breakdown.base.mult, base_mult * 3.0);
+}
+
+#[test]
+fn rule_hand_level_delta_scales() {
+    let config = load_game_config(&assets_root()).expect("load config");
+    let tables = ScoreTables::from_config(&config);
+    let mut run = new_run();
+    add_rule_joker(&mut run, "rule_level_delta", "hand_level_delta", 1.0);
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    run.hand = make_cards(&[
+        (Suit::Spades, Rank::Ace),
+        (Suit::Hearts, Rank::Ace),
+        (Suit::Clubs, Rank::King),
+        (Suit::Diamonds, Rank::Seven),
+        (Suit::Spades, Rank::Four),
+    ]);
+    let breakdown = run
+        .play_hand(&[0, 1, 2, 3, 4], &mut EventBus::default())
+        .expect("play hand");
+    let (base_chips, base_mult) = tables.hand_base_for_level(HandKind::Pair, 2);
+    assert_eq!(breakdown.base.chips, base_chips);
+    assert_eq!(breakdown.base.mult, base_mult);
+}
+
+#[test]
+fn rule_splash_scores_all_cards() {
+    let mut run = new_run();
+    add_rule_joker(&mut run, "rule_splash", "splash", 1.0);
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    run.hand = make_cards(&[
+        (Suit::Spades, Rank::Ace),
+        (Suit::Hearts, Rank::King),
+        (Suit::Clubs, Rank::Queen),
+        (Suit::Diamonds, Rank::Jack),
+        (Suit::Spades, Rank::Nine),
+    ]);
+    let breakdown = run
+        .play_hand(&[0, 1, 2, 3, 4], &mut EventBus::default())
+        .expect("play hand");
+    assert_eq!(breakdown.scoring_indices.len(), 5);
+}
+
+#[test]
+fn debuff_face_blocks_bonus_enhancement() {
+    let mut cards = make_cards(&[
+        (Suit::Spades, Rank::King),
+        (Suit::Hearts, Rank::Nine),
+        (Suit::Clubs, Rank::Eight),
+        (Suit::Diamonds, Rank::Seven),
+        (Suit::Spades, Rank::Six),
+    ]);
+    cards[0].enhancement = Some(Enhancement::Bonus);
+
+    let mut baseline = new_run();
+    baseline.state.phase = Phase::Play;
+    baseline.state.hands_left = 1;
+    baseline.hand = cards.clone();
+    let normal = baseline
+        .play_hand(&[0, 1, 2, 3, 4], &mut EventBus::default())
+        .expect("play hand");
+
+    let mut debuffed = new_run();
+    add_rule_joker(&mut debuffed, "rule_debuff_face", "debuff_face", 1.0);
+    debuffed.state.phase = Phase::Play;
+    debuffed.state.hands_left = 1;
+    debuffed.hand = cards;
+    let debuffed_breakdown = debuffed
+        .play_hand(&[0, 1, 2, 3, 4], &mut EventBus::default())
+        .expect("play hand");
+
+    assert_eq!(normal.total.chips - debuffed_breakdown.total.chips, 30);
+}
+
+#[test]
+fn gold_seal_adds_money_on_score() {
+    let mut run = new_run();
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    run.state.money = 0;
+    let mut cards = make_cards(&[
+        (Suit::Spades, Rank::Ace),
+        (Suit::Hearts, Rank::Nine),
+        (Suit::Clubs, Rank::Eight),
+        (Suit::Diamonds, Rank::Seven),
+        (Suit::Spades, Rank::Six),
+    ]);
+    cards[0].seal = Some(Seal::Gold);
+    run.hand = cards;
+    run.play_hand(&[0, 1, 2, 3, 4], &mut EventBus::default())
+        .expect("play hand");
+    assert_eq!(run.state.money, 3);
 }
