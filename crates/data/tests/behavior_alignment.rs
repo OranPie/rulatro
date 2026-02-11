@@ -1,8 +1,8 @@
 use rulatro_core::{
-    Action, ActionOp, ActivationType, BlindKind, Card, CardWeight, ConsumableKind, Enhancement,
-    Edition, EventBus, Expr, HandKind, JokerDef, JokerEffect, JokerRarity, LastConsumable, PackKind,
-    PackOffer, PackSize, Phase, Rank, RunError, RunState, ShopCardKind, ShopOfferRef, ShopPurchase,
-    Suit,
+    Action, ActionOp, ActivationType, BlindKind, BossDef, Card, CardWeight, ConsumableKind,
+    Enhancement, Edition, EventBus, Expr, HandKind, JokerDef, JokerEffect, JokerRarity,
+    LastConsumable, PackKind, PackOffer, PackSize, Phase, Rank, RunError, RunState, ShopCardKind,
+    ShopOfferRef, ShopPurchase, Suit,
 };
 use rulatro_data::{load_content, load_game_config};
 use std::path::PathBuf;
@@ -758,6 +758,28 @@ fn shop_buy_joker_adds_inventory() {
 }
 
 #[test]
+fn shop_buy_voucher_decrements_and_costs() {
+    let mut run = new_run();
+    mark_blind_cleared(&mut run);
+    let voucher_price = run.config.shop.prices.voucher;
+    let initial_money = voucher_price + 5;
+    run.state.money = initial_money;
+    let mut events = EventBus::default();
+    run.enter_shop(&mut events).expect("enter shop");
+    let purchase = run
+        .buy_shop_offer(ShopOfferRef::Voucher(0), &mut events)
+        .expect("buy voucher");
+    match purchase {
+        ShopPurchase::Voucher => {}
+        _ => panic!("expected voucher purchase"),
+    }
+    let shop = run.shop.as_ref().expect("shop");
+    assert_eq!(shop.vouchers, run.config.shop.voucher_slots as usize - 1);
+    assert_eq!(run.state.money, initial_money - voucher_price);
+    run.apply_purchase(&purchase).expect("apply purchase");
+}
+
+#[test]
 fn shop_reroll_cost_and_free_rerolls() {
     let mut run = new_run();
     mark_blind_cleared(&mut run);
@@ -1009,6 +1031,61 @@ fn chicot_disables_boss_effects() {
     run.play_hand(&[0, 1, 2, 3, 4], &mut events)
         .expect("play hand");
     assert_eq!(run.state.money, money_before);
+}
+
+#[test]
+fn boss_effects_apply_on_shop_enter() {
+    let mut run = new_run();
+    let boss_id = "test_boss";
+    run.content.bosses.push(BossDef {
+        id: boss_id.to_string(),
+        name: "Test Boss".to_string(),
+        effects: vec![JokerEffect {
+            trigger: ActivationType::OnShopEnter,
+            when: Expr::Bool(true),
+            actions: vec![Action {
+                op: ActionOp::AddMoney,
+                target: None,
+                value: Expr::Number(7.0),
+            }],
+        }],
+    });
+    run.state.blind = BlindKind::Boss;
+    run.state.boss_id = Some(boss_id.to_string());
+    mark_blind_cleared(&mut run);
+    run.state.money = 0;
+    let mut events = EventBus::default();
+    run.enter_shop(&mut events).expect("enter shop");
+    assert_eq!(run.state.money, 7);
+}
+
+#[test]
+fn tag_coupon_then_joker_overrides_card_prices() {
+    let mut run = new_run();
+    mark_blind_cleared(&mut run);
+    run.state.tags.push("coupon_tag".to_string());
+    run.content.jokers.push(JokerDef {
+        id: "price_override".to_string(),
+        name: "Price Override".to_string(),
+        rarity: JokerRarity::Common,
+        effects: vec![JokerEffect {
+            trigger: ActivationType::OnShopEnter,
+            when: Expr::Bool(true),
+            actions: vec![Action {
+                op: ActionOp::SetShopPrice,
+                target: Some("cards".to_string()),
+                value: Expr::Number(2.0),
+            }],
+        }],
+    });
+    run.inventory
+        .add_joker("price_override".to_string(), JokerRarity::Common, 1)
+        .expect("add joker");
+    let mut events = EventBus::default();
+    run.enter_shop(&mut events).expect("enter shop");
+    let shop = run.shop.as_ref().expect("shop");
+    assert!(shop.cards.iter().all(|card| card.price == 2));
+    assert!(shop.packs.iter().all(|pack| pack.price == 0));
 }
 
 #[test]
