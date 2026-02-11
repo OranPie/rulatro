@@ -1,7 +1,8 @@
 use rulatro_core::{
-    BlindKind, Card, CardWeight, ConsumableKind, Enhancement, Edition, EventBus, HandKind,
-    JokerRarity, LastConsumable, PackKind, PackOffer, PackSize, Phase, Rank, RunError, RunState,
-    ShopCardKind, ShopOfferRef, ShopPurchase, Suit,
+    Action, ActionOp, ActivationType, BlindKind, Card, CardWeight, ConsumableKind, Enhancement,
+    Edition, EventBus, Expr, HandKind, JokerDef, JokerEffect, JokerRarity, LastConsumable, PackKind,
+    PackOffer, PackSize, Phase, Rank, RunError, RunState, ShopCardKind, ShopOfferRef, ShopPurchase,
+    Suit,
 };
 use rulatro_data::{load_content, load_game_config};
 use std::path::PathBuf;
@@ -663,6 +664,62 @@ fn astronomer_sets_planet_and_celestial_prices() {
 }
 
 #[test]
+fn shop_reroll_price_override_ordered_jokers() {
+    let mut run = new_run();
+    mark_blind_cleared(&mut run);
+    run.config.shop.card_weights = vec![CardWeight {
+        kind: ShopCardKind::Planet,
+        weight: 1,
+    }];
+    let price_all = JokerDef {
+        id: "price_all".to_string(),
+        name: "Price All".to_string(),
+        rarity: JokerRarity::Common,
+        effects: vec![JokerEffect {
+            trigger: ActivationType::OnShopReroll,
+            when: Expr::Bool(true),
+            actions: vec![Action {
+                op: ActionOp::SetShopPrice,
+                target: Some("cards".to_string()),
+                value: Expr::Number(2.0),
+            }],
+        }],
+    };
+    let price_planet = JokerDef {
+        id: "price_planet".to_string(),
+        name: "Price Planet".to_string(),
+        rarity: JokerRarity::Common,
+        effects: vec![JokerEffect {
+            trigger: ActivationType::OnShopReroll,
+            when: Expr::Bool(true),
+            actions: vec![Action {
+                op: ActionOp::SetShopPrice,
+                target: Some("planet".to_string()),
+                value: Expr::Number(0.0),
+            }],
+        }],
+    };
+    run.content.jokers.push(price_all);
+    run.content.jokers.push(price_planet);
+    run.inventory
+        .add_joker("price_all".to_string(), JokerRarity::Common, 1)
+        .expect("add joker");
+    run.inventory
+        .add_joker("price_planet".to_string(), JokerRarity::Common, 1)
+        .expect("add joker");
+
+    run.state.money = 100;
+    let mut events = EventBus::default();
+    run.enter_shop(&mut events).expect("enter shop");
+    run.reroll_shop(&mut events).expect("reroll");
+    let shop = run.shop.as_ref().expect("shop");
+    assert!(shop
+        .cards
+        .iter()
+        .all(|card| matches!(card.kind, ShopCardKind::Planet) && card.price == 0));
+}
+
+#[test]
 fn shop_buy_rejects_not_enough_money() {
     let mut run = new_run();
     mark_blind_cleared(&mut run);
@@ -765,6 +822,27 @@ fn pack_open_and_choose_playing_card() {
     run.choose_pack_options(&open, &[0], &mut events)
         .expect("choose pack");
     assert_eq!(run.deck.discard.len(), before + 1);
+}
+
+#[test]
+fn pack_choose_rejects_too_many_picks() {
+    let mut run = new_run();
+    let mut events = EventBus::default();
+    let pack = PackOffer {
+        kind: PackKind::Arcana,
+        size: PackSize::Normal,
+        options: 2,
+        picks: 1,
+        price: 0,
+    };
+    let purchase = ShopPurchase::Pack(pack);
+    let open = run
+        .open_pack_purchase(&purchase, &mut events)
+        .expect("open pack");
+    let err = run
+        .choose_pack_options(&open, &[0, 1], &mut events)
+        .unwrap_err();
+    assert!(matches!(err, RunError::InvalidSelection));
 }
 
 #[test]
@@ -894,6 +972,43 @@ fn tarot_rejects_out_of_range_selection() {
         .use_consumable(0, &[99], &mut EventBus::default())
         .unwrap_err();
     assert!(matches!(err, RunError::InvalidSelection));
+}
+
+#[test]
+fn chicot_disables_boss_effects() {
+    let mut baseline = new_run();
+    baseline
+        .inventory
+        .add_joker("matador".to_string(), JokerRarity::Uncommon, 10)
+        .expect("add joker");
+    let mut base_events = EventBus::default();
+    baseline
+        .start_blind(1, BlindKind::Boss, &mut base_events)
+        .expect("start boss");
+    baseline.hand = make_hand();
+    baseline.state.phase = Phase::Play;
+    let base_money = baseline.state.money;
+    baseline
+        .play_hand(&[0, 1, 2, 3, 4], &mut base_events)
+        .expect("play hand");
+    assert!(baseline.state.money > base_money);
+
+    let mut run = new_run();
+    run.inventory
+        .add_joker("matador".to_string(), JokerRarity::Uncommon, 10)
+        .expect("add joker");
+    run.inventory
+        .add_joker("chicot".to_string(), JokerRarity::Legendary, 10)
+        .expect("add joker");
+    let mut events = EventBus::default();
+    run.start_blind(1, BlindKind::Boss, &mut events)
+        .expect("start boss");
+    run.hand = make_hand();
+    run.state.phase = Phase::Play;
+    let money_before = run.state.money;
+    run.play_hand(&[0, 1, 2, 3, 4], &mut events)
+        .expect("play hand");
+    assert_eq!(run.state.money, money_before);
 }
 
 #[test]
