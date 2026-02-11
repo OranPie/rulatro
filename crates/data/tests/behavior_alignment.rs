@@ -532,6 +532,75 @@ fn tag_juggle_adds_hand_size_on_blind_start() {
 }
 
 #[test]
+fn tag_pack_adds_expected_offers() {
+    let mut run = new_run();
+    mark_blind_cleared(&mut run);
+    run.state.tags.push("buffoon_tag".to_string());
+    run.state.tags.push("charm_tag".to_string());
+    run.state.tags.push("ethereal_tag".to_string());
+    run.state.tags.push("meteor_tag".to_string());
+    run.state.tags.push("standard_tag".to_string());
+    let mut events = EventBus::default();
+    run.enter_shop(&mut events).expect("enter shop");
+    let shop = run.shop.as_ref().expect("shop");
+    let mut expect = vec![
+        (PackKind::Buffoon, PackSize::Mega),
+        (PackKind::Arcana, PackSize::Mega),
+        (PackKind::Spectral, PackSize::Normal),
+        (PackKind::Celestial, PackSize::Mega),
+        (PackKind::Standard, PackSize::Mega),
+    ];
+    for (kind, size) in expect.drain(..) {
+        assert!(shop
+            .packs
+            .iter()
+            .any(|pack| pack.kind == kind && pack.size == size && pack.price == 0));
+    }
+    assert!(run.state.tags.is_empty());
+}
+
+#[test]
+fn tag_voucher_increases_vouchers() {
+    let mut run = new_run();
+    mark_blind_cleared(&mut run);
+    run.state.tags.push("voucher_tag".to_string());
+    let base = run.config.shop.voucher_slots as usize;
+    let mut events = EventBus::default();
+    run.enter_shop(&mut events).expect("enter shop");
+    let shop = run.shop.as_ref().expect("shop");
+    assert_eq!(shop.vouchers, base + 1);
+    assert!(run.state.tags.is_empty());
+}
+
+#[test]
+fn tag_rare_plus_foil_sets_shop_joker_edition() {
+    let mut run = new_run();
+    mark_blind_cleared(&mut run);
+    run.state.tags.push("rare_tag".to_string());
+    run.state.tags.push("foil_tag".to_string());
+    let mut events = EventBus::default();
+    run.enter_shop(&mut events).expect("enter shop");
+    let shop = run.shop.as_ref().expect("shop");
+    assert!(shop.cards.iter().any(|card| {
+        matches!(card.kind, rulatro_core::ShopCardKind::Joker)
+            && card.rarity == Some(JokerRarity::Rare)
+    }));
+    assert!(shop.cards.iter().any(|card| card.edition == Some(Edition::Foil)));
+    assert!(run.state.tags.is_empty());
+}
+
+#[test]
+fn tag_top_up_adds_jokers_to_inventory() {
+    let mut run = new_run();
+    mark_blind_cleared(&mut run);
+    run.state.tags.push("top_up_tag".to_string());
+    let mut events = EventBus::default();
+    run.enter_shop(&mut events).expect("enter shop");
+    assert_eq!(run.inventory.jokers.len(), 2);
+    assert!(run.state.tags.is_empty());
+}
+
+#[test]
 fn shop_reroll_cost_and_free_rerolls() {
     let mut run = new_run();
     mark_blind_cleared(&mut run);
@@ -650,6 +719,63 @@ fn blind_reward_includes_interest_and_per_hand() {
     let expected_reward =
         economy.reward_small + economy.per_hand_reward * hands_left_after + interest;
     assert_eq!(run.state.money, pre_money + expected_reward);
+}
+
+#[test]
+fn play_hand_rejects_invalid_count() {
+    let mut run = new_run();
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    run.hand = make_hand();
+    let err = run.play_hand(&[0, 1, 2, 3, 4, 5], &mut EventBus::default());
+    assert!(matches!(err, Err(RunError::InvalidCardCount)));
+}
+
+#[test]
+fn discard_rejects_invalid_count() {
+    let mut run = new_run();
+    run.state.phase = Phase::Play;
+    run.state.discards_left = 1;
+    run.hand = make_hand();
+    let err = run.discard(&[0, 1, 2, 3, 4, 5], &mut EventBus::default());
+    assert!(matches!(err, Err(RunError::InvalidCardCount)));
+}
+
+#[test]
+fn play_and_discard_require_play_phase() {
+    let mut run = new_run();
+    run.hand = make_hand();
+    run.state.phase = Phase::Deal;
+    let err = run.play_hand(&[0, 1, 2, 3, 4], &mut EventBus::default()).unwrap_err();
+    assert!(matches!(err, RunError::InvalidPhase(Phase::Deal)));
+    let err = run.discard(&[0], &mut EventBus::default()).unwrap_err();
+    assert!(matches!(err, RunError::InvalidPhase(Phase::Deal)));
+}
+
+#[test]
+fn discard_consumes_and_refills_hand() {
+    let mut run = new_run();
+    run.state.phase = Phase::Play;
+    run.state.discards_left = 1;
+    run.hand = make_hand();
+    let mut events = EventBus::default();
+    run.discard(&[0, 1], &mut events).expect("discard");
+    assert_eq!(run.state.discards_left, 0);
+    assert_eq!(run.hand.len(), run.state.hand_size);
+}
+
+#[test]
+fn play_hand_consumes_hand_and_advances_phase() {
+    let mut run = new_run();
+    run.hand = make_hand();
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 2;
+    run.state.target = 10_000;
+    let mut events = EventBus::default();
+    run.play_hand(&[0, 1, 2, 3, 4], &mut events)
+        .expect("play hand");
+    assert_eq!(run.state.hands_left, 1);
+    assert_eq!(run.state.phase, Phase::Deal);
 }
 
 #[test]
