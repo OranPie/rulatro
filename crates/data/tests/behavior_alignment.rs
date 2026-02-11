@@ -1,0 +1,461 @@
+use rulatro_core::{
+    Card, ConsumableKind, Enhancement, Edition, EventBus, HandKind, JokerRarity, LastConsumable,
+    Rank, RunError, RunState, Suit,
+};
+use rulatro_data::{load_content, load_game_config};
+use std::path::PathBuf;
+
+fn assets_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("assets")
+}
+
+fn new_run() -> RunState {
+    let config = load_game_config(&assets_root()).expect("load config");
+    let content = load_content(&assets_root()).expect("load content");
+    let mut run = RunState::new(config, content, 12345);
+    run.inventory.joker_slots = 99;
+    run.inventory.consumable_slots = 99;
+    run.state.money = 0;
+    run.state.hand_size = 8;
+    run
+}
+
+fn make_hand() -> Vec<Card> {
+    vec![
+        Card::standard(Suit::Spades, Rank::Ace),
+        Card::standard(Suit::Hearts, Rank::Two),
+        Card::standard(Suit::Clubs, Rank::Three),
+        Card::standard(Suit::Diamonds, Rank::Four),
+        Card::standard(Suit::Spades, Rank::Five),
+        Card::standard(Suit::Hearts, Rank::Six),
+        Card::standard(Suit::Clubs, Rank::Seven),
+        Card::standard(Suit::Diamonds, Rank::Eight),
+    ]
+}
+
+fn use_consumable(run: &mut RunState, id: &str, kind: ConsumableKind, selected: &[usize]) {
+    run.inventory.consumables.clear();
+    run.inventory
+        .add_consumable(id.to_string(), kind)
+        .expect("add consumable");
+    let mut events = EventBus::default();
+    run.use_consumable(0, selected, &mut events)
+        .expect("use consumable");
+}
+
+fn hand_level(run: &RunState, kind: HandKind) -> u32 {
+    let key = rulatro_core::level_kind(kind);
+    run.state.hand_levels.get(&key).copied().unwrap_or(1)
+}
+
+#[test]
+fn content_counts_and_ids() {
+    let content = load_content(&assets_root()).expect("load content");
+    assert_eq!(content.tarots.len(), 22);
+    assert_eq!(content.planets.len(), 12);
+    assert_eq!(content.spectrals.len(), 18);
+    assert_eq!(content.tags.len(), 24);
+
+    let tarot_ids: Vec<&str> = vec![
+        "the_fool",
+        "the_magician",
+        "the_high_priestess",
+        "the_empress",
+        "the_emperor",
+        "the_hierophant",
+        "the_lovers",
+        "the_chariot",
+        "justice",
+        "the_hermit",
+        "the_wheel_of_fortune",
+        "strength",
+        "the_hanged_man",
+        "death",
+        "temperance",
+        "the_devil",
+        "the_tower",
+        "the_star",
+        "the_moon",
+        "the_sun",
+        "judgement",
+        "the_world",
+    ];
+    for id in tarot_ids {
+        assert!(content.tarots.iter().any(|card| card.id == id));
+    }
+
+    let planet_ids: Vec<&str> = vec![
+        "pluto",
+        "mercury",
+        "uranus",
+        "venus",
+        "saturn",
+        "jupiter",
+        "earth",
+        "mars",
+        "neptune",
+        "planet_x",
+        "ceres",
+        "eris",
+    ];
+    for id in planet_ids {
+        assert!(content.planets.iter().any(|card| card.id == id));
+    }
+
+    let spectral_ids: Vec<&str> = vec![
+        "familiar",
+        "grim",
+        "incantation",
+        "talisman",
+        "aura",
+        "wraith",
+        "sigil",
+        "ouija",
+        "ectoplasm",
+        "immolate",
+        "hex",
+        "ankh",
+        "black_hole",
+        "cryptid",
+        "deja_vu",
+        "medium",
+        "trance",
+        "the_soul",
+    ];
+    for id in spectral_ids {
+        assert!(content.spectrals.iter().any(|card| card.id == id));
+    }
+}
+
+#[test]
+fn tarot_requires_selection() {
+    let mut run = new_run();
+    run.hand = make_hand();
+    run.inventory
+        .add_consumable("the_devil".to_string(), ConsumableKind::Tarot)
+        .expect("add consumable");
+    let mut events = EventBus::default();
+    let err = run.use_consumable(0, &[], &mut events).unwrap_err();
+    assert!(matches!(err, RunError::InvalidSelection));
+}
+
+#[test]
+fn tarot_enhancements_and_suits() {
+    let mut run = new_run();
+    run.hand = make_hand();
+
+    use_consumable(&mut run, "the_lovers", ConsumableKind::Tarot, &[0]);
+    assert_eq!(run.hand[0].enhancement, Some(Enhancement::Wild));
+
+    use_consumable(&mut run, "the_chariot", ConsumableKind::Tarot, &[1]);
+    assert_eq!(run.hand[1].enhancement, Some(Enhancement::Steel));
+
+    use_consumable(&mut run, "justice", ConsumableKind::Tarot, &[2]);
+    assert_eq!(run.hand[2].enhancement, Some(Enhancement::Glass));
+
+    use_consumable(&mut run, "the_devil", ConsumableKind::Tarot, &[3]);
+    assert_eq!(run.hand[3].enhancement, Some(Enhancement::Gold));
+
+    use_consumable(&mut run, "the_tower", ConsumableKind::Tarot, &[4]);
+    assert_eq!(run.hand[4].enhancement, Some(Enhancement::Stone));
+
+    use_consumable(&mut run, "the_empress", ConsumableKind::Tarot, &[5, 6]);
+    assert_eq!(run.hand[5].enhancement, Some(Enhancement::Mult));
+    assert_eq!(run.hand[6].enhancement, Some(Enhancement::Mult));
+
+    use_consumable(&mut run, "the_hierophant", ConsumableKind::Tarot, &[6, 7]);
+    assert_eq!(run.hand[6].enhancement, Some(Enhancement::Bonus));
+    assert_eq!(run.hand[7].enhancement, Some(Enhancement::Bonus));
+
+    use_consumable(&mut run, "the_magician", ConsumableKind::Tarot, &[0, 1]);
+    assert_eq!(run.hand[0].enhancement, Some(Enhancement::Lucky));
+    assert_eq!(run.hand[1].enhancement, Some(Enhancement::Lucky));
+
+    use_consumable(&mut run, "the_moon", ConsumableKind::Tarot, &[0, 1, 2]);
+    assert_eq!(run.hand[0].suit, Suit::Clubs);
+    assert_eq!(run.hand[1].suit, Suit::Clubs);
+    assert_eq!(run.hand[2].suit, Suit::Clubs);
+
+    use_consumable(&mut run, "the_star", ConsumableKind::Tarot, &[0, 1, 2]);
+    assert_eq!(run.hand[0].suit, Suit::Diamonds);
+    assert_eq!(run.hand[1].suit, Suit::Diamonds);
+    assert_eq!(run.hand[2].suit, Suit::Diamonds);
+
+    use_consumable(&mut run, "the_sun", ConsumableKind::Tarot, &[0, 1, 2]);
+    assert_eq!(run.hand[0].suit, Suit::Hearts);
+    assert_eq!(run.hand[1].suit, Suit::Hearts);
+    assert_eq!(run.hand[2].suit, Suit::Hearts);
+
+    use_consumable(&mut run, "the_world", ConsumableKind::Tarot, &[0, 1, 2]);
+    assert_eq!(run.hand[0].suit, Suit::Spades);
+    assert_eq!(run.hand[1].suit, Suit::Spades);
+    assert_eq!(run.hand[2].suit, Suit::Spades);
+}
+
+#[test]
+fn tarot_rank_and_destroy_and_convert() {
+    let mut run = new_run();
+    run.hand = make_hand();
+
+    use_consumable(&mut run, "strength", ConsumableKind::Tarot, &[0, 1]);
+    assert_eq!(run.hand[0].rank, Rank::Two);
+    assert_eq!(run.hand[1].rank, Rank::Three);
+
+    let before = run.hand.len();
+    use_consumable(&mut run, "the_hanged_man", ConsumableKind::Tarot, &[0, 1]);
+    assert_eq!(run.hand.len(), before - 2);
+
+    run.hand = make_hand();
+    let right = run.hand[1];
+    use_consumable(&mut run, "death", ConsumableKind::Tarot, &[0, 1]);
+    assert_eq!(run.hand[0].suit, right.suit);
+    assert_eq!(run.hand[0].rank, right.rank);
+    assert_eq!(run.hand[0].enhancement, right.enhancement);
+    assert_eq!(run.hand[0].edition, right.edition);
+    assert_eq!(run.hand[0].seal, right.seal);
+}
+
+#[test]
+fn tarot_money_and_generation() {
+    let mut run = new_run();
+    run.hand = make_hand();
+
+    run.state.money = 30;
+    use_consumable(&mut run, "the_hermit", ConsumableKind::Tarot, &[]);
+    assert_eq!(run.state.money, 50);
+
+    run.state.money = 0;
+    run.inventory
+        .add_joker("joker_a".to_string(), JokerRarity::Common, 200)
+        .unwrap();
+    run.inventory
+        .add_joker("joker_b".to_string(), JokerRarity::Common, 200)
+        .unwrap();
+    use_consumable(&mut run, "temperance", ConsumableKind::Tarot, &[]);
+    assert_eq!(run.state.money, 50);
+
+    run.inventory.consumables.clear();
+    use_consumable(&mut run, "the_emperor", ConsumableKind::Tarot, &[]);
+    assert_eq!(run.inventory.consumables.len(), 2);
+    assert!(run
+        .inventory
+        .consumables
+        .iter()
+        .all(|item| item.kind == ConsumableKind::Tarot));
+
+    run.inventory.consumables.clear();
+    use_consumable(
+        &mut run,
+        "the_high_priestess",
+        ConsumableKind::Tarot,
+        &[],
+    );
+    assert_eq!(run.inventory.consumables.len(), 2);
+    assert!(run
+        .inventory
+        .consumables
+        .iter()
+        .all(|item| item.kind == ConsumableKind::Planet));
+
+    run.inventory.jokers.clear();
+    use_consumable(&mut run, "judgement", ConsumableKind::Tarot, &[]);
+    assert_eq!(run.inventory.jokers.len(), 1);
+}
+
+#[test]
+fn tarot_fool_creates_last_consumable() {
+    let mut run = new_run();
+    run.hand = make_hand();
+    run.state.last_consumable = Some(LastConsumable {
+        kind: ConsumableKind::Tarot,
+        id: "the_magician".to_string(),
+    });
+    use_consumable(&mut run, "the_fool", ConsumableKind::Tarot, &[]);
+    assert_eq!(run.inventory.consumables.len(), 1);
+    assert_eq!(run.inventory.consumables[0].id, "the_magician");
+    assert_eq!(run.inventory.consumables[0].kind, ConsumableKind::Tarot);
+}
+
+#[test]
+fn planet_upgrades_hand_levels() {
+    let content = load_content(&assets_root()).expect("load content");
+    for planet in &content.planets {
+        let hand = planet.hand.expect("planet hand");
+        let mut run = new_run();
+        run.hand = make_hand();
+        use_consumable(&mut run, &planet.id, ConsumableKind::Planet, &[]);
+        assert_eq!(hand_level(&run, hand), 2, "planet {}", planet.id);
+    }
+}
+
+#[test]
+fn spectral_seals_editions_and_copies() {
+    let mut run = new_run();
+    run.hand = make_hand();
+
+    use_consumable(&mut run, "deja_vu", ConsumableKind::Spectral, &[0]);
+    assert_eq!(run.hand[0].seal, Some(rulatro_core::Seal::Red));
+
+    use_consumable(&mut run, "medium", ConsumableKind::Spectral, &[1]);
+    assert_eq!(run.hand[1].seal, Some(rulatro_core::Seal::Purple));
+
+    use_consumable(&mut run, "trance", ConsumableKind::Spectral, &[2]);
+    assert_eq!(run.hand[2].seal, Some(rulatro_core::Seal::Blue));
+
+    use_consumable(&mut run, "talisman", ConsumableKind::Spectral, &[3]);
+    assert_eq!(run.hand[3].seal, Some(rulatro_core::Seal::Gold));
+
+    use_consumable(&mut run, "aura", ConsumableKind::Spectral, &[4]);
+    assert!(matches!(
+        run.hand[4].edition,
+        Some(Edition::Foil | Edition::Holographic | Edition::Polychrome)
+    ));
+
+    let before = run.hand.len();
+    use_consumable(&mut run, "cryptid", ConsumableKind::Spectral, &[0]);
+    assert_eq!(run.hand.len(), before + 2);
+    assert_eq!(run.hand[before].rank, run.hand[0].rank);
+    assert_eq!(run.hand[before].suit, run.hand[0].suit);
+}
+
+#[test]
+fn spectral_transform_and_money() {
+    let mut run = new_run();
+    run.hand = make_hand();
+    run.state.money = 10;
+
+    use_consumable(&mut run, "wraith", ConsumableKind::Spectral, &[]);
+    assert_eq!(run.state.money, 0);
+    assert!(run.inventory.jokers.len() >= 1);
+
+    run.hand = make_hand();
+    let hand_size = run.state.hand_size;
+    use_consumable(&mut run, "ouija", ConsumableKind::Spectral, &[]);
+    assert_eq!(run.state.hand_size, hand_size - 1);
+    let rank = run.hand[0].rank;
+    assert!(run.hand.iter().all(|card| card.rank == rank));
+
+    run.hand = make_hand();
+    use_consumable(&mut run, "sigil", ConsumableKind::Spectral, &[]);
+    let suit = run.hand[0].suit;
+    assert!(run.hand.iter().all(|card| card.suit == suit));
+}
+
+#[test]
+fn spectral_destroy_and_add() {
+    let mut run = new_run();
+    run.hand = make_hand();
+    run.state.money = 0;
+
+    let before = run.hand.len();
+    use_consumable(&mut run, "immolate", ConsumableKind::Spectral, &[]);
+    assert_eq!(run.hand.len(), before - 5);
+    assert_eq!(run.state.money, 20);
+
+    run.hand = make_hand();
+    let before = run.hand.len();
+    use_consumable(&mut run, "grim", ConsumableKind::Spectral, &[]);
+    assert_eq!(run.hand.len(), before + 1);
+    assert!(run
+        .hand
+        .iter()
+        .filter(|card| card.enhancement.is_some())
+        .count()
+        >= 2);
+
+    run.hand = make_hand();
+    let before = run.hand.len();
+    use_consumable(&mut run, "familiar", ConsumableKind::Spectral, &[]);
+    assert_eq!(run.hand.len(), before + 2);
+    assert!(run
+        .hand
+        .iter()
+        .filter(|card| card.enhancement.is_some())
+        .count()
+        >= 3);
+
+    run.hand = make_hand();
+    let before = run.hand.len();
+    use_consumable(&mut run, "incantation", ConsumableKind::Spectral, &[]);
+    assert_eq!(run.hand.len(), before + 3);
+    assert!(run
+        .hand
+        .iter()
+        .filter(|card| card.enhancement.is_some())
+        .count()
+        >= 4);
+}
+
+#[test]
+fn spectral_joker_modifications() {
+    let mut run = new_run();
+    run.hand = make_hand();
+    run.inventory
+        .add_joker("joker_a".to_string(), JokerRarity::Common, 10)
+        .unwrap();
+
+    let hand_size = run.state.hand_size;
+    use_consumable(&mut run, "ectoplasm", ConsumableKind::Spectral, &[]);
+    assert_eq!(run.state.hand_size, hand_size - 1);
+    assert!(run
+        .inventory
+        .jokers
+        .iter()
+        .any(|joker| joker.edition == Some(Edition::Negative)));
+
+    run.inventory.jokers.clear();
+    run.inventory
+        .add_joker("joker_b".to_string(), JokerRarity::Common, 10)
+        .unwrap();
+    run.inventory
+        .add_joker("joker_c".to_string(), JokerRarity::Common, 10)
+        .unwrap();
+    run.inventory
+        .add_joker("joker_d".to_string(), JokerRarity::Common, 10)
+        .unwrap();
+    use_consumable(&mut run, "hex", ConsumableKind::Spectral, &[]);
+    assert_eq!(run.inventory.jokers.len(), 1);
+    assert_eq!(run.inventory.jokers[0].edition, Some(Edition::Polychrome));
+
+    run.inventory.jokers.clear();
+    run.inventory
+        .add_joker_with_edition(
+            "joker_e".to_string(),
+            JokerRarity::Common,
+            10,
+            Some(Edition::Negative),
+        )
+        .unwrap();
+    use_consumable(&mut run, "ankh", ConsumableKind::Spectral, &[]);
+    assert_eq!(run.inventory.jokers.len(), 2);
+    assert_eq!(
+        run.inventory
+            .jokers
+            .iter()
+            .filter(|joker| joker.edition == Some(Edition::Negative))
+            .count(),
+        1
+    );
+
+    use_consumable(&mut run, "the_soul", ConsumableKind::Spectral, &[]);
+    assert!(
+        run.content
+            .jokers
+            .iter()
+            .any(|joker| joker.rarity == JokerRarity::Legendary)
+    );
+    assert!(run.inventory.jokers.len() >= 2);
+}
+
+#[test]
+fn spectral_black_hole_upgrades_all_hands() {
+    let mut run = new_run();
+    run.hand = make_hand();
+    use_consumable(&mut run, "black_hole", ConsumableKind::Spectral, &[]);
+    assert_eq!(hand_level(&run, HandKind::HighCard), 2);
+    assert_eq!(hand_level(&run, HandKind::Pair), 2);
+    assert_eq!(hand_level(&run, HandKind::Straight), 2);
+}
