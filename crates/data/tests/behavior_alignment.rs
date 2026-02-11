@@ -1,6 +1,7 @@
 use rulatro_core::{
-    Card, ConsumableKind, Enhancement, Edition, EventBus, HandKind, JokerRarity, LastConsumable,
-    Rank, RunError, RunState, Suit,
+    BlindKind, Card, ConsumableKind, Enhancement, Edition, EventBus, HandKind, JokerRarity,
+    LastConsumable, PackKind, PackOffer, PackSize, Phase, Rank, RunError, RunState, ShopPurchase,
+    Suit,
 };
 use rulatro_data::{load_content, load_game_config};
 use std::path::PathBuf;
@@ -49,6 +50,11 @@ fn use_consumable(run: &mut RunState, id: &str, kind: ConsumableKind, selected: 
 fn hand_level(run: &RunState, kind: HandKind) -> u32 {
     let key = rulatro_core::level_kind(kind);
     run.state.hand_levels.get(&key).copied().unwrap_or(1)
+}
+
+fn mark_blind_cleared(run: &mut RunState) {
+    run.state.target = 1;
+    run.state.blind_score = 1;
 }
 
 #[test]
@@ -458,4 +464,212 @@ fn spectral_black_hole_upgrades_all_hands() {
     assert_eq!(hand_level(&run, HandKind::HighCard), 2);
     assert_eq!(hand_level(&run, HandKind::Pair), 2);
     assert_eq!(hand_level(&run, HandKind::Straight), 2);
+}
+
+#[test]
+fn tag_coupon_sets_shop_prices_and_consumes() {
+    let mut run = new_run();
+    mark_blind_cleared(&mut run);
+    run.state.tags.push("coupon_tag".to_string());
+    let mut events = EventBus::default();
+    run.enter_shop(&mut events).expect("enter shop");
+    let shop = run.shop.as_ref().expect("shop");
+    assert!(shop.cards.iter().all(|card| card.price == 0));
+    assert!(shop.packs.iter().all(|pack| pack.price == 0));
+    assert!(run.state.tags.is_empty());
+}
+
+#[test]
+fn tag_d6_sets_reroll_cost_zero() {
+    let mut run = new_run();
+    mark_blind_cleared(&mut run);
+    run.state.tags.push("d6_tag".to_string());
+    let mut events = EventBus::default();
+    run.enter_shop(&mut events).expect("enter shop");
+    let shop = run.shop.as_ref().expect("shop");
+    assert_eq!(shop.reroll_cost, 0);
+    assert!(run.state.tags.is_empty());
+}
+
+#[test]
+fn tag_economy_scales_money() {
+    let mut run = new_run();
+    mark_blind_cleared(&mut run);
+    run.state.money = 25;
+    run.state.tags.push("economy_tag".to_string());
+    let mut events = EventBus::default();
+    run.enter_shop(&mut events).expect("enter shop");
+    assert_eq!(run.state.money, 40);
+    assert!(run.state.tags.is_empty());
+}
+
+#[test]
+fn tag_handy_and_garbage_add_money() {
+    let mut run = new_run();
+    mark_blind_cleared(&mut run);
+    run.state.money = 0;
+    run.state.hand_play_counts.insert(HandKind::Pair, 2);
+    run.state.hand_play_counts.insert(HandKind::Trips, 1);
+    run.state.unused_discards = 4;
+    run.state.tags.push("handy_tag".to_string());
+    run.state.tags.push("garbage_tag".to_string());
+    let mut events = EventBus::default();
+    run.enter_shop(&mut events).expect("enter shop");
+    assert_eq!(run.state.money, 7);
+    assert!(run.state.tags.is_empty());
+}
+
+#[test]
+fn tag_juggle_adds_hand_size_on_blind_start() {
+    let mut run = new_run();
+    run.state.tags.push("juggle_tag".to_string());
+    let base = run.state.hand_size_base;
+    let mut events = EventBus::default();
+    run.start_blind(1, BlindKind::Small, &mut events)
+        .expect("start blind");
+    assert_eq!(run.state.hand_size, base + 3);
+    assert!(run.state.tags.is_empty());
+}
+
+#[test]
+fn shop_reroll_cost_and_free_rerolls() {
+    let mut run = new_run();
+    mark_blind_cleared(&mut run);
+    run.state.money = 100;
+    let mut events = EventBus::default();
+    run.enter_shop(&mut events).expect("enter shop");
+    let base = run.shop.as_ref().expect("shop").reroll_cost;
+    let step = run.config.shop.prices.reroll_step;
+    run.state.shop_free_rerolls = 1;
+
+    run.reroll_shop(&mut events).expect("reroll");
+    let after_free = run.shop.as_ref().expect("shop").reroll_cost;
+    assert_eq!(after_free, base + step);
+    assert_eq!(run.state.shop_free_rerolls, 0);
+    assert_eq!(run.state.money, 100);
+
+    run.reroll_shop(&mut events).expect("reroll");
+    let after_paid = run.shop.as_ref().expect("shop").reroll_cost;
+    assert_eq!(after_paid, after_free + step);
+    assert_eq!(run.state.money, 100 - after_free);
+}
+
+#[test]
+fn pack_open_and_choose_consumable() {
+    let mut run = new_run();
+    let mut events = EventBus::default();
+    let pack = PackOffer {
+        kind: PackKind::Arcana,
+        size: PackSize::Normal,
+        options: 3,
+        picks: 1,
+        price: 0,
+    };
+    let purchase = ShopPurchase::Pack(pack.clone());
+    let open = run
+        .open_pack_purchase(&purchase, &mut events)
+        .expect("open pack");
+    assert_eq!(open.offer.kind, PackKind::Arcana);
+    assert_eq!(open.options.len(), pack.options as usize);
+    run.choose_pack_options(&open, &[0], &mut events)
+        .expect("choose pack");
+    assert_eq!(run.inventory.consumables.len(), 1);
+    assert_eq!(run.inventory.consumables[0].kind, ConsumableKind::Tarot);
+}
+
+#[test]
+fn pack_open_and_choose_playing_card() {
+    let mut run = new_run();
+    let mut events = EventBus::default();
+    let pack = PackOffer {
+        kind: PackKind::Standard,
+        size: PackSize::Normal,
+        options: 1,
+        picks: 1,
+        price: 0,
+    };
+    let purchase = ShopPurchase::Pack(pack);
+    let open = run
+        .open_pack_purchase(&purchase, &mut events)
+        .expect("open pack");
+    let before = run.deck.discard.len();
+    run.choose_pack_options(&open, &[0], &mut events)
+        .expect("choose pack");
+    assert_eq!(run.deck.discard.len(), before + 1);
+}
+
+#[test]
+fn pack_choose_rejects_invalid_selection() {
+    let mut run = new_run();
+    let mut events = EventBus::default();
+    let pack = PackOffer {
+        kind: PackKind::Arcana,
+        size: PackSize::Normal,
+        options: 1,
+        picks: 1,
+        price: 0,
+    };
+    let purchase = ShopPurchase::Pack(pack);
+    let open = run
+        .open_pack_purchase(&purchase, &mut events)
+        .expect("open pack");
+    let err = run
+        .choose_pack_options(&open, &[0, 1], &mut events)
+        .unwrap_err();
+    assert!(matches!(err, RunError::InvalidSelection));
+}
+
+#[test]
+fn blind_reward_includes_interest_and_per_hand() {
+    let mut run = new_run();
+    run.hand = make_hand();
+    run.state.phase = Phase::Play;
+    run.state.blind = BlindKind::Small;
+    run.state.target = 1;
+    run.state.hands_left = 2;
+    run.state.discards_left = 2;
+    run.state.money = 20;
+    let pre_money = run.state.money;
+    let economy = run.config.economy.clone();
+    let mut events = EventBus::default();
+    run.play_hand(&[0, 1, 2, 3, 4], &mut events)
+        .expect("play hand");
+
+    let hands_left_after = run.state.hands_left as i64;
+    let steps = if economy.interest_step > 0 {
+        pre_money / economy.interest_step
+    } else {
+        0
+    };
+    let cap_steps = if economy.interest_per > 0 {
+        economy.interest_cap / economy.interest_per
+    } else {
+        0
+    };
+    let interest = steps.min(cap_steps).max(0) * economy.interest_per;
+    let expected_reward =
+        economy.reward_small + economy.per_hand_reward * hands_left_after + interest;
+    assert_eq!(run.state.money, pre_money + expected_reward);
+}
+
+#[test]
+fn luchador_sell_disables_next_boss() {
+    let mut run = new_run();
+    run.state.phase = Phase::Shop;
+    run.inventory
+        .add_joker("luchador".to_string(), JokerRarity::Uncommon, 10)
+        .expect("add joker");
+    let mut events = EventBus::default();
+    run.sell_joker(0, &mut events).expect("sell joker");
+
+    let mut baseline = new_run();
+    let mut baseline_events = EventBus::default();
+    baseline
+        .start_blind(1, BlindKind::Boss, &mut baseline_events)
+        .expect("start boss");
+    assert!(baseline.state.boss_id.is_some());
+
+    run.start_blind(1, BlindKind::Boss, &mut events)
+        .expect("start boss");
+    assert!(run.state.boss_id.is_none());
 }
