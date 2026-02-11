@@ -1,7 +1,7 @@
 use rulatro_core::{
     BlindKind, Card, CardWeight, ConsumableKind, Enhancement, Edition, EventBus, HandKind,
     JokerRarity, LastConsumable, PackKind, PackOffer, PackSize, Phase, Rank, RunError, RunState,
-    ShopCardKind, ShopPurchase, Suit,
+    ShopCardKind, ShopOfferRef, ShopPurchase, Suit,
 };
 use rulatro_data::{load_content, load_game_config};
 use std::path::PathBuf;
@@ -663,6 +663,44 @@ fn astronomer_sets_planet_and_celestial_prices() {
 }
 
 #[test]
+fn shop_buy_rejects_not_enough_money() {
+    let mut run = new_run();
+    mark_blind_cleared(&mut run);
+    let mut events = EventBus::default();
+    run.enter_shop(&mut events).expect("enter shop");
+    run.state.money = 0;
+    let err = run
+        .buy_shop_offer(ShopOfferRef::Card(0), &mut events)
+        .unwrap_err();
+    assert!(matches!(err, RunError::NotEnoughMoney));
+}
+
+#[test]
+fn shop_buy_joker_adds_inventory() {
+    let mut run = new_run();
+    mark_blind_cleared(&mut run);
+    run.config.shop.card_weights = vec![CardWeight {
+        kind: ShopCardKind::Joker,
+        weight: 1,
+    }];
+    run.state.money = 50;
+    let mut events = EventBus::default();
+    run.enter_shop(&mut events).expect("enter shop");
+    let price = run
+        .shop
+        .as_ref()
+        .and_then(|shop| shop.cards.get(0))
+        .map(|card| card.price)
+        .unwrap_or(0);
+    let purchase = run
+        .buy_shop_offer(ShopOfferRef::Card(0), &mut events)
+        .expect("buy offer");
+    run.apply_purchase(&purchase).expect("apply purchase");
+    assert_eq!(run.inventory.jokers.len(), 1);
+    assert_eq!(run.state.money, 50 - price);
+}
+
+#[test]
 fn shop_reroll_cost_and_free_rerolls() {
     let mut run = new_run();
     mark_blind_cleared(&mut run);
@@ -727,6 +765,28 @@ fn pack_open_and_choose_playing_card() {
     run.choose_pack_options(&open, &[0], &mut events)
         .expect("choose pack");
     assert_eq!(run.deck.discard.len(), before + 1);
+}
+
+#[test]
+fn pack_skip_leaves_inventory_unchanged() {
+    let mut run = new_run();
+    let mut events = EventBus::default();
+    let pack = PackOffer {
+        kind: PackKind::Arcana,
+        size: PackSize::Normal,
+        options: 3,
+        picks: 1,
+        price: 0,
+    };
+    let purchase = ShopPurchase::Pack(pack);
+    let open = run
+        .open_pack_purchase(&purchase, &mut events)
+        .expect("open pack");
+    let before_consumables = run.inventory.consumables.len();
+    let before_discard = run.deck.discard.len();
+    run.skip_pack(&open, &mut events).expect("skip pack");
+    assert_eq!(run.inventory.consumables.len(), before_consumables);
+    assert_eq!(run.deck.discard.len(), before_discard);
 }
 
 #[test]
@@ -821,6 +881,19 @@ fn discard_rejects_no_discards_left() {
     run.hand = make_hand();
     let err = run.discard(&[0], &mut EventBus::default());
     assert!(matches!(err, Err(RunError::NoDiscardsLeft)));
+}
+
+#[test]
+fn tarot_rejects_out_of_range_selection() {
+    let mut run = new_run();
+    run.hand = make_hand();
+    run.inventory
+        .add_consumable("the_devil".to_string(), ConsumableKind::Tarot)
+        .expect("add consumable");
+    let err = run
+        .use_consumable(0, &[99], &mut EventBus::default())
+        .unwrap_err();
+    assert!(matches!(err, RunError::InvalidSelection));
 }
 
 #[test]
