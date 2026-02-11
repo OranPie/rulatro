@@ -58,6 +58,112 @@ fn mark_blind_cleared(run: &mut RunState) {
     run.state.blind_score = 1;
 }
 
+macro_rules! test_play_hand_invalid_phase {
+    ($name:ident, $phase:expr) => {
+        #[test]
+        fn $name() {
+            let mut run = new_run();
+            run.state.phase = $phase;
+            run.state.hands_left = 1;
+            run.hand = make_hand();
+            let err = run
+                .play_hand(&[0, 1, 2, 3, 4], &mut EventBus::default())
+                .unwrap_err();
+            assert!(matches!(err, RunError::InvalidPhase(p) if p == $phase));
+        }
+    };
+}
+
+macro_rules! test_discard_invalid_phase {
+    ($name:ident, $phase:expr) => {
+        #[test]
+        fn $name() {
+            let mut run = new_run();
+            run.state.phase = $phase;
+            run.state.discards_left = 1;
+            run.hand = make_hand();
+            let err = run
+                .discard(&[0], &mut EventBus::default())
+                .unwrap_err();
+            assert!(matches!(err, RunError::InvalidPhase(p) if p == $phase));
+        }
+    };
+}
+
+macro_rules! test_prepare_hand_invalid_phase {
+    ($name:ident, $phase:expr) => {
+        #[test]
+        fn $name() {
+            let mut run = new_run();
+            run.state.phase = $phase;
+            run.state.hands_left = 1;
+            run.state.hand_size = 2;
+            run.deck.draw = vec![
+                Card::standard(Suit::Spades, Rank::Ace),
+                Card::standard(Suit::Hearts, Rank::Two),
+            ];
+            let err = run.prepare_hand(&mut EventBus::default()).unwrap_err();
+            assert!(matches!(err, RunError::InvalidPhase(p) if p == $phase));
+        }
+    };
+}
+
+macro_rules! test_reroll_invalid_phase {
+    ($name:ident, $phase:expr) => {
+        #[test]
+        fn $name() {
+            let mut run = new_run();
+            run.state.phase = $phase;
+            let err = run.reroll_shop(&mut EventBus::default()).unwrap_err();
+            assert!(matches!(err, RunError::InvalidPhase(p) if p == $phase));
+        }
+    };
+}
+
+macro_rules! test_buy_invalid_phase {
+    ($name:ident, $phase:expr) => {
+        #[test]
+        fn $name() {
+            let mut run = new_run();
+            run.state.phase = $phase;
+            let err = run
+                .buy_shop_offer(ShopOfferRef::Card(0), &mut EventBus::default())
+                .unwrap_err();
+            assert!(matches!(err, RunError::InvalidPhase(p) if p == $phase));
+        }
+    };
+}
+
+test_play_hand_invalid_phase!(play_hand_invalid_phase_setup, Phase::Setup);
+test_play_hand_invalid_phase!(play_hand_invalid_phase_deal, Phase::Deal);
+test_play_hand_invalid_phase!(play_hand_invalid_phase_score, Phase::Score);
+test_play_hand_invalid_phase!(play_hand_invalid_phase_cleanup, Phase::Cleanup);
+test_play_hand_invalid_phase!(play_hand_invalid_phase_shop, Phase::Shop);
+
+test_discard_invalid_phase!(discard_invalid_phase_setup, Phase::Setup);
+test_discard_invalid_phase!(discard_invalid_phase_deal, Phase::Deal);
+test_discard_invalid_phase!(discard_invalid_phase_score, Phase::Score);
+test_discard_invalid_phase!(discard_invalid_phase_cleanup, Phase::Cleanup);
+test_discard_invalid_phase!(discard_invalid_phase_shop, Phase::Shop);
+
+test_prepare_hand_invalid_phase!(prepare_hand_invalid_phase_setup, Phase::Setup);
+test_prepare_hand_invalid_phase!(prepare_hand_invalid_phase_play, Phase::Play);
+test_prepare_hand_invalid_phase!(prepare_hand_invalid_phase_score, Phase::Score);
+test_prepare_hand_invalid_phase!(prepare_hand_invalid_phase_cleanup, Phase::Cleanup);
+test_prepare_hand_invalid_phase!(prepare_hand_invalid_phase_shop, Phase::Shop);
+
+test_reroll_invalid_phase!(reroll_invalid_phase_setup, Phase::Setup);
+test_reroll_invalid_phase!(reroll_invalid_phase_deal, Phase::Deal);
+test_reroll_invalid_phase!(reroll_invalid_phase_play, Phase::Play);
+test_reroll_invalid_phase!(reroll_invalid_phase_score, Phase::Score);
+test_reroll_invalid_phase!(reroll_invalid_phase_cleanup, Phase::Cleanup);
+
+test_buy_invalid_phase!(buy_invalid_phase_setup, Phase::Setup);
+test_buy_invalid_phase!(buy_invalid_phase_deal, Phase::Deal);
+test_buy_invalid_phase!(buy_invalid_phase_play, Phase::Play);
+test_buy_invalid_phase!(buy_invalid_phase_score, Phase::Score);
+test_buy_invalid_phase!(buy_invalid_phase_cleanup, Phase::Cleanup);
+
 #[test]
 fn content_counts_and_ids() {
     let content = load_content(&assets_root()).expect("load content");
@@ -1145,4 +1251,504 @@ fn luchador_sell_disables_next_boss() {
     run.start_blind(1, BlindKind::Boss, &mut events)
         .expect("start boss");
     assert!(run.state.boss_id.is_none());
+}
+
+#[test]
+fn prepare_hand_draws_to_size() {
+    let mut run = new_run();
+    run.state.phase = Phase::Deal;
+    run.state.hands_left = 1;
+    run.state.hand_size = 3;
+    run.deck.draw = vec![
+        Card::standard(Suit::Spades, Rank::Ace),
+        Card::standard(Suit::Hearts, Rank::Two),
+        Card::standard(Suit::Clubs, Rank::Three),
+    ];
+    run.prepare_hand(&mut EventBus::default())
+        .expect("prepare hand");
+    assert_eq!(run.hand.len(), 3);
+    assert_eq!(run.state.phase, Phase::Play);
+}
+
+#[test]
+fn prepare_hand_rejects_no_hands_left() {
+    let mut run = new_run();
+    run.state.phase = Phase::Deal;
+    run.state.hands_left = 0;
+    let err = run.prepare_hand(&mut EventBus::default()).unwrap_err();
+    assert!(matches!(err, RunError::NoHandsLeft));
+}
+
+#[test]
+fn draw_to_hand_no_change_when_full() {
+    let mut run = new_run();
+    run.state.hand_size = 2;
+    run.hand = vec![
+        Card::standard(Suit::Spades, Rank::Ace),
+        Card::standard(Suit::Hearts, Rank::Two),
+    ];
+    let before_draw = run.deck.draw.len();
+    run.draw_to_hand(&mut EventBus::default());
+    assert_eq!(run.hand.len(), 2);
+    assert_eq!(run.deck.draw.len(), before_draw);
+}
+
+#[test]
+fn draw_to_hand_reshuffles_discard() {
+    let mut run = new_run();
+    run.state.hand_size = 1;
+    run.hand.clear();
+    run.deck.draw.clear();
+    run.deck.discard = vec![Card::standard(Suit::Clubs, Rank::Three)];
+    run.draw_to_hand(&mut EventBus::default());
+    assert_eq!(run.hand.len(), 1);
+    assert!(run.deck.discard.is_empty());
+}
+
+#[test]
+fn enter_shop_requires_clear() {
+    let mut run = new_run();
+    run.state.target = 10;
+    run.state.blind_score = 0;
+    let err = run.enter_shop(&mut EventBus::default()).unwrap_err();
+    assert!(matches!(err, RunError::BlindNotCleared));
+}
+
+#[test]
+fn enter_shop_resets_free_rerolls() {
+    let mut run = new_run();
+    mark_blind_cleared(&mut run);
+    run.state.shop_free_rerolls = 3;
+    run.enter_shop(&mut EventBus::default()).expect("enter shop");
+    assert_eq!(run.state.shop_free_rerolls, 0);
+}
+
+#[test]
+fn reroll_shop_not_enough_money() {
+    let mut run = new_run();
+    mark_blind_cleared(&mut run);
+    run.enter_shop(&mut EventBus::default()).expect("enter shop");
+    run.state.money = 0;
+    let err = run.reroll_shop(&mut EventBus::default()).unwrap_err();
+    assert!(matches!(err, RunError::NotEnoughMoney));
+}
+
+#[test]
+fn buy_shop_offer_invalid_index() {
+    let mut run = new_run();
+    mark_blind_cleared(&mut run);
+    run.enter_shop(&mut EventBus::default()).expect("enter shop");
+    let err = run
+        .buy_shop_offer(ShopOfferRef::Card(99), &mut EventBus::default())
+        .unwrap_err();
+    assert!(matches!(err, RunError::InvalidOfferIndex));
+}
+
+#[test]
+fn open_pack_purchase_invalid_type() {
+    let mut run = new_run();
+    let purchase = ShopPurchase::Voucher;
+    let err = run
+        .open_pack_purchase(&purchase, &mut EventBus::default())
+        .unwrap_err();
+    assert!(matches!(err, RunError::PackNotAvailable));
+}
+
+#[test]
+fn choose_pack_invalid_index() {
+    let mut run = new_run();
+    let pack = PackOffer {
+        kind: PackKind::Arcana,
+        size: PackSize::Normal,
+        options: 1,
+        picks: 1,
+        price: 0,
+    };
+    let purchase = ShopPurchase::Pack(pack);
+    let open = run
+        .open_pack_purchase(&purchase, &mut EventBus::default())
+        .expect("open pack");
+    let err = run
+        .choose_pack_options(&open, &[1], &mut EventBus::default())
+        .unwrap_err();
+    assert!(matches!(err, RunError::InvalidSelection));
+}
+
+#[test]
+fn play_hand_rejects_empty_selection() {
+    let mut run = new_run();
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    run.hand = make_hand();
+    let err = run.play_hand(&[], &mut EventBus::default()).unwrap_err();
+    assert!(matches!(err, RunError::InvalidSelection));
+}
+
+#[test]
+fn discard_rejects_empty_selection() {
+    let mut run = new_run();
+    run.state.phase = Phase::Play;
+    run.state.discards_left = 1;
+    run.hand = make_hand();
+    let err = run.discard(&[], &mut EventBus::default()).unwrap_err();
+    assert!(matches!(err, RunError::InvalidSelection));
+}
+
+#[test]
+fn use_consumable_invalid_index() {
+    let mut run = new_run();
+    let err = run.use_consumable(0, &[], &mut EventBus::default()).unwrap_err();
+    assert!(matches!(err, RunError::InvalidSelection));
+}
+
+#[test]
+fn last_consumable_updates_tarot() {
+    let mut run = new_run();
+    run.hand = make_hand();
+    use_consumable(&mut run, "the_magician", ConsumableKind::Tarot, &[0, 1]);
+    let last = run.state.last_consumable.expect("last consumable");
+    assert_eq!(last.kind, ConsumableKind::Tarot);
+    assert_eq!(last.id, "the_magician");
+}
+
+#[test]
+fn last_consumable_updates_planet() {
+    let mut run = new_run();
+    use_consumable(&mut run, "pluto", ConsumableKind::Planet, &[]);
+    let last = run.state.last_consumable.expect("last consumable");
+    assert_eq!(last.kind, ConsumableKind::Planet);
+    assert_eq!(last.id, "pluto");
+}
+
+#[test]
+fn last_consumable_not_set_for_spectral() {
+    let mut run = new_run();
+    run.hand = make_hand();
+    use_consumable(&mut run, "familiar", ConsumableKind::Spectral, &[]);
+    assert!(run.state.last_consumable.is_none());
+}
+
+#[test]
+fn planets_used_updates_on_planet_use() {
+    let mut run = new_run();
+    use_consumable(&mut run, "pluto", ConsumableKind::Planet, &[]);
+    assert!(run.state.planets_used.contains("pluto"));
+}
+
+#[test]
+fn inventory_no_joker_slots_fails() {
+    let mut run = new_run();
+    run.inventory.joker_slots = 0;
+    run.inventory.jokers.clear();
+    let err = run
+        .inventory
+        .add_joker("joker_x".to_string(), JokerRarity::Common, 1)
+        .unwrap_err();
+    assert!(matches!(err, rulatro_core::InventoryError::NoJokerSlots));
+}
+
+#[test]
+fn inventory_negative_joker_allows_extra_slot() {
+    let mut run = new_run();
+    run.inventory.joker_slots = 0;
+    run.inventory
+        .add_joker_with_edition(
+            "joker_neg".to_string(),
+            JokerRarity::Common,
+            1,
+            Some(Edition::Negative),
+        )
+        .expect("add negative joker");
+    assert_eq!(run.inventory.jokers.len(), 1);
+}
+
+#[test]
+fn inventory_negative_consumable_not_counted() {
+    let mut run = new_run();
+    run.inventory.consumable_slots = 0;
+    run.inventory
+        .add_consumable_with_edition(
+            "the_fool".to_string(),
+            ConsumableKind::Tarot,
+            Some(Edition::Negative),
+            0.0,
+        )
+        .expect("add negative consumable");
+    assert_eq!(run.inventory.consumable_count(), 0);
+}
+
+#[test]
+fn joker_capacity_counts_negative() {
+    let mut run = new_run();
+    run.inventory.joker_slots = 1;
+    run.inventory
+        .add_joker_with_edition(
+            "joker_neg".to_string(),
+            JokerRarity::Common,
+            1,
+            Some(Edition::Negative),
+        )
+        .expect("add negative joker");
+    assert_eq!(run.inventory.joker_capacity(), 2);
+    run.inventory
+        .add_joker("joker_norm".to_string(), JokerRarity::Common, 1)
+        .expect("add normal joker");
+    assert_eq!(run.inventory.jokers.len(), 2);
+}
+
+#[test]
+fn joker_sell_value_none_for_invalid_index() {
+    let run = new_run();
+    assert!(run.joker_sell_value(0).is_none());
+}
+
+#[test]
+fn sell_joker_increases_money() {
+    let mut run = new_run();
+    run.state.phase = Phase::Shop;
+    run.state.money = 0;
+    run.inventory
+        .add_joker("joker_sell".to_string(), JokerRarity::Common, 10)
+        .expect("add joker");
+    run.sell_joker(0, &mut EventBus::default())
+        .expect("sell joker");
+    assert_eq!(run.state.money, 5);
+}
+
+#[test]
+fn start_blind_resets_round_state() {
+    let mut run = new_run();
+    run.state.round_hand_types.insert(HandKind::Pair);
+    run.state.round_hand_lock = Some(HandKind::Trips);
+    run.hand = make_hand();
+    run.start_blind(1, BlindKind::Small, &mut EventBus::default())
+        .expect("start blind");
+    assert!(run.state.round_hand_types.is_empty());
+    assert!(run.state.round_hand_lock.is_none());
+    assert!(run.hand.is_empty());
+}
+
+#[test]
+fn start_blind_sets_limits_and_phase() {
+    let mut run = new_run();
+    run.start_blind(1, BlindKind::Small, &mut EventBus::default())
+        .expect("start blind");
+    assert_eq!(run.state.phase, Phase::Deal);
+    assert_eq!(run.state.hands_left, run.state.hands_max);
+    assert_eq!(run.state.discards_left, run.state.discards_max);
+    assert_eq!(run.state.hand_size, run.state.hand_size_base);
+}
+
+#[test]
+fn start_blind_clears_played_cards_on_new_ante() {
+    let mut run = new_run();
+    run.state.ante = 1;
+    run.state.played_card_ids_ante.insert(42);
+    run.start_blind(2, BlindKind::Small, &mut EventBus::default())
+        .expect("start blind");
+    assert!(run.state.played_card_ids_ante.is_empty());
+}
+
+#[test]
+fn start_blind_keeps_played_cards_same_ante() {
+    let mut run = new_run();
+    run.state.ante = 1;
+    run.state.played_card_ids_ante.insert(42);
+    run.start_blind(1, BlindKind::Small, &mut EventBus::default())
+        .expect("start blind");
+    assert!(run.state.played_card_ids_ante.contains(&42));
+}
+
+#[test]
+fn start_blind_boss_assigns_id() {
+    let mut run = new_run();
+    run.start_blind(1, BlindKind::Boss, &mut EventBus::default())
+        .expect("start blind");
+    if !run.content.bosses.is_empty() {
+        assert!(run.state.boss_id.is_some());
+    }
+}
+
+#[test]
+fn advance_blind_order_small_big() {
+    let mut run = new_run();
+    run.state.ante = 1;
+    run.state.blind = BlindKind::Small;
+    run.advance_blind().expect("advance blind");
+    assert_eq!(run.state.blind, BlindKind::Big);
+    assert_eq!(run.state.ante, 1);
+}
+
+#[test]
+fn advance_blind_order_big_boss() {
+    let mut run = new_run();
+    run.state.ante = 1;
+    run.state.blind = BlindKind::Big;
+    run.advance_blind().expect("advance blind");
+    assert_eq!(run.state.blind, BlindKind::Boss);
+    assert_eq!(run.state.ante, 1);
+}
+
+#[test]
+fn advance_blind_order_boss_small() {
+    let mut run = new_run();
+    run.state.ante = 1;
+    run.state.blind = BlindKind::Boss;
+    run.advance_blind().expect("advance blind");
+    assert_eq!(run.state.blind, BlindKind::Small);
+    assert_eq!(run.state.ante, 2);
+}
+
+#[test]
+fn advance_blind_missing_ante() {
+    let mut run = new_run();
+    run.state.ante = 8;
+    run.state.blind = BlindKind::Boss;
+    let err = run.advance_blind().unwrap_err();
+    assert!(matches!(err, RunError::MissingAnteRule(9)));
+}
+
+#[test]
+fn start_next_blind_advances() {
+    let mut run = new_run();
+    run.state.ante = 1;
+    run.state.blind = BlindKind::Small;
+    run.start_next_blind(&mut EventBus::default())
+        .expect("start next blind");
+    assert_eq!(run.state.blind, BlindKind::Big);
+    assert_eq!(run.state.phase, Phase::Deal);
+}
+
+#[test]
+fn blind_outcome_none_when_target_zero() {
+    let mut run = new_run();
+    run.state.target = 0;
+    run.state.blind_score = 0;
+    run.state.hands_left = 1;
+    assert!(run.blind_outcome().is_none());
+}
+
+#[test]
+fn blind_outcome_failed_when_hands_zero() {
+    let mut run = new_run();
+    run.state.target = 10;
+    run.state.blind_score = 0;
+    run.state.hands_left = 0;
+    assert!(matches!(run.blind_outcome(), Some(rulatro_core::BlindOutcome::Failed)));
+}
+
+#[test]
+fn blind_outcome_cleared_when_score_reached() {
+    let mut run = new_run();
+    run.state.target = 10;
+    run.state.blind_score = 10;
+    run.state.hands_left = 1;
+    assert!(matches!(run.blind_outcome(), Some(rulatro_core::BlindOutcome::Cleared)));
+}
+
+#[test]
+fn pack_options_arcana_are_tarot() {
+    let mut run = new_run();
+    let pack = PackOffer {
+        kind: PackKind::Arcana,
+        size: PackSize::Normal,
+        options: 3,
+        picks: 1,
+        price: 0,
+    };
+    let open = run
+        .open_pack_purchase(&ShopPurchase::Pack(pack), &mut EventBus::default())
+        .expect("open pack");
+    assert!(open.options.iter().all(|option| matches!(
+        option,
+        rulatro_core::PackOption::Consumable(ConsumableKind::Tarot, _)
+    )));
+}
+
+#[test]
+fn pack_options_celestial_are_planet() {
+    let mut run = new_run();
+    let pack = PackOffer {
+        kind: PackKind::Celestial,
+        size: PackSize::Normal,
+        options: 3,
+        picks: 1,
+        price: 0,
+    };
+    let open = run
+        .open_pack_purchase(&ShopPurchase::Pack(pack), &mut EventBus::default())
+        .expect("open pack");
+    assert!(open.options.iter().all(|option| matches!(
+        option,
+        rulatro_core::PackOption::Consumable(ConsumableKind::Planet, _)
+    )));
+}
+
+#[test]
+fn pack_options_spectral_are_spectral() {
+    let mut run = new_run();
+    let pack = PackOffer {
+        kind: PackKind::Spectral,
+        size: PackSize::Normal,
+        options: 2,
+        picks: 1,
+        price: 0,
+    };
+    let open = run
+        .open_pack_purchase(&ShopPurchase::Pack(pack), &mut EventBus::default())
+        .expect("open pack");
+    assert!(open.options.iter().all(|option| matches!(
+        option,
+        rulatro_core::PackOption::Consumable(ConsumableKind::Spectral, _)
+    )));
+}
+
+#[test]
+fn pack_options_buffoon_are_jokers() {
+    let mut run = new_run();
+    let pack = PackOffer {
+        kind: PackKind::Buffoon,
+        size: PackSize::Normal,
+        options: 2,
+        picks: 1,
+        price: 0,
+    };
+    let open = run
+        .open_pack_purchase(&ShopPurchase::Pack(pack), &mut EventBus::default())
+        .expect("open pack");
+    assert!(open.options.iter().all(|option| matches!(
+        option,
+        rulatro_core::PackOption::Joker(_)
+    )));
+}
+
+#[test]
+fn pack_options_standard_are_playing_cards() {
+    let mut run = new_run();
+    let pack = PackOffer {
+        kind: PackKind::Standard,
+        size: PackSize::Normal,
+        options: 2,
+        picks: 1,
+        price: 0,
+    };
+    let open = run
+        .open_pack_purchase(&ShopPurchase::Pack(pack), &mut EventBus::default())
+        .expect("open pack");
+    assert!(open.options.iter().all(|option| matches!(
+        option,
+        rulatro_core::PackOption::PlayingCard(_)
+    )));
+}
+
+#[test]
+fn leave_shop_resets_state() {
+    let mut run = new_run();
+    mark_blind_cleared(&mut run);
+    run.enter_shop(&mut EventBus::default()).expect("enter shop");
+    run.state.shop_free_rerolls = 2;
+    run.leave_shop();
+    assert!(run.shop.is_none());
+    assert_eq!(run.state.phase, Phase::Deal);
+    assert_eq!(run.state.shop_free_rerolls, 0);
 }
