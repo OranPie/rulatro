@@ -149,7 +149,11 @@ fn run_cui() {
             "state" | "s" => print_state(&run),
             "hand" => print_hand(&run),
             "deck" => print_deck(&run),
+            "levels" => print_levels(&run),
+            "tags" => print_tags(&run),
             "inv" | "inventory" => print_inventory(&run),
+            "reward" => print_reward(&run),
+            "summary" => print_summary(&run),
             "deal" | "d" => {
                 match run.prepare_hand(&mut events) {
                     Ok(_) => println!("dealt hand"),
@@ -244,6 +248,13 @@ fn run_cui() {
                     }
                 }
             }
+            "pack" => {
+                if let Some(open) = open_pack.as_ref() {
+                    print_pack_open(open, &run);
+                } else {
+                    println!("no open pack");
+                }
+            }
             "pick" => {
                 if let Some(open) = open_pack.clone() {
                     let indices = parse_indices(&args);
@@ -272,6 +283,22 @@ fn run_cui() {
                     }
                 } else {
                     println!("no open pack");
+                }
+            }
+            "peek" => {
+                if args.is_empty() {
+                    println!("usage: peek draw|discard [count]");
+                } else {
+                    let target = args[0];
+                    let count = args
+                        .get(1)
+                        .and_then(|value| value.parse::<usize>().ok())
+                        .unwrap_or(5);
+                    match target {
+                        "draw" => print_peek(&run.deck.draw, count, "draw"),
+                        "discard" => print_peek(&run.deck.discard, count, "discard"),
+                        _ => println!("usage: peek draw|discard [count]"),
+                    }
                 }
             }
             "use" => {
@@ -324,15 +351,21 @@ fn print_help() {
     println!("  state               show run state");
     println!("  hand                show current hand");
     println!("  deck                show deck sizes");
+    println!("  levels              show hand levels");
+    println!("  tags                show active tags");
     println!("  inv                 show inventory");
+    println!("  reward              estimate reward if blind clears");
+    println!("  summary             compact status summary");
     println!("  deal                draw to hand (phase Deal)");
     println!("  play <idx..>        play cards");
     println!("  discard <idx..>     discard cards");
     println!("  shop                enter shop");
     println!("  reroll              reroll shop");
     println!("  buy card|pack|voucher <idx>");
+    println!("  pack                show open pack options");
     println!("  pick <idx..>        pick open pack options");
     println!("  skip                skip open pack");
+    println!("  peek draw|discard [n]  show top cards");
     println!("  use <idx> [sel..]   use consumable");
     println!("  sell <idx>          sell joker");
     println!("  leave               leave shop");
@@ -381,6 +414,61 @@ fn print_state(run: &RunState) {
         "deck draw {} discard {}",
         run.deck.draw.len(),
         run.deck.discard.len()
+    );
+}
+
+fn print_levels(run: &RunState) {
+    println!("hand levels:");
+    for kind in rulatro_core::HandKind::ALL {
+        let level = run.state.hand_levels.get(&kind).copied().unwrap_or(1);
+        println!("  {:?}: {}", kind, level);
+    }
+}
+
+fn print_tags(run: &RunState) {
+    if run.state.tags.is_empty() {
+        println!("tags: none");
+    } else {
+        println!("tags: {}", run.state.tags.join(", "));
+    }
+    if run.state.duplicate_next_tag {
+        if let Some(exclude) = &run.state.duplicate_tag_exclude {
+            println!("duplicate next tag (excluding {exclude})");
+        } else {
+            println!("duplicate next tag");
+        }
+    }
+}
+
+fn print_reward(run: &RunState) {
+    if run.state.target <= 0 {
+        println!("reward: blind not started");
+        return;
+    }
+    let economy = &run.config.economy;
+    let base = match run.state.blind {
+        BlindKind::Small => economy.reward_small,
+        BlindKind::Big => economy.reward_big,
+        BlindKind::Boss => economy.reward_boss,
+    };
+    let interest = estimate_interest(run);
+    let reward = base + economy.per_hand_reward * run.state.hands_left as i64 + interest;
+    println!("reward estimate: {}", reward);
+}
+
+fn print_summary(run: &RunState) {
+    println!(
+        "ante {} {:?} {:?} money {} score {}/{} hands {}/{} discards {}/{}",
+        run.state.ante,
+        run.state.blind,
+        run.state.phase,
+        run.state.money,
+        run.state.blind_score,
+        run.state.target,
+        run.state.hands_left,
+        run.state.hands_max,
+        run.state.discards_left,
+        run.state.discards_max
     );
 }
 
@@ -468,6 +556,20 @@ fn print_pack_open(open: &PackOpen, run: &RunState) {
     }
 }
 
+fn print_peek(cards: &[Card], count: usize, label: &str) {
+    if cards.is_empty() {
+        println!("{label}: empty");
+        return;
+    }
+    let total = cards.len();
+    let start = total.saturating_sub(count);
+    println!("{label} top {}/{}:", total - start, total);
+    for (offset, card) in cards[start..].iter().rev().enumerate() {
+        let index = total - 1 - offset;
+        println!("{:>2}: {}", index, format_card(card));
+    }
+}
+
 fn drain_events(events: &mut EventBus) {
     for event in events.drain() {
         println!("event: {:?}", event);
@@ -486,6 +588,21 @@ fn parse_indices(args: &[&str]) -> Option<Vec<usize>> {
         }
     }
     Some(indices)
+}
+
+fn estimate_interest(run: &RunState) -> i64 {
+    let economy = &run.config.economy;
+    if economy.interest_step <= 0 || economy.interest_per <= 0 {
+        return 0;
+    }
+    let steps = (run.state.money / economy.interest_step).max(0);
+    let cap_steps = if economy.interest_per > 0 {
+        economy.interest_cap / economy.interest_per
+    } else {
+        0
+    };
+    let capped = steps.min(cap_steps);
+    capped * economy.interest_per
 }
 
 fn format_card(card: &Card) -> String {
