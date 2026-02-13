@@ -12,6 +12,13 @@ const state = {
   rankChipMap: new Map(),
   lastSnapshot: null,
   openPackKey: null,
+  quickBuy: true,
+  pendingAction: null,
+  scoreSections: {
+    played: true,
+    scoring: true,
+    steps: false,
+  },
 };
 
 const elements = {
@@ -32,15 +39,46 @@ const elements = {
   tags: document.getElementById("tags"),
   log: document.getElementById("log"),
   logSummary: document.getElementById("log-summary"),
+  toastArea: document.getElementById("toast-area"),
   sortKey: document.getElementById("sort-key"),
   sortDir: document.getElementById("sort-dir"),
 };
+
+const QUICK_BUY_DELAY_MS = 2000;
 
 const buttons = document.querySelectorAll("[data-action]");
 const actionButtons = {};
 buttons.forEach((button) => {
   actionButtons[button.dataset.action] = button;
   button.addEventListener("click", () => handleAction(button.dataset.action));
+});
+
+const shortcutHints = {
+  start: "S",
+  deal: "D",
+  play: "P",
+  discard: "X",
+  clear_hand: "C",
+  enter_shop: "O",
+  reroll: "R",
+  buy_selected: "B",
+  leave_shop: "L",
+  toggle_quick_buy: "Q",
+  pick_pack: "K",
+  skip_pack: "Y",
+  clear_pack: "Shift+C",
+  use_consumable: "U",
+  sell_joker: "J",
+  next_blind: "N",
+  reset: "Shift+R",
+  undo_pending: "Z",
+};
+
+Object.entries(shortcutHints).forEach(([action, key]) => {
+  const button = actionButtons[action];
+  if (button) {
+    button.title = `Shortcut: ${key}`;
+  }
 });
 
 elements.sortKey.addEventListener("change", () => {
@@ -83,6 +121,12 @@ async function callAction(action, payload = {}) {
 }
 
 function handleAction(action) {
+  if (actionButtons[action] && actionButtons[action].disabled) {
+    return;
+  }
+  if (action !== "undo_pending") {
+    cancelPendingAction();
+  }
   switch (action) {
     case "start":
       callAction("start");
@@ -139,6 +183,9 @@ function handleAction(action) {
     case "clear_log":
       state.logLines = [];
       renderLog();
+      if (state.lastSnapshot) {
+        updateSummaries(state.lastSnapshot);
+      }
       break;
     case "clear_hand":
       state.selectedHand.clear();
@@ -151,6 +198,20 @@ function handleAction(action) {
       if (state.lastSnapshot) {
         render(state.lastSnapshot);
       }
+      break;
+    case "toggle_quick_buy":
+      state.quickBuy = !state.quickBuy;
+      updateQuickBuyButton();
+      if (state.lastSnapshot) {
+        updateSummaries(state.lastSnapshot);
+        updateControls(state.lastSnapshot);
+      }
+      break;
+    case "buy_selected":
+      handleBuySelected();
+      break;
+    case "undo_pending":
+      cancelPendingAction();
       break;
     default:
       break;
@@ -170,6 +231,10 @@ function updateControls(snapshot) {
   const hasPackSelection = state.selectedPackOptions.size > 0;
   const hasConsumable = state.selectedConsumable != null;
   const hasJoker = state.selectedJoker != null;
+  const hasShopSelection =
+    state.selectedShopCard != null ||
+    state.selectedShopPack != null ||
+    state.selectedVoucher != null;
   setActionEnabled("play", phase === "Play" && hasHandSelection);
   setActionEnabled(
     "discard",
@@ -186,6 +251,7 @@ function updateControls(snapshot) {
   setActionEnabled("skip_pack", snapshot.open_pack != null);
   setActionEnabled("clear_hand", state.selectedHand.size > 0);
   setActionEnabled("clear_pack", state.selectedPackOptions.size > 0);
+  setActionEnabled("buy_selected", phase === "Shop" && hasShopSelection);
 }
 
 function render(data) {
@@ -206,6 +272,7 @@ function render(data) {
   renderTags(data.state.tags, data.state.duplicate_next_tag, data.state.duplicate_tag_exclude);
   updateSummaries(data);
   updateControls(data);
+  updateQuickBuyButton();
   renderLog();
 }
 
@@ -233,7 +300,10 @@ function updateSummaries(snapshot) {
     } else if (state.selectedVoucher != null) {
       selected = `voucher #${state.selectedVoucher}`;
     }
-    elements.shopSummary.textContent = `Cards: ${run.shop.cards.length} | Packs: ${run.shop.packs.length} | Vouchers: ${run.shop.vouchers} | Reroll: ${run.shop.reroll_cost} | Selected: ${selected}`;
+    const quickHint = state.quickBuy
+      ? "Quick buy: ON (click to buy, Shift+click to select)"
+      : "Quick buy: OFF (click to select)";
+    elements.shopSummary.textContent = `Cards: ${run.shop.cards.length} | Packs: ${run.shop.packs.length} | Vouchers: ${run.shop.vouchers} | Reroll: ${run.shop.reroll_cost} | Selected: ${selected} | ${quickHint}`;
   }
 
   elements.invSummary.textContent = `Jokers: ${run.jokers.length} | Consumables: ${run.consumables.length} | Selected: ${
@@ -244,10 +314,12 @@ function updateSummaries(snapshot) {
     elements.packSummary.textContent = "No open pack.";
   } else {
     const picks = snapshot.open_pack.offer.picks;
-    elements.packSummary.textContent = `Options: ${snapshot.open_pack.options.length} | Picks: ${picks} | Selected: ${state.selectedPackOptions.size}`;
+    elements.packSummary.textContent = `Options: ${snapshot.open_pack.options.length} | Picks: ${picks} | Selected: ${state.selectedPackOptions.size}/${picks}`;
   }
 
   elements.logSummary.textContent = `Entries: ${state.logLines.length}`;
+  elements.logSummary.title =
+    "Shortcuts: S D P X O R L B Q K Y U J N Shift+R Z (Shift+C clears pack)";
 }
 
 function renderHand(hand) {
@@ -262,6 +334,7 @@ function renderHand(hand) {
   sorted.forEach(({ card, idx }) => {
     const el = document.createElement("div");
     el.className = "card";
+    el.tabIndex = 0;
     if (state.selectedHand.has(idx)) {
       el.classList.add("selected");
     }
@@ -271,6 +344,12 @@ function renderHand(hand) {
       <div class="meta">${formatCardMeta(card, idx)}</div>
     `;
     el.addEventListener("click", () => toggleSelection(state.selectedHand, idx, el));
+    el.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        toggleSelection(state.selectedHand, idx, el);
+      }
+    });
     elements.hand.appendChild(el);
   });
 }
@@ -323,6 +402,7 @@ function renderShop(shop) {
   shop.cards.forEach((card, idx) => {
     const el = document.createElement("div");
     el.className = "list-item";
+    el.tabIndex = 0;
     if (state.selectedShopCard === idx) {
       el.classList.add("selected");
     }
@@ -330,20 +410,37 @@ function renderShop(shop) {
       card.edition ? ` | edition ${card.edition}` : ""
     }`;
     el.innerHTML = `[${idx}] ${card.kind} ${card.item_id} (${card.price})`;
-    el.addEventListener("click", () => {
+    const clickHandler = (event) => {
       state.selectedShopCard = idx;
       state.selectedShopPack = null;
       state.selectedVoucher = null;
       highlightSelection(elements.shopCards, idx);
       clearSelection(elements.shopPacks);
       clearSelection(elements.shopVouchers);
+      if (
+        state.quickBuy &&
+        !event.shiftKey &&
+        !event.altKey &&
+        !event.ctrlKey &&
+        !event.metaKey
+      ) {
+        scheduleAction(
+          "buy_card",
+          { target: String(idx) },
+          `Buy card #${idx} (${card.item_id})`
+        );
+      }
       if (state.lastSnapshot) {
         updateSummaries(state.lastSnapshot);
         updateControls(state.lastSnapshot);
       }
-    });
-    el.addEventListener("dblclick", () => {
-      callAction("buy_card", { target: String(idx) });
+    };
+    el.addEventListener("click", clickHandler);
+    el.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        clickHandler(event);
+      }
     });
     elements.shopCards.appendChild(el);
   });
@@ -351,25 +448,43 @@ function renderShop(shop) {
   shop.packs.forEach((pack, idx) => {
     const el = document.createElement("div");
     el.className = "list-item";
+    el.tabIndex = 0;
     if (state.selectedShopPack === idx) {
       el.classList.add("selected");
     }
     el.title = `options ${pack.options} | picks ${pack.picks} | price ${pack.price}`;
     el.innerHTML = `[${idx}] ${pack.kind} ${pack.size} (pick ${pack.picks}) ${pack.price}`;
-    el.addEventListener("click", () => {
+    const clickHandler = (event) => {
       state.selectedShopPack = idx;
       state.selectedShopCard = null;
       state.selectedVoucher = null;
       highlightSelection(elements.shopPacks, idx);
       clearSelection(elements.shopCards);
       clearSelection(elements.shopVouchers);
+      if (
+        state.quickBuy &&
+        !event.shiftKey &&
+        !event.altKey &&
+        !event.ctrlKey &&
+        !event.metaKey
+      ) {
+        scheduleAction(
+          "buy_pack",
+          { target: String(idx) },
+          `Buy pack #${idx} (${pack.kind} ${pack.size})`
+        );
+      }
       if (state.lastSnapshot) {
         updateSummaries(state.lastSnapshot);
         updateControls(state.lastSnapshot);
       }
-    });
-    el.addEventListener("dblclick", () => {
-      callAction("buy_pack", { target: String(idx) });
+    };
+    el.addEventListener("click", clickHandler);
+    el.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        clickHandler(event);
+      }
     });
     elements.shopPacks.appendChild(el);
   });
@@ -377,24 +492,38 @@ function renderShop(shop) {
   for (let idx = 0; idx < shop.vouchers; idx += 1) {
     const el = document.createElement("div");
     el.className = "list-item";
+    el.tabIndex = 0;
     if (state.selectedVoucher === idx) {
       el.classList.add("selected");
     }
     el.textContent = `[${idx}] Voucher`;
-    el.addEventListener("click", () => {
+    const clickHandler = (event) => {
       state.selectedVoucher = idx;
       state.selectedShopCard = null;
       state.selectedShopPack = null;
       highlightSelection(elements.shopVouchers, idx);
       clearSelection(elements.shopCards);
       clearSelection(elements.shopPacks);
+      if (
+        state.quickBuy &&
+        !event.shiftKey &&
+        !event.altKey &&
+        !event.ctrlKey &&
+        !event.metaKey
+      ) {
+        scheduleAction("buy_voucher", { target: String(idx) }, `Buy voucher #${idx}`);
+      }
       if (state.lastSnapshot) {
         updateSummaries(state.lastSnapshot);
         updateControls(state.lastSnapshot);
       }
-    });
-    el.addEventListener("dblclick", () => {
-      callAction("buy_voucher", { target: String(idx) });
+    };
+    el.addEventListener("click", clickHandler);
+    el.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        clickHandler(event);
+      }
     });
     elements.shopVouchers.appendChild(el);
   }
@@ -413,6 +542,7 @@ function renderInventory(run) {
   run.jokers.forEach((joker, idx) => {
     const el = document.createElement("div");
     el.className = "list-item";
+    el.tabIndex = 0;
     if (state.selectedJoker === idx) {
       el.classList.add("selected");
     }
@@ -426,12 +556,24 @@ function renderInventory(run) {
         updateControls(state.lastSnapshot);
       }
     });
+    el.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        state.selectedJoker = idx;
+        highlightSelection(elements.invJokers, idx);
+        if (state.lastSnapshot) {
+          updateSummaries(state.lastSnapshot);
+          updateControls(state.lastSnapshot);
+        }
+      }
+    });
     elements.invJokers.appendChild(el);
   });
 
   run.consumables.forEach((consumable, idx) => {
     const el = document.createElement("div");
     el.className = "list-item";
+    el.tabIndex = 0;
     if (state.selectedConsumable === idx) {
       el.classList.add("selected");
     }
@@ -443,6 +585,17 @@ function renderInventory(run) {
       if (state.lastSnapshot) {
         updateSummaries(state.lastSnapshot);
         updateControls(state.lastSnapshot);
+      }
+    });
+    el.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        state.selectedConsumable = idx;
+        highlightSelection(elements.invConsumables, idx);
+        if (state.lastSnapshot) {
+          updateSummaries(state.lastSnapshot);
+          updateControls(state.lastSnapshot);
+        }
       }
     });
     elements.invConsumables.appendChild(el);
@@ -472,8 +625,15 @@ function renderPack(openPack) {
   openPack.options.forEach((option, idx) => {
     const el = document.createElement("div");
     el.className = "list-item";
+    el.tabIndex = 0;
     el.textContent = `[${idx}] ${formatPackOption(option)}`;
     el.addEventListener("click", () => toggleSelection(state.selectedPackOptions, idx, el));
+    el.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        toggleSelection(state.selectedPackOptions, idx, el);
+      }
+    });
     if (state.selectedPackOptions.has(idx)) {
       el.classList.add("selected");
     }
@@ -503,42 +663,71 @@ function renderScore(breakdown) {
   elements.scoreBreakdown.appendChild(summary);
 
   if (breakdown.played_cards && breakdown.played_cards.length > 0) {
-    const played = document.createElement("div");
-    played.className = "score-row";
     const list = breakdown.played_cards
       .map((card, idx) => `${idx}: ${formatCard(card)} ${formatMods(card)}`)
       .join("<br/>");
-    played.innerHTML = `<div><strong>Played cards:</strong></div><div>${list}</div>`;
-    elements.scoreBreakdown.appendChild(played);
+    elements.scoreBreakdown.appendChild(
+      renderScoreSection("Played cards", "played", list)
+    );
   }
 
   if (breakdown.scoring_cards && breakdown.scoring_cards.length > 0) {
-    const scoring = document.createElement("div");
-    scoring.className = "score-row";
     const list = breakdown.scoring_cards
       .map(
         (entry) =>
           `${entry.index}: ${formatCard(entry.card)} ${formatMods(entry.card)} ⇒ ${entry.chips}`
       )
       .join("<br/>");
-    scoring.innerHTML = `<div><strong>Scoring cards:</strong></div><div>${list}</div>`;
-    elements.scoreBreakdown.appendChild(scoring);
+    elements.scoreBreakdown.appendChild(
+      renderScoreSection("Scoring cards", "scoring", list)
+    );
   }
 
   if (breakdown.steps && breakdown.steps.length > 0) {
-    const steps = document.createElement("div");
-    steps.className = "score-row";
     const list = breakdown.steps
-      .map(
-        (step, idx) =>
-          `${idx + 1}. ${step.source} | ${step.effect} | ${step.before_chips}×${step.before_mult.toFixed(
-            2
-          )} → ${step.after_chips}×${step.after_mult.toFixed(2)}`
-      )
+      .map((step, idx) => {
+        const deltaChips = step.after_chips - step.before_chips;
+        const deltaMult = step.after_mult - step.before_mult;
+        const deltaText = `Δchips ${formatSigned(deltaChips)}, Δmult ${formatSignedFloat(
+          deltaMult
+        )}`;
+        return `${idx + 1}. ${step.source} | ${step.effect} | ${step.before_chips}×${step.before_mult.toFixed(
+          2
+        )} → ${step.after_chips}×${step.after_mult.toFixed(2)} (${deltaText})`;
+      })
       .join("<br/>");
-    steps.innerHTML = `<div><strong>Effect steps:</strong></div><div>${list}</div>`;
-    elements.scoreBreakdown.appendChild(steps);
+    elements.scoreBreakdown.appendChild(
+      renderScoreSection("Effect steps", "steps", list)
+    );
   }
+}
+
+function renderScoreSection(title, key, bodyHtml) {
+  if (!(key in state.scoreSections)) {
+    state.scoreSections[key] = true;
+  }
+  const open = state.scoreSections[key];
+  const section = document.createElement("div");
+  section.className = "score-section";
+  const header = document.createElement("button");
+  header.type = "button";
+  header.className = "score-toggle";
+  header.textContent = `${open ? "▾" : "▸"} ${title}`;
+  header.addEventListener("click", () => {
+    state.scoreSections[key] = !state.scoreSections[key];
+    if (state.lastSnapshot) {
+      renderScore(state.lastSnapshot.last_breakdown);
+    }
+  });
+  const body = document.createElement("div");
+  body.className = "score-body";
+  body.innerHTML = bodyHtml;
+  if (!open) {
+    body.classList.add("hidden");
+  }
+  section.appendChild(header);
+  section.appendChild(body);
+  return section;
 }
 
 function renderLevels(levels) {
@@ -591,6 +780,105 @@ function pushLog(line) {
   if (state.logLines.length > 200) {
     state.logLines.shift();
   }
+}
+
+function updateQuickBuyButton() {
+  const button = actionButtons.toggle_quick_buy;
+  if (!button) return;
+  button.textContent = state.quickBuy ? "Quick Buy: On" : "Quick Buy: Off";
+}
+
+function scheduleAction(action, payload, label) {
+  cancelPendingAction();
+  const deadline = Date.now() + QUICK_BUY_DELAY_MS;
+  const pending = {
+    action,
+    payload,
+    label,
+    deadline,
+    timeoutId: null,
+    intervalId: null,
+  };
+  pending.timeoutId = setTimeout(() => {
+    clearInterval(pending.intervalId);
+    state.pendingAction = null;
+    updateToast();
+    callAction(action, payload);
+  }, QUICK_BUY_DELAY_MS);
+  pending.intervalId = setInterval(updateToast, 200);
+  state.pendingAction = pending;
+  updateToast();
+}
+
+function cancelPendingAction() {
+  if (!state.pendingAction) {
+    return;
+  }
+  clearTimeout(state.pendingAction.timeoutId);
+  clearInterval(state.pendingAction.intervalId);
+  state.pendingAction = null;
+  updateToast();
+}
+
+function updateToast() {
+  elements.toastArea.innerHTML = "";
+  if (!state.pendingAction) {
+    return;
+  }
+  const remaining = Math.max(0, state.pendingAction.deadline - Date.now());
+  const seconds = (remaining / 1000).toFixed(1);
+  const toast = document.createElement("div");
+  toast.className = "toast";
+  const label = document.createElement("div");
+  label.textContent = `${state.pendingAction.label} in ${seconds}s`;
+  const undo = document.createElement("button");
+  undo.type = "button";
+  undo.textContent = "Undo (Z)";
+  undo.addEventListener("click", () => cancelPendingAction());
+  toast.appendChild(label);
+  toast.appendChild(undo);
+  elements.toastArea.appendChild(toast);
+}
+
+function handleBuySelected() {
+  if (!state.lastSnapshot || !state.lastSnapshot.state.shop) {
+    pushLog("shop not available");
+    return;
+  }
+  if (state.selectedShopCard != null) {
+    scheduleAction(
+      "buy_card",
+      { target: String(state.selectedShopCard) },
+      `Buy card #${state.selectedShopCard}`
+    );
+    return;
+  }
+  if (state.selectedShopPack != null) {
+    scheduleAction(
+      "buy_pack",
+      { target: String(state.selectedShopPack) },
+      `Buy pack #${state.selectedShopPack}`
+    );
+    return;
+  }
+  if (state.selectedVoucher != null) {
+    scheduleAction(
+      "buy_voucher",
+      { target: String(state.selectedVoucher) },
+      `Buy voucher #${state.selectedVoucher}`
+    );
+    return;
+  }
+  pushLog("select a shop item first");
+}
+
+function formatSigned(value) {
+  return value >= 0 ? `+${value}` : `${value}`;
+}
+
+function formatSignedFloat(value) {
+  const fixed = value.toFixed(2);
+  return value >= 0 ? `+${fixed}` : fixed;
 }
 
 function toggleSelection(set, idx, element) {
@@ -777,6 +1065,100 @@ function suitShort(suit) {
       return "?";
   }
 }
+
+function isEditableTarget(target) {
+  if (!target) return false;
+  if (target.isContentEditable) return true;
+  const tag = target.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+}
+
+document.addEventListener("keydown", (event) => {
+  if (isEditableTarget(event.target)) {
+    return;
+  }
+  if (event.repeat) {
+    return;
+  }
+  if (event.shiftKey && event.key.toLowerCase() === "r") {
+    event.preventDefault();
+    handleAction("reset");
+    return;
+  }
+  if (event.shiftKey && event.key.toLowerCase() === "c") {
+    event.preventDefault();
+    handleAction("clear_pack");
+    return;
+  }
+  switch (event.key.toLowerCase()) {
+    case "s":
+      event.preventDefault();
+      handleAction("start");
+      break;
+    case "d":
+      event.preventDefault();
+      handleAction("deal");
+      break;
+    case "p":
+      event.preventDefault();
+      handleAction("play");
+      break;
+    case "x":
+      event.preventDefault();
+      handleAction("discard");
+      break;
+    case "c":
+      event.preventDefault();
+      handleAction("clear_hand");
+      break;
+    case "o":
+      event.preventDefault();
+      handleAction("enter_shop");
+      break;
+    case "r":
+      event.preventDefault();
+      handleAction("reroll");
+      break;
+    case "b":
+      event.preventDefault();
+      handleAction("buy_selected");
+      break;
+    case "l":
+      event.preventDefault();
+      handleAction("leave_shop");
+      break;
+    case "q":
+      event.preventDefault();
+      handleAction("toggle_quick_buy");
+      break;
+    case "k":
+      event.preventDefault();
+      handleAction("pick_pack");
+      break;
+    case "y":
+      event.preventDefault();
+      handleAction("skip_pack");
+      break;
+    case "u":
+      event.preventDefault();
+      handleAction("use_consumable");
+      break;
+    case "j":
+      event.preventDefault();
+      handleAction("sell_joker");
+      break;
+    case "n":
+      event.preventDefault();
+      handleAction("next_blind");
+      break;
+    case "z":
+      event.preventDefault();
+      handleAction("undo_pending");
+      break;
+    default:
+      break;
+  }
+});
 
 fetchState().catch((err) => {
   pushLog(`init error: ${err}`);

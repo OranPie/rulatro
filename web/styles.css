@@ -214,6 +214,63 @@ button:disabled {
   background: #1c2130;
 }
 
+.score-section {
+  border: 1px solid #2d3347;
+  border-radius: 8px;
+  background: #1c2130;
+  padding: 6px 8px;
+}
+
+.score-toggle {
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: #e6e6e6;
+  font-weight: 600;
+  text-align: left;
+  padding: 0;
+  cursor: pointer;
+}
+
+.score-body {
+  margin-top: 6px;
+  color: #c4c7d4;
+}
+
+.score-body.hidden {
+  display: none;
+}
+
+.toast-area {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  display: grid;
+  gap: 8px;
+  z-index: 1000;
+}
+
+.toast {
+  background: #1b2030;
+  border: 1px solid #3a4054;
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: #e6e6e6;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+button:focus-visible,
+select:focus-visible,
+.card:focus-visible,
+.list-item:focus-visible,
+.score-toggle:focus-visible {
+  outline: 2px solid #6bdcff;
+  outline-offset: 2px;
+}
+
 .badge {
   display: inline-block;
   padding: 2px 6px;
