@@ -117,8 +117,38 @@ impl RunState {
         self.start_current_blind(events)
     }
 
+    pub fn skip_blind(&mut self, events: &mut EventBus) -> Result<(), RunError> {
+        if self.state.phase != Phase::Deal {
+            return Err(RunError::InvalidPhase(self.state.phase));
+        }
+        if self.state.blind == BlindKind::Boss {
+            return Err(RunError::CannotSkipBoss);
+        }
+        let tag = self.pick_skip_tag();
+        if let Some(tag_id) = tag.clone() {
+            self.state.tags.push(tag_id);
+            self.mark_rules_dirty();
+        }
+        self.state.blinds_skipped = self.state.blinds_skipped.saturating_add(1);
+        events.push(Event::BlindSkipped {
+            ante: self.state.ante,
+            blind: self.state.blind,
+            tag,
+        });
+        self.advance_blind()?;
+        self.start_current_blind(events)
+    }
+
     pub fn blind_cleared(&self) -> bool {
         self.state.target > 0 && self.state.blind_score >= self.state.target
+    }
+
+    fn pick_skip_tag(&mut self) -> Option<String> {
+        if self.content.tags.is_empty() {
+            return None;
+        }
+        let idx = (self.rng.next_u64() % self.content.tags.len() as u64) as usize;
+        self.content.tags.get(idx).map(|tag| tag.id.clone())
     }
 
     pub fn blind_outcome(&self) -> Option<BlindOutcome> {

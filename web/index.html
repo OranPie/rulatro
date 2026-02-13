@@ -20,6 +20,7 @@
         <div>Score: <span data-field="score">-</span> / <span data-field="target">-</span></div>
         <div>Hands: <span data-field="hands_left">-</span></div>
         <div>Discards: <span data-field="discards_left">-</span></div>
+        <div>Skipped: <span data-field="blinds_skipped">-</span></div>
       </div>
     </header>
 
@@ -122,11 +123,59 @@
           <h2>Actions</h2>
           <div class="toolbar">
             <button data-action="next_blind">Next Blind</button>
+            <button data-action="skip_blind">Skip Blind</button>
             <button data-action="reset">Reset</button>
           </div>
         </div>
         <div class="levels" id="levels"></div>
         <div class="tags" id="tags"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Reference</h2>
+        </div>
+        <div class="reference">
+          <details open>
+            <summary>Enhancements / Seals / Editions</summary>
+            <div>
+              <strong>Enhancements:</strong>
+              Bonus +30 chips, Mult +4 mult, Glass x2 mult (1/4 break), Stone +50 chips (no rank/suit),
+              Lucky 1/5 +20 mult &amp; 1/15 +$20, Steel x1.5 mult (held), Gold +$3 end of round (held),
+              Wild counts as any suit.
+              <br/>
+              <strong>Seals:</strong> Red retrigger, Gold +$3 scored, Blue planet at round end, Purple tarot on discard.
+              <br/>
+              <strong>Editions:</strong> Foil +50 chips, Holographic +10 mult, Polychrome x1.5 mult, Negative +1 Joker slot.
+            </div>
+          </details>
+          <details>
+            <summary>Joker DSL conditions &amp; triggers</summary>
+            <div>
+              <strong>Triggers:</strong> played, scored_pre, scored, held, independent, discard, discard_batch,
+              card_destroyed, card_added, round_end, hand_end, blind_start, blind_failed,
+              shop_enter, shop_reroll, shop_exit, pack_opened, pack_skipped, use, sell, any_sell, acquire, passive.
+              <br/>
+              <strong>Common identifiers:</strong> hand, blind, ante, blind_score, target, money, hands_left,
+              discards_left, played_count, scoring_count, held_count, deck_count,
+              card.rank/suit/enhancement/edition/seal, card.is_face/odd/even/stone/wild, consumable.kind/id.
+              <br/>
+              <strong>Functions:</strong> contains, count, count_joker, count_rarity, suit_match, hand_count,
+              var, roll, rand, min/max/floor/ceil/pow.
+            </div>
+          </details>
+          <details>
+            <summary>Consumable effects &amp; selection rules</summary>
+            <div>
+              <strong>Effects:</strong> EnhanceSelected, AddEditionToSelected, AddSealToSelected,
+              ConvertSelectedSuit, IncreaseSelectedRank, DestroySelected, CopySelected,
+              AddRandomConsumable, AddJoker, AddRandomJoker, UpgradeHand/UpgradeAllHands,
+              AddMoney/SetMoney/DoubleMoney/AddMoneyFromJokers, CreateLastConsumable.
+              <br/>
+              <strong>Selection:</strong> *Selected* and ConvertLeftIntoRight require indices from current hand.
+            </div>
+          </details>
+        </div>
       </section>
 
       <section class="panel">

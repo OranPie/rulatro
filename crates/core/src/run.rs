@@ -51,6 +51,8 @@ pub enum RunError {
     BlindNotCleared,
     #[error("pack not available")]
     PackNotAvailable,
+    #[error("cannot skip boss blind")]
+    CannotSkipBoss,
     #[error("inventory error: {0}")]
     Inventory(#[from] InventoryError),
 }

@@ -174,6 +174,9 @@ function handleAction(action) {
     case "skip_pack":
       callAction("skip_pack");
       break;
+    case "skip_blind":
+      callAction("skip_blind");
+      break;
     case "next_blind":
       callAction("next_blind");
       break;
@@ -249,6 +252,10 @@ function updateControls(snapshot) {
   setActionEnabled("sell_joker", hasJoker);
   setActionEnabled("pick_pack", snapshot.open_pack && hasPackSelection);
   setActionEnabled("skip_pack", snapshot.open_pack != null);
+  setActionEnabled(
+    "skip_blind",
+    phase === "Deal" && snapshot.state.blind !== "Boss"
+  );
   setActionEnabled("clear_hand", state.selectedHand.size > 0);
   setActionEnabled("clear_pack", state.selectedPackOptions.size > 0);
   setActionEnabled("buy_selected", phase === "Shop" && hasShopSelection);
@@ -287,7 +294,7 @@ function renderStatus(run) {
 function updateSummaries(snapshot) {
   const run = snapshot.state;
   const handCount = run.hand.length;
-  elements.handSummary.textContent = `Selected: ${state.selectedHand.size} | Hand: ${handCount} | Hands: ${run.hands_left}/${run.hands_max} | Discards: ${run.discards_left}/${run.discards_max}`;
+  elements.handSummary.textContent = `Selected: ${state.selectedHand.size} | Hand: ${handCount} | Hands: ${run.hands_left}/${run.hands_max} | Discards: ${run.discards_left}/${run.discards_max} | Skipped: ${run.blinds_skipped}`;
 
   if (!run.shop) {
     elements.shopSummary.textContent = "Shop closed.";

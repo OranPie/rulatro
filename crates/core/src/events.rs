@@ -10,6 +10,11 @@ pub enum Event {
         hands: u8,
         discards: u8,
     },
+    BlindSkipped {
+        ante: u8,
+        blind: BlindKind,
+        tag: Option<String>,
+    },
     HandDealt { count: usize },
     HandScored {
         hand: HandKind,

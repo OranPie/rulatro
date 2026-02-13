@@ -3,7 +3,7 @@ use rulatro_core::{
     ConsumableDef, ConsumableKind, Enhancement, Edition, EventBus, Expr, HandKind, JokerDef,
     JokerEffect, JokerRarity, JokerRarityWeight, LastConsumable, PackError, PackKind, PackOffer,
     PackOpen, PackOption, PackSize, Phase, Rank, RngState, RunError, RunState, ScoreTables, Seal,
-    ShopCardKind, ShopOfferRef, ShopPurchase, ShopRestrictions, ShopState, Suit,
+    ShopCardKind, ShopOfferRef, ShopPurchase, ShopRestrictions, ShopState, Suit, TagDef,
     evaluate_hand, evaluate_hand_with_rules, open_pack, pick_pack_options, scoring_cards,
     score_hand, HandEvalRules,
 };
@@ -2501,6 +2501,41 @@ fn start_next_blind_advances() {
 }
 
 #[test]
+fn skip_blind_requires_deal_phase() {
+    let mut run = new_run();
+    run.state.phase = Phase::Play;
+    let err = run.skip_blind(&mut EventBus::default()).unwrap_err();
+    assert!(matches!(err, RunError::InvalidPhase(Phase::Play)));
+}
+
+#[test]
+fn skip_blind_rejects_boss() {
+    let mut run = new_run();
+    run.start_blind(1, BlindKind::Boss, &mut EventBus::default())
+        .expect("start blind");
+    let err = run.skip_blind(&mut EventBus::default()).unwrap_err();
+    assert!(matches!(err, RunError::CannotSkipBoss));
+}
+
+#[test]
+fn skip_blind_advances_and_adds_tag() {
+    let mut run = new_run();
+    run.content.tags = vec![TagDef {
+        id: "tag_one".to_string(),
+        name: "Tag One".to_string(),
+        effects: Vec::new(),
+    }];
+    run.start_blind(1, BlindKind::Small, &mut EventBus::default())
+        .expect("start blind");
+    run.skip_blind(&mut EventBus::default())
+        .expect("skip blind");
+    assert_eq!(run.state.blind, BlindKind::Big);
+    assert_eq!(run.state.ante, 1);
+    assert_eq!(run.state.blinds_skipped, 1);
+    assert_eq!(run.state.tags, vec!["tag_one".to_string()]);
+}
+
+#[test]
 fn blind_outcome_none_when_target_zero() {
     let mut run = new_run();
     run.state.target = 0;
@@ -3457,4 +3492,88 @@ fn money_floor_allows_purchase_to_floor() {
     run.buy_shop_offer(ShopOfferRef::Card(0), &mut EventBus::default())
         .expect("buy offer");
     assert_eq!(run.state.money, -2);
+}
+
+#[test]
+fn skip_blind_emits_events_and_starts_next() {
+    let mut run = new_run();
+    run.content.tags = vec![TagDef {
+        id: "tag_one".to_string(),
+        name: "Tag One".to_string(),
+        effects: Vec::new(),
+    }];
+    run.start_blind(1, BlindKind::Small, &mut EventBus::default())
+        .expect("start blind");
+
+    let mut events = EventBus::default();
+    run.skip_blind(&mut events).expect("skip blind");
+    let drained: Vec<_> = events.drain().collect();
+
+    assert_eq!(drained.len(), 2);
+    match &drained[0] {
+        rulatro_core::Event::BlindSkipped { ante, blind, tag } => {
+            assert_eq!(*ante, 1);
+            assert_eq!(*blind, BlindKind::Small);
+            assert_eq!(tag.as_deref(), Some("tag_one"));
+        }
+        other => panic!("unexpected first event: {other:?}"),
+    }
+    match &drained[1] {
+        rulatro_core::Event::BlindStarted { ante, blind, .. } => {
+            assert_eq!(*ante, 1);
+            assert_eq!(*blind, BlindKind::Big);
+        }
+        other => panic!("unexpected second event: {other:?}"),
+    }
+}
+
+#[test]
+fn skip_blind_no_tags_emits_none() {
+    let mut run = new_run();
+    run.content.tags.clear();
+    run.start_blind(1, BlindKind::Small, &mut EventBus::default())
+        .expect("start blind");
+
+    let mut events = EventBus::default();
+    run.skip_blind(&mut events).expect("skip blind");
+    let drained: Vec<_> = events.drain().collect();
+
+    assert_eq!(drained.len(), 2);
+    match &drained[0] {
+        rulatro_core::Event::BlindSkipped { tag, .. } => {
+            assert!(tag.is_none());
+        }
+        other => panic!("unexpected event: {other:?}"),
+    }
+    assert!(run.state.tags.is_empty());
+    assert_eq!(run.state.blinds_skipped, 1);
+}
+
+#[test]
+fn skip_blind_big_advances_to_boss() {
+    let mut run = new_run();
+    run.start_blind(1, BlindKind::Big, &mut EventBus::default())
+        .expect("start blind");
+    run.skip_blind(&mut EventBus::default())
+        .expect("skip blind");
+    assert_eq!(run.state.blind, BlindKind::Boss);
+    assert_eq!(run.state.ante, 1);
+}
+
+#[test]
+fn skip_blind_sets_next_limits() {
+    let mut run = new_run();
+    run.start_blind(1, BlindKind::Small, &mut EventBus::default())
+        .expect("start blind");
+    let (expected_hands, expected_discards) = {
+        let rule = run.config.blind_rule(BlindKind::Big).expect("blind rule");
+        (rule.hands, rule.discards)
+    };
+
+    run.skip_blind(&mut EventBus::default())
+        .expect("skip blind");
+
+    assert_eq!(run.state.blind, BlindKind::Big);
+    assert_eq!(run.state.hands_left, expected_hands);
+    assert_eq!(run.state.discards_left, expected_discards);
 }

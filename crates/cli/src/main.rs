@@ -155,6 +155,7 @@ fn run_cui() {
             "inv" | "inventory" => print_inventory(&run),
             "reward" => print_reward(&run),
             "summary" => print_summary(&run),
+            "data" | "ref" => print_reference(),
             "deal" | "d" => {
                 match run.prepare_hand(&mut events) {
                     Ok(_) => println!("dealt hand"),
@@ -190,6 +191,12 @@ fn run_cui() {
                         Err(err) => println!("error: {err:?}"),
                     },
                     None => println!("usage: discard <idx> <idx> ..."),
+                }
+            }
+            "skip" | "skip_blind" => {
+                match run.skip_blind(&mut events) {
+                    Ok(_) => println!("blind skipped"),
+                    Err(err) => println!("error: {err:?}"),
                 }
             }
             "shop" => match run.enter_shop(&mut events) {
@@ -291,7 +298,7 @@ fn run_cui() {
                     println!("no open pack");
                 }
             }
-            "skip" => {
+            "skip_pack" => {
                 if let Some(open) = open_pack.clone() {
                     match run.skip_pack(&open, &mut events) {
                         Ok(_) => {
@@ -375,15 +382,17 @@ fn print_help() {
     println!("  inv                 show inventory");
     println!("  reward              estimate reward if blind clears");
     println!("  summary             compact status summary");
+    println!("  data                show enhancement/joker/consumable reference");
     println!("  deal                draw to hand (phase Deal)");
     println!("  play <idx..>        play cards");
     println!("  discard <idx..>     discard cards");
+    println!("  skip                skip current blind (Small/Big only)");
+    println!("  skip_pack           skip open pack");
     println!("  shop                enter shop");
     println!("  reroll              reroll shop");
     println!("  buy card|pack|voucher <idx>");
     println!("  pack                show open pack options");
     println!("  pick <idx..>        pick open pack options");
-    println!("  skip                skip open pack");
     println!("  edit <idx..> enh=.. ed=.. seal=.. bonus=.. face_down=..");
     println!("  peek draw|discard [n]  show top cards");
     println!("  use <idx> [sel..]   use consumable");
@@ -393,6 +402,42 @@ fn print_help() {
     println!("  quit                exit");
     println!("note: indices support comma and ranges (e.g. 0,2-4 7)");
     println!("tip: run with --auto for scripted demo");
+}
+
+fn print_reference() {
+    println!("Enhancements:");
+    println!("  Bonus +30 chips (scored)");
+    println!("  Mult +4 mult (scored)");
+    println!("  Glass x2 mult (scored), 1/4 break");
+    println!("  Stone +50 chips (scored), no rank/suit");
+    println!("  Lucky 1/5 +20 mult, 1/15 +$20");
+    println!("  Steel x1.5 mult (held)");
+    println!("  Gold +$3 end of round (held)");
+    println!("  Wild counts as any suit");
+    println!("Seals: Red retrigger; Gold +$3 scored; Blue planet on round end; Purple tarot on discard");
+    println!("Editions: Foil +50 chips; Holo +10 mult; Polychrome x1.5 mult; Negative +1 joker slot");
+    println!();
+    println!("Joker DSL triggers (on ...): played, scored_pre, scored, held, independent,");
+    println!("  discard, discard_batch, card_destroyed, card_added, round_end, hand_end,");
+    println!("  blind_start, blind_failed, shop_enter, shop_reroll, shop_exit,");
+    println!("  pack_opened, pack_skipped, use, sell, any_sell, acquire, passive");
+    println!("Common DSL condition identifiers:");
+    println!("  hand, blind, ante, blind_score, target, money, hands_left, discards_left,");
+    println!("  played_count, scoring_count, held_count, deck_count,");
+    println!("  card.rank, card.suit, card.enhancement, card.edition, card.seal,");
+    println!("  card.is_face/odd/even/stone/wild, consumable.kind/id");
+    println!("Common DSL functions:");
+    println!("  contains(hand, HandKind), count(scope,target), count_joker(name/id),");
+    println!("  count_rarity(rarity), suit_match(suit|id), hand_count(hand), var(key),");
+    println!("  roll(n), rand(min,max), min/max/floor/ceil/pow");
+    println!();
+    println!("Consumable effects:");
+    println!("  EnhanceSelected/AddEditionToSelected/AddSealToSelected");
+    println!("  ConvertSelectedSuit/IncreaseSelectedRank/DestroySelected/CopySelected");
+    println!("  AddRandomConsumable/AddJoker/AddRandomJoker/UpgradeHand/UpgradeAllHands");
+    println!("  AddMoney/SetMoney/DoubleMoney/AddMoneyFromJokers");
+    println!("Selection rules: selection required for *Selected/*LeftIntoRight ops;");
+    println!("  indices refer to current hand.");
 }
 
 fn print_prompt(run: &RunState, open_pack: Option<&PackOpen>) {
@@ -418,6 +463,7 @@ fn print_state(run: &RunState) {
         "ante {} blind {:?} phase {:?}",
         run.state.ante, run.state.blind, run.state.phase
     );
+    println!("blinds skipped {}", run.state.blinds_skipped);
     println!(
         "target {} score {} hands {}/{} discards {}/{}",
         run.state.target,
@@ -479,7 +525,7 @@ fn print_reward(run: &RunState) {
 
 fn print_summary(run: &RunState) {
     println!(
-        "ante {} {:?} {:?} money {} score {}/{} hands {}/{} discards {}/{}",
+        "ante {} {:?} {:?} money {} score {}/{} hands {}/{} discards {}/{} skipped {}",
         run.state.ante,
         run.state.blind,
         run.state.phase,
@@ -489,7 +535,8 @@ fn print_summary(run: &RunState) {
         run.state.hands_left,
         run.state.hands_max,
         run.state.discards_left,
-        run.state.discards_max
+        run.state.discards_max,
+        run.state.blinds_skipped
     );
 }
 

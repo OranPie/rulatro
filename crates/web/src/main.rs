@@ -83,6 +83,7 @@ struct UiState {
     jokers: Vec<UiJoker>,
     consumables: Vec<UiConsumable>,
     shop: Option<UiShop>,
+    blinds_skipped: u32,
     tags: Vec<String>,
     duplicate_next_tag: bool,
     duplicate_tag_exclude: Option<String>,
@@ -383,6 +384,7 @@ fn snapshot_state(run: &RunState) -> UiState {
         jokers,
         consumables,
         shop,
+        blinds_skipped: run.state.blinds_skipped,
         tags: run.state.tags.clone(),
         duplicate_next_tag: run.state.duplicate_next_tag,
         duplicate_tag_exclude: run.state.duplicate_tag_exclude.clone(),
@@ -608,6 +610,11 @@ fn apply_action(state: &mut AppState, req: ActionRequest) -> Option<String> {
             } else {
                 Some("no open pack".to_string())
             }
+        }
+        "skip_blind" => {
+            state.last_breakdown = None;
+            state.last_played.clear();
+            run.skip_blind(events).map_err(|err| format!("{err:?}")).err()
         }
         "use_consumable" => {
             let idx = match index(req.target) {
