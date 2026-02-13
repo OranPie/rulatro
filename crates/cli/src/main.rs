@@ -1,5 +1,5 @@
 use rulatro_core::{
-    BlindKind, BlindOutcome, Card, ConsumableKind, Edition, Enhancement, EventBus, PackOpen,
+    BlindKind, BlindOutcome, Card, ConsumableKind, Edition, Enhancement, Event, EventBus, PackOpen,
     PackOption, Phase, Rank, RunError, RunState, ScoreBreakdown, ScoreTables, ScoreTraceStep, Seal,
     ShopOfferRef, Suit,
 };
@@ -20,8 +20,8 @@ fn main() {
 fn run_auto() {
     let mut events = EventBus::default();
     let config = load_game_config(Path::new("assets")).expect("load config");
-    let modded = load_content_with_mods(Path::new("assets"), Path::new("mods"))
-        .expect("load content");
+    let modded =
+        load_content_with_mods(Path::new("assets"), Path::new("mods")).expect("load content");
     if !modded.mods.is_empty() {
         println!("mods loaded: {}", modded.mods.len());
         for item in &modded.mods {
@@ -32,9 +32,7 @@ fn run_auto() {
         eprintln!("mod warning: {}", warning);
     }
     let mut runtime = ModManager::new();
-    runtime
-        .load_mods(&modded.mods)
-        .expect("load mod runtime");
+    runtime.load_mods(&modded.mods).expect("load mod runtime");
     let mut run = RunState::new(config, modded.content, 0xC0FFEE);
     run.set_mod_runtime(Some(Box::new(runtime)));
     run.start_blind(1, BlindKind::Small, &mut events)
@@ -46,9 +44,7 @@ fn run_auto() {
 
         let play_count = run.hand.len().min(5);
         let indices: Vec<usize> = (0..play_count).collect();
-        let breakdown = run
-            .play_hand(&indices, &mut events)
-            .expect("play hand");
+        let breakdown = run.play_hand(&indices, &mut events).expect("play hand");
 
         println!(
             "hand: {:?}, chips: {}, mult: {:.2}, total: {}",
@@ -106,8 +102,8 @@ fn run_auto() {
 fn run_cui() {
     let mut events = EventBus::default();
     let config = load_game_config(Path::new("assets")).expect("load config");
-    let modded = load_content_with_mods(Path::new("assets"), Path::new("mods"))
-        .expect("load content");
+    let modded =
+        load_content_with_mods(Path::new("assets"), Path::new("mods")).expect("load content");
     if !modded.mods.is_empty() {
         println!("mods loaded: {}", modded.mods.len());
         for item in &modded.mods {
@@ -118,9 +114,7 @@ fn run_cui() {
         eprintln!("mod warning: {}", warning);
     }
     let mut runtime = ModManager::new();
-    runtime
-        .load_mods(&modded.mods)
-        .expect("load mod runtime");
+    runtime.load_mods(&modded.mods).expect("load mod runtime");
     let mut run = RunState::new(config, modded.content, 0xC0FFEE);
     run.set_mod_runtime(Some(Box::new(runtime)));
     run.start_blind(1, BlindKind::Small, &mut events)
@@ -129,6 +123,7 @@ fn run_cui() {
     let mut open_pack: Option<PackOpen> = None;
     print_help();
     loop {
+        let mut show_flow = false;
         if let Some(outcome) = run.blind_outcome() {
             println!("blind outcome: {:?}", outcome);
         }
@@ -148,6 +143,7 @@ fn run_cui() {
             "help" | "h" | "?" => print_help(),
             "quit" | "exit" => break,
             "state" | "s" => print_state(&run),
+            "status" => print_summary(&run),
             "hand" => print_hand(&run),
             "deck" => print_deck(&run),
             "levels" => print_levels(&run),
@@ -155,14 +151,17 @@ fn run_cui() {
             "inv" | "inventory" => print_inventory(&run),
             "reward" => print_reward(&run),
             "summary" => print_summary(&run),
+            "board" | "overview" | "ls" => print_overview(&run, open_pack.as_ref()),
             "data" | "ref" => print_reference(),
             "deal" | "d" => {
+                show_flow = true;
                 match run.prepare_hand(&mut events) {
                     Ok(_) => println!("dealt hand"),
                     Err(err) => println!("error: {err:?}"),
                 }
             }
             "play" | "p" => {
+                show_flow = true;
                 let indices = parse_indices(&args);
                 match indices {
                     Some(indices) => {
@@ -184,6 +183,7 @@ fn run_cui() {
                 }
             }
             "discard" | "x" => {
+                show_flow = true;
                 let indices = parse_indices(&args);
                 match indices {
                     Some(indices) => match run.discard(&indices, &mut events) {
@@ -194,25 +194,34 @@ fn run_cui() {
                 }
             }
             "skip" | "skip_blind" => {
+                show_flow = true;
                 match run.skip_blind(&mut events) {
                     Ok(_) => println!("blind skipped"),
                     Err(err) => println!("error: {err:?}"),
                 }
             }
-            "shop" => match run.enter_shop(&mut events) {
-                Ok(_) => print_shop(&run),
-                Err(err) => println!("error: {err:?}"),
-            },
+            "shop" | "sh" => {
+                show_flow = true;
+                match run.enter_shop(&mut events) {
+                    Ok(_) => print_shop(&run),
+                    Err(err) => println!("error: {err:?}"),
+                }
+            }
             "leave" => {
+                show_flow = true;
                 run.leave_shop();
                 open_pack = None;
                 println!("left shop");
             }
-            "reroll" | "r" => match run.reroll_shop(&mut events) {
-                Ok(_) => print_shop(&run),
-                Err(err) => println!("error: {err:?}"),
-            },
+            "reroll" | "r" => {
+                show_flow = true;
+                match run.reroll_shop(&mut events) {
+                    Ok(_) => print_shop(&run),
+                    Err(err) => println!("error: {err:?}"),
+                }
+            }
             "buy" => {
+                show_flow = true;
                 if args.len() < 2 {
                     println!("usage: buy card|pack|voucher <index>");
                 } else {
@@ -233,13 +242,15 @@ fn run_cui() {
                         }
                         ("pack", Some(idx)) => {
                             match run.buy_shop_offer(ShopOfferRef::Pack(idx), &mut events) {
-                                Ok(purchase) => match run.open_pack_purchase(&purchase, &mut events) {
-                                    Ok(open) => {
-                                        print_pack_open(&open, &run);
-                                        open_pack = Some(open);
+                                Ok(purchase) => {
+                                    match run.open_pack_purchase(&purchase, &mut events) {
+                                        Ok(open) => {
+                                            print_pack_open(&open, &run);
+                                            open_pack = Some(open);
+                                        }
+                                        Err(err) => println!("error: {err:?}"),
                                     }
-                                    Err(err) => println!("error: {err:?}"),
-                                },
+                                }
                                 Err(err) => println!("error: {err:?}"),
                             }
                         }
@@ -274,31 +285,37 @@ fn run_cui() {
                     continue;
                 }
                 match parse_edit_args(&args) {
-                    Ok((indices, edits)) => match apply_card_edits(&mut run.hand, &indices, edits) {
-                        Ok(_) => println!("edited cards: {:?}", indices),
-                        Err(err) => println!("error: {err}"),
-                    },
+                    Ok((indices, edits)) => {
+                        match apply_card_edits(&mut run.hand, &indices, edits) {
+                            Ok(_) => println!("edited cards: {:?}", indices),
+                            Err(err) => println!("error: {err}"),
+                        }
+                    }
                     Err(err) => println!("error: {err}"),
                 }
             }
             "pick" => {
+                show_flow = true;
                 if let Some(open) = open_pack.clone() {
                     let indices = parse_indices(&args);
                     match indices {
-                        Some(indices) => match run.choose_pack_options(&open, &indices, &mut events) {
-                            Ok(_) => {
-                                println!("picked pack options");
-                                open_pack = None;
+                        Some(indices) => {
+                            match run.choose_pack_options(&open, &indices, &mut events) {
+                                Ok(_) => {
+                                    println!("picked pack options");
+                                    open_pack = None;
+                                }
+                                Err(err) => println!("error: {err:?}"),
                             }
-                            Err(err) => println!("error: {err:?}"),
-                        },
+                        }
                         None => println!("usage: pick <idx> <idx> ..."),
                     }
                 } else {
                     println!("no open pack");
                 }
             }
-            "skip_pack" => {
+            "skip_pack" | "sp" => {
+                show_flow = true;
                 if let Some(open) = open_pack.clone() {
                     match run.skip_pack(&open, &mut events) {
                         Ok(_) => {
@@ -328,6 +345,7 @@ fn run_cui() {
                 }
             }
             "use" => {
+                show_flow = true;
                 if args.is_empty() {
                     println!("usage: use <consumable_index> [selected idxs]");
                     continue;
@@ -346,6 +364,7 @@ fn run_cui() {
                 }
             }
             "sell" => {
+                show_flow = true;
                 if args.len() != 1 {
                     println!("usage: sell <joker_index>");
                     continue;
@@ -358,7 +377,8 @@ fn run_cui() {
                     Err(_) => println!("invalid index"),
                 }
             }
-            "next" => {
+            "next" | "n" => {
+                show_flow = true;
                 open_pack = None;
                 match run.start_next_blind(&mut events) {
                     Ok(_) => println!("started next blind"),
@@ -368,39 +388,52 @@ fn run_cui() {
             _ => println!("unknown command: {cmd} (type 'help')"),
         }
         drain_events(&mut events);
+        if show_flow {
+            print_flow_summary(&run, open_pack.as_ref());
+        }
     }
 }
 
 fn print_help() {
-    println!("commands:");
-    println!("  help                show this help");
-    println!("  state               show run state");
-    println!("  hand                show current hand");
-    println!("  deck                show deck sizes");
-    println!("  levels              show hand levels");
-    println!("  tags                show active tags");
-    println!("  inv                 show inventory");
-    println!("  reward              estimate reward if blind clears");
-    println!("  summary             compact status summary");
-    println!("  data                show enhancement/joker/consumable reference");
-    println!("  deal                draw to hand (phase Deal)");
-    println!("  play <idx..>        play cards");
-    println!("  discard <idx..>     discard cards");
-    println!("  skip                skip current blind (Small/Big only)");
-    println!("  skip_pack           skip open pack");
-    println!("  shop                enter shop");
-    println!("  reroll              reroll shop");
+    println!("Commands:");
+    println!("  help|h|?                 show help");
+    println!("  quit|exit                exit");
+    println!();
+    println!("View:");
+    println!("  summary|status           one-line run status");
+    println!("  state|s                  detailed run state");
+    println!("  board|overview|ls        full current view (state+hand+inv+shop+pack)");
+    println!("  hand                      show hand table");
+    println!("  deck                      show draw/discard sizes");
+    println!("  levels                    show hand levels");
+    println!("  tags                      show tags");
+    println!("  inv|inventory             show jokers and consumables");
+    println!("  reward                    estimate clear reward");
+    println!("  data|ref                  print enhancement/joker/consumable reference");
+    println!();
+    println!("Run:");
+    println!("  deal|d                    draw hand (Deal phase)");
+    println!("  play|p <idx..>            play cards");
+    println!("  discard|x <idx..>         discard cards");
+    println!("  skip|skip_blind           skip current blind (Small/Big only)");
+    println!("  next|n                    start next blind");
+    println!();
+    println!("Shop / Pack:");
+    println!("  shop|sh                   enter shop");
+    println!("  reroll|r                  reroll shop");
     println!("  buy card|pack|voucher <idx>");
-    println!("  pack                show open pack options");
-    println!("  pick <idx..>        pick open pack options");
+    println!("  leave                     leave shop");
+    println!("  pack                      show open pack options");
+    println!("  pick <idx..>              pick pack options");
+    println!("  skip_pack|sp              skip open pack");
+    println!();
+    println!("Debug / Edit:");
+    println!("  use <consumable_idx> [sel..]");
+    println!("  sell <joker_idx>");
     println!("  edit <idx..> enh=.. ed=.. seal=.. bonus=.. face_down=..");
-    println!("  peek draw|discard [n]  show top cards");
-    println!("  use <idx> [sel..]   use consumable");
-    println!("  sell <idx>          sell joker");
-    println!("  leave               leave shop");
-    println!("  next                start next blind");
-    println!("  quit                exit");
+    println!("  peek draw|discard [n]");
     println!("note: indices support comma and ranges (e.g. 0,2-4 7)");
+    println!("tip: actions print a flow summary automatically");
     println!("tip: run with --auto for scripted demo");
 }
 
@@ -414,8 +447,12 @@ fn print_reference() {
     println!("  Steel x1.5 mult (held)");
     println!("  Gold +$3 end of round (held)");
     println!("  Wild counts as any suit");
-    println!("Seals: Red retrigger; Gold +$3 scored; Blue planet on round end; Purple tarot on discard");
-    println!("Editions: Foil +50 chips; Holo +10 mult; Polychrome x1.5 mult; Negative +1 joker slot");
+    println!(
+        "Seals: Red retrigger; Gold +$3 scored; Blue planet on round end; Purple tarot on discard"
+    );
+    println!(
+        "Editions: Foil +50 chips; Holo +10 mult; Polychrome x1.5 mult; Negative +1 joker slot"
+    );
     println!();
     println!("Joker DSL triggers (on ...): played, scored_pre, scored, held, independent,");
     println!("  discard, discard_batch, card_destroyed, card_added, round_end, hand_end,");
@@ -441,11 +478,21 @@ fn print_reference() {
 }
 
 fn print_prompt(run: &RunState, open_pack: Option<&PackOpen>) {
-    let pack = if open_pack.is_some() { " pack-open" } else { "" };
+    let pack = if open_pack.is_some() { " PK" } else { "" };
     print!(
-        "[ante {} {:?} {:?} money {} score {}/{}{}] > ",
-        run.state.ante, run.state.blind, run.state.phase, run.state.money, run.state.blind_score,
-        run.state.target, pack
+        "[A{} {} {} ${} {}/{} H{}/{} D{}/{} SK{}{}] > ",
+        run.state.ante,
+        blind_short(run.state.blind),
+        phase_short(run.state.phase),
+        run.state.money,
+        run.state.blind_score,
+        run.state.target,
+        run.state.hands_left,
+        run.state.hands_max,
+        run.state.discards_left,
+        run.state.discards_max,
+        run.state.blinds_skipped,
+        pack
     );
     let _ = io::stdout().flush();
 }
@@ -540,11 +587,54 @@ fn print_summary(run: &RunState) {
     );
 }
 
+fn print_flow_summary(run: &RunState, open_pack: Option<&PackOpen>) {
+    let pack = if open_pack.is_some() {
+        " | pack open"
+    } else {
+        ""
+    };
+    println!(
+        "=> A{} {} {} | ${} | {}/{} | hands {}/{} discards {}/{} | skipped {}{}",
+        run.state.ante,
+        blind_short(run.state.blind),
+        phase_short(run.state.phase),
+        run.state.money,
+        run.state.blind_score,
+        run.state.target,
+        run.state.hands_left,
+        run.state.hands_max,
+        run.state.discards_left,
+        run.state.discards_max,
+        run.state.blinds_skipped,
+        pack
+    );
+}
+
+fn print_overview(run: &RunState, open_pack: Option<&PackOpen>) {
+    print_summary(run);
+    print_tags(run);
+    print_hand(run);
+    print_inventory(run);
+    if run.shop.is_some() {
+        print_shop(run);
+    }
+    if let Some(open) = open_pack {
+        print_pack_open(open, run);
+    }
+}
+
 fn print_hand(run: &RunState) {
     println!("hand ({} cards):", run.hand.len());
+    println!(" idx  card          value  detail");
     for (idx, card) in run.hand.iter().enumerate() {
         let value = card_value(card, &run.tables);
-        println!("{:>2}: {} | value {}", idx, format_card(card), value);
+        println!(
+            "{:>4}  {:<12}  {:>5}  {}",
+            idx,
+            format_card(card),
+            value,
+            card_detail(card)
+        );
     }
 }
 
@@ -554,7 +644,11 @@ fn print_deck(run: &RunState) {
 }
 
 fn print_inventory(run: &RunState) {
-    println!("jokers ({}/{}):", run.inventory.jokers.len(), run.inventory.joker_capacity());
+    println!(
+        "jokers ({}/{}):",
+        run.inventory.jokers.len(),
+        run.inventory.joker_capacity()
+    );
     for (idx, joker) in run.inventory.jokers.iter().enumerate() {
         let edition = joker.edition.map(edition_short).unwrap_or("");
         let suffix = if edition.is_empty() {
@@ -585,22 +679,33 @@ fn print_shop(run: &RunState) {
         println!("shop not available");
         return;
     };
-    println!("shop cards:");
+    println!(
+        "shop: cards {} packs {} vouchers {} reroll {}",
+        shop.cards.len(),
+        shop.packs.len(),
+        shop.vouchers,
+        shop.reroll_cost
+    );
+    println!("cards:");
     for (idx, card) in shop.cards.iter().enumerate() {
+        let rarity = card
+            .rarity
+            .map(|value| format!("{value:?}"))
+            .unwrap_or_else(|| "-".to_string());
+        let edition = card.edition.map(edition_short).unwrap_or("-");
         println!(
-            "{:>2}: {:?} {} price {}",
-            idx, card.kind, card.item_id, card.price
+            "  {:>2}: {:<10?} {:<22} price {:>3} rarity {:<8} edition {}",
+            idx, card.kind, card.item_id, card.price, rarity, edition
         );
     }
-    println!("shop packs:");
+    println!("packs:");
     for (idx, pack) in shop.packs.iter().enumerate() {
         println!(
-            "{:>2}: {:?} {:?} options {} picks {} price {}",
+            "  {:>2}: {:<9?} {:<6?} options {:>2} picks {:>2} price {:>3}",
             idx, pack.kind, pack.size, pack.options, pack.picks, pack.price
         );
     }
     println!("vouchers: {}", shop.vouchers);
-    println!("reroll cost: {}", shop.reroll_cost);
 }
 
 fn print_pack_open(open: &PackOpen, run: &RunState) {
@@ -641,7 +746,7 @@ fn print_peek(cards: &[Card], count: usize, label: &str) {
 
 fn drain_events(events: &mut EventBus) {
     for event in events.drain() {
-        println!("event: {:?}", event);
+        println!("event: {}", format_event(&event));
     }
 }
 
@@ -786,9 +891,7 @@ fn apply_card_edits(hand: &mut [Card], indices: &[usize], edits: CardEdits) -> R
         if let Some(bonus) = edits.bonus {
             match bonus {
                 BonusEdit::Set(value) => card.bonus_chips = value,
-                BonusEdit::Add(delta) => {
-                    card.bonus_chips = card.bonus_chips.saturating_add(delta)
-                }
+                BonusEdit::Add(delta) => card.bonus_chips = card.bonus_chips.saturating_add(delta),
             }
         }
         if let Some(face_down) = edits.face_down {
@@ -1006,6 +1109,109 @@ fn card_value(card: &Card, tables: &ScoreTables) -> i64 {
         return 0;
     }
     tables.rank_chips(card.rank) + card.bonus_chips
+}
+
+fn card_detail(card: &Card) -> String {
+    if card.face_down {
+        return "face_down".to_string();
+    }
+    let mut tags = Vec::new();
+    tags.push(format!("{:?}{:?}", card.rank, card.suit));
+    if let Some(enhancement) = card.enhancement {
+        tags.push(format!("enh={}", enhancement_short(enhancement)));
+    }
+    if let Some(edition) = card.edition {
+        tags.push(format!("ed={}", edition_short(edition)));
+    }
+    if let Some(seal) = card.seal {
+        tags.push(format!("seal={}", seal_short(seal)));
+    }
+    if card.bonus_chips != 0 {
+        tags.push(format!("bonus={}", card.bonus_chips));
+    }
+    tags.join(" ")
+}
+
+fn phase_short(phase: Phase) -> &'static str {
+    match phase {
+        Phase::Setup => "Setup",
+        Phase::Deal => "Deal",
+        Phase::Play => "Play",
+        Phase::Score => "Score",
+        Phase::Cleanup => "Clean",
+        Phase::Shop => "Shop",
+    }
+}
+
+fn blind_short(blind: BlindKind) -> &'static str {
+    match blind {
+        BlindKind::Small => "Small",
+        BlindKind::Big => "Big",
+        BlindKind::Boss => "Boss",
+    }
+}
+
+fn format_event(event: &Event) -> String {
+    match event {
+        Event::BlindStarted {
+            ante,
+            blind,
+            target,
+            hands,
+            discards,
+        } => format!(
+            "blind started: ante {ante} {blind:?} target {target} hands {hands} discards {discards}"
+        ),
+        Event::BlindSkipped { ante, blind, tag } => format!(
+            "blind skipped: ante {ante} {blind:?} tag {}",
+            tag.as_deref().unwrap_or("none")
+        ),
+        Event::HandDealt { count } => format!("hand dealt: {count} cards"),
+        Event::HandScored {
+            hand,
+            chips,
+            mult,
+            total,
+        } => format!("hand scored: {hand:?} {chips}x{mult:.2} = {total}"),
+        Event::ShopEntered {
+            offers,
+            reroll_cost,
+            reentered,
+        } => format!(
+            "shop entered: offers {offers} reroll {reroll_cost}{}",
+            if *reentered { " (reenter)" } else { "" }
+        ),
+        Event::ShopRerolled {
+            offers,
+            reroll_cost,
+            cost,
+            money,
+        } => {
+            format!("shop rerolled: offers {offers} reroll {reroll_cost} cost {cost} money {money}")
+        }
+        Event::ShopBought { offer, cost, money } => {
+            format!("shop bought: {offer:?} cost {cost} money {money}")
+        }
+        Event::PackOpened {
+            kind,
+            options,
+            picks,
+        } => format!("pack opened: {kind:?} options {options} picks {picks}"),
+        Event::PackChosen { picks } => format!("pack chosen: {picks}"),
+        Event::JokerSold {
+            id,
+            sell_value,
+            money,
+        } => format!("joker sold: {id} value {sell_value} money {money}"),
+        Event::BlindCleared {
+            score,
+            reward,
+            money,
+        } => {
+            format!("blind cleared: score {score} reward {reward} money {money}")
+        }
+        Event::BlindFailed { score } => format!("blind failed: score {score}"),
+    }
 }
 
 fn rank_short(rank: Rank) -> &'static str {
