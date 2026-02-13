@@ -161,13 +161,13 @@ pub fn evaluate_hand_with_rules(cards: &[Card], rules: HandEvalRules) -> HandKin
     if counts == [4] {
         return HandKind::Quads;
     }
-    if counts == [3, 1] {
+    if counts == [3] || counts == [3, 1] {
         return HandKind::Trips;
     }
     if counts == [2, 2] {
         return HandKind::TwoPair;
     }
-    if counts == [2, 1, 1] {
+    if counts == [2] || counts == [2, 1] || counts == [2, 1, 1] {
         return HandKind::Pair;
     }
     HandKind::HighCard

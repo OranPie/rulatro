@@ -1,6 +1,7 @@
 use rulatro_core::{
     BlindKind, BlindOutcome, Card, ConsumableKind, Edition, Enhancement, EventBus, PackOpen,
-    PackOption, Phase, Rank, RunState, Seal, ShopOfferRef, Suit,
+    PackOption, Phase, Rank, RunError, RunState, ScoreBreakdown, ScoreTables, Seal, ShopOfferRef,
+    Suit,
 };
 use rulatro_data::{load_content_with_mods, load_game_config};
 use rulatro_modding::ModManager;
@@ -163,18 +164,15 @@ fn run_cui() {
             "play" | "p" => {
                 let indices = parse_indices(&args);
                 match indices {
-                    Some(indices) => match run.play_hand(&indices, &mut events) {
-                        Ok(breakdown) => {
-                            println!(
-                                "scored: {:?} chips={} mult={:.2} total={}",
-                                breakdown.hand,
-                                breakdown.total.chips,
-                                breakdown.total.mult,
-                                breakdown.total.total()
-                            );
+                    Some(indices) => {
+                        let preview = collect_played_cards(&run.hand, &indices).ok();
+                        match run.play_hand(&indices, &mut events) {
+                            Ok(breakdown) => {
+                                print_score_breakdown(&breakdown, preview.as_deref(), &run.tables);
+                            }
+                            Err(err) => println!("error: {err:?}"),
                         }
-                        Err(err) => println!("error: {err:?}"),
-                    },
+                    }
                     None => println!("usage: play <idx> <idx> ..."),
                 }
             }
@@ -588,6 +586,67 @@ fn parse_indices(args: &[&str]) -> Option<Vec<usize>> {
         }
     }
     Some(indices)
+}
+
+fn collect_played_cards(hand: &[Card], indices: &[usize]) -> Result<Vec<Card>, RunError> {
+    if indices.is_empty() {
+        return Err(RunError::InvalidSelection);
+    }
+    let mut unique = indices.to_vec();
+    unique.sort_unstable();
+    unique.dedup();
+    if unique.iter().any(|&idx| idx >= hand.len()) {
+        return Err(RunError::InvalidSelection);
+    }
+    unique.sort_unstable_by(|a, b| b.cmp(a));
+    let mut picked = Vec::with_capacity(unique.len());
+    for idx in unique {
+        picked.push(hand[idx]);
+    }
+    Ok(picked)
+}
+
+fn print_score_breakdown(
+    breakdown: &ScoreBreakdown,
+    played: Option<&[Card]>,
+    tables: &ScoreTables,
+) {
+    println!("hand: {:?}", breakdown.hand);
+    if let Some(cards) = played {
+        println!("played cards (order used):");
+        for (idx, card) in cards.iter().enumerate() {
+            println!("  {:>2}: {}", idx, format_card(card));
+        }
+    }
+    println!("scoring indices: {:?}", breakdown.scoring_indices);
+    println!(
+        "base: chips={} mult={:.2}",
+        breakdown.base.chips, breakdown.base.mult
+    );
+    if let Some(cards) = played {
+        let mut rank_total = 0i64;
+        println!("rank chips breakdown:");
+        for &idx in &breakdown.scoring_indices {
+            if let Some(card) = cards.get(idx) {
+                let chips = if card.is_stone() {
+                    0
+                } else {
+                    tables.rank_chips(card.rank)
+                };
+                rank_total += chips;
+                println!("  {:>2}: {} => {}", idx, format_card(card), chips);
+            }
+        }
+        println!("rank chips total: {}", rank_total);
+    } else {
+        println!("rank chips total: {}", breakdown.rank_chips);
+    }
+    println!(
+        "total: chips={} mult={:.2} score={}",
+        breakdown.total.chips,
+        breakdown.total.mult,
+        breakdown.total.total()
+    );
 }
 
 fn estimate_interest(run: &RunState) -> i64 {
