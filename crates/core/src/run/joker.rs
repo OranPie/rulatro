@@ -354,17 +354,29 @@ impl RunState {
         }
     }
 
-    pub(super) fn apply_joker_edition_before(&self, joker: &crate::JokerInstance, score: &mut Score) {
+    pub(super) fn apply_joker_edition_before(&mut self, joker: &crate::JokerInstance, score: &mut Score) {
         match joker.edition {
-            Some(Edition::Foil) => score.apply(&crate::RuleEffect::AddChips(50)),
-            Some(Edition::Holographic) => score.apply(&crate::RuleEffect::AddMult(10.0)),
+            Some(Edition::Foil) => self.apply_rule_effect(
+                score,
+                crate::RuleEffect::AddChips(50),
+                "joker_edition:foil",
+            ),
+            Some(Edition::Holographic) => self.apply_rule_effect(
+                score,
+                crate::RuleEffect::AddMult(10.0),
+                "joker_edition:holographic",
+            ),
             _ => {}
         }
     }
 
-    pub(super) fn apply_joker_edition_after(&self, joker: &crate::JokerInstance, score: &mut Score) {
+    pub(super) fn apply_joker_edition_after(&mut self, joker: &crate::JokerInstance, score: &mut Score) {
         match joker.edition {
-            Some(Edition::Polychrome) => score.apply(&crate::RuleEffect::MultiplyMult(1.5)),
+            Some(Edition::Polychrome) => self.apply_rule_effect(
+                score,
+                crate::RuleEffect::MultiplyMult(1.5),
+                "joker_edition:polychrome",
+            ),
             _ => {}
         }
     }
@@ -486,22 +498,38 @@ impl RunState {
             match action.op {
                 ActionOp::AddChips => {
                     if let Some(value) = value {
-                        score.apply(&crate::RuleEffect::AddChips(value.floor() as i64));
+                        let source = format!("joker:{}:add_chips", joker.id);
+                        self.apply_rule_effect(
+                            score,
+                            crate::RuleEffect::AddChips(value.floor() as i64),
+                            &source,
+                        );
                     }
                 }
                 ActionOp::AddMult => {
                     if let Some(value) = value {
-                        score.apply(&crate::RuleEffect::AddMult(value));
+                        let source = format!("joker:{}:add_mult", joker.id);
+                        self.apply_rule_effect(score, crate::RuleEffect::AddMult(value), &source);
                     }
                 }
                 ActionOp::MultiplyMult => {
                     if let Some(value) = value {
-                        score.apply(&crate::RuleEffect::MultiplyMult(value));
+                        let source = format!("joker:{}:mul_mult", joker.id);
+                        self.apply_rule_effect(
+                            score,
+                            crate::RuleEffect::MultiplyMult(value),
+                            &source,
+                        );
                     }
                 }
                 ActionOp::MultiplyChips => {
                     if let Some(value) = value {
-                        score.apply(&crate::RuleEffect::MultiplyChips(value));
+                        let source = format!("joker:{}:mul_chips", joker.id);
+                        self.apply_rule_effect(
+                            score,
+                            crate::RuleEffect::MultiplyChips(value),
+                            &source,
+                        );
                     }
                 }
                 ActionOp::AddMoney => {

@@ -24,6 +24,7 @@ impl RunState {
             state: GameState::new(),
             shop: None,
             pending_effects: Vec::new(),
+            last_score_trace: Vec::new(),
             current_joker_counts: HashMap::new(),
             current_joker_snapshot: Vec::new(),
             pending_joker_removals: Vec::new(),
@@ -116,6 +117,27 @@ impl RunState {
         if card.id == 0 {
             card.id = self.alloc_card_id();
         }
+    }
+
+    pub(super) fn clear_score_trace(&mut self) {
+        self.last_score_trace.clear();
+    }
+
+    pub(super) fn apply_rule_effect(
+        &mut self,
+        score: &mut Score,
+        effect: RuleEffect,
+        source: &str,
+    ) {
+        let before = score.clone();
+        score.apply(&effect);
+        let after = score.clone();
+        self.last_score_trace.push(crate::ScoreTraceStep {
+            source: source.to_string(),
+            effect,
+            before,
+            after,
+        });
     }
 
     pub(super) fn is_card_debuffed(&mut self, card: crate::Card) -> bool {

@@ -1,6 +1,6 @@
 use crate::{
     BlindKind, Content, Deck, EffectOp, GameConfig, GameState, Inventory, InventoryError, Phase,
-    ModRuntime, RngState, ScoreTables, ShopState,
+    ModRuntime, RngState, ScoreTables, ScoreTraceStep, ShopState,
 };
 use thiserror::Error;
 use std::fmt;
@@ -66,6 +66,7 @@ pub struct RunState {
     pub state: GameState,
     pub shop: Option<ShopState>,
     pub pending_effects: Vec<EffectOp>,
+    pub last_score_trace: Vec<ScoreTraceStep>,
     pub current_joker_counts: HashMap<String, usize>,
     current_joker_snapshot: Vec<JokerSnapshot>,
     pending_joker_removals: Vec<usize>,

@@ -43,3 +43,11 @@ pub enum RuleEffect {
     MultiplyMult(f64),
     MultiplyChips(f64),
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ScoreTraceStep {
+    pub source: String,
+    pub effect: RuleEffect,
+    pub before: Score,
+    pub after: Score,
+}

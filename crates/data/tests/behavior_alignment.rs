@@ -516,6 +516,106 @@ fn score_hand_ignores_stone_rank_chips() {
 }
 
 #[test]
+fn scoring_bonus_enhancement_adds_chips() {
+    let mut run = new_run();
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    let mut card = Card::standard(Suit::Spades, Rank::Ace);
+    card.enhancement = Some(Enhancement::Bonus);
+    run.hand = vec![card];
+    let breakdown = run
+        .play_hand(&[0], &mut EventBus::default())
+        .expect("play hand");
+    assert_eq!(
+        breakdown.total.chips,
+        breakdown.base.chips + breakdown.rank_chips + 30
+    );
+    assert!(run
+        .last_score_trace
+        .iter()
+        .any(|step| step.source == "enhancement:bonus"));
+}
+
+#[test]
+fn scoring_mult_enhancement_adds_mult() {
+    let mut run = new_run();
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    let mut card = Card::standard(Suit::Spades, Rank::Ace);
+    card.enhancement = Some(Enhancement::Mult);
+    run.hand = vec![card];
+    let breakdown = run
+        .play_hand(&[0], &mut EventBus::default())
+        .expect("play hand");
+    assert_eq!(breakdown.base.mult + 4.0, breakdown.total.mult);
+    assert!(run
+        .last_score_trace
+        .iter()
+        .any(|step| step.source == "enhancement:mult"));
+}
+
+#[test]
+fn scoring_stone_enhancement_adds_chips() {
+    let mut run = new_run();
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    let mut card = Card::standard(Suit::Spades, Rank::Ace);
+    card.enhancement = Some(Enhancement::Stone);
+    run.hand = vec![card];
+    let breakdown = run
+        .play_hand(&[0], &mut EventBus::default())
+        .expect("play hand");
+    assert_eq!(breakdown.rank_chips, 0);
+    assert_eq!(
+        breakdown.total.chips,
+        breakdown.base.chips + 50
+    );
+    assert!(run
+        .last_score_trace
+        .iter()
+        .any(|step| step.source == "enhancement:stone"));
+}
+
+#[test]
+fn scoring_foil_edition_adds_chips() {
+    let mut run = new_run();
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    let mut card = Card::standard(Suit::Spades, Rank::Ace);
+    card.edition = Some(Edition::Foil);
+    run.hand = vec![card];
+    let breakdown = run
+        .play_hand(&[0], &mut EventBus::default())
+        .expect("play hand");
+    assert_eq!(
+        breakdown.total.chips,
+        breakdown.base.chips + breakdown.rank_chips + 50
+    );
+    assert!(run
+        .last_score_trace
+        .iter()
+        .any(|step| step.source == "edition:foil"));
+}
+
+#[test]
+fn scoring_polychrome_edition_multiplies_mult() {
+    let mut run = new_run();
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    let mut card = Card::standard(Suit::Spades, Rank::Ace);
+    card.edition = Some(Edition::Polychrome);
+    run.hand = vec![card];
+    let breakdown = run
+        .play_hand(&[0], &mut EventBus::default())
+        .expect("play hand");
+    assert_eq!(breakdown.total.mult, breakdown.base.mult * 1.5);
+    assert!(run
+        .last_score_trace
+        .iter()
+        .any(|step| step.source == "edition:polychrome"));
+}
+
+#[test]
 fn score_tables_level_scaling() {
     let config = load_game_config(&assets_root()).expect("load config");
     let tables = ScoreTables::from_config(&config);

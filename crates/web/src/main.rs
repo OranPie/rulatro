@@ -1,6 +1,6 @@
 use rulatro_core::{
     BlindKind, BlindOutcome, Card, ConsumableKind, EventBus, PackOpen, PackOption, Phase, RunState,
-    ScoreBreakdown, ScoreTables, ShopOfferKind, ShopOfferRef,
+    RuleEffect, ScoreBreakdown, ScoreTables, ScoreTraceStep, ShopOfferKind, ShopOfferRef,
 };
 use rulatro_data::{load_content_with_mods, load_game_config};
 use rulatro_modding::ModManager;
@@ -173,6 +173,7 @@ struct UiScoreBreakdown {
     total_score: i64,
     played_cards: Vec<UiCard>,
     scoring_cards: Vec<UiScoringCard>,
+    steps: Vec<UiScoreStep>,
 }
 
 #[derive(Serialize)]
@@ -180,6 +181,16 @@ struct UiScoringCard {
     index: usize,
     card: UiCard,
     chips: i64,
+}
+
+#[derive(Serialize)]
+struct UiScoreStep {
+    source: String,
+    effect: String,
+    before_chips: i64,
+    before_mult: f64,
+    after_chips: i64,
+    after_mult: f64,
 }
 
 #[derive(Deserialize)]
@@ -268,10 +279,14 @@ fn build_response(state: &mut AppState, err: Option<String>) -> ApiResponse {
         state: snapshot_state(&state.run),
         events,
         open_pack: state.open_pack.as_ref().map(snapshot_open_pack),
-        last_breakdown: state
-            .last_breakdown
-            .as_ref()
-            .map(|breakdown| snapshot_breakdown(breakdown, &state.last_played, &state.run.tables)),
+        last_breakdown: state.last_breakdown.as_ref().map(|breakdown| {
+            snapshot_breakdown(
+                breakdown,
+                &state.last_played,
+                &state.run.tables,
+                &state.run.last_score_trace,
+            )
+        }),
     }
 }
 
@@ -386,6 +401,7 @@ fn snapshot_breakdown(
     breakdown: &ScoreBreakdown,
     played: &[Card],
     tables: &ScoreTables,
+    trace: &[ScoreTraceStep],
 ) -> UiScoreBreakdown {
     let played_cards: Vec<UiCard> = played.iter().map(snapshot_card).collect();
     let mut scoring_cards = Vec::new();
@@ -414,6 +430,17 @@ fn snapshot_breakdown(
         total_score: breakdown.total.total(),
         played_cards,
         scoring_cards,
+        steps: trace
+            .iter()
+            .map(|step| UiScoreStep {
+                source: step.source.clone(),
+                effect: format_rule_effect(&step.effect),
+                before_chips: step.before.chips,
+                before_mult: step.before.mult,
+                after_chips: step.after.chips,
+                after_mult: step.after.mult,
+            })
+            .collect(),
     }
 }
 
@@ -427,6 +454,15 @@ fn snapshot_card(card: &Card) -> UiCard {
         seal: card.seal,
         bonus_chips: card.bonus_chips,
         face_down: card.face_down,
+    }
+}
+
+fn format_rule_effect(effect: &RuleEffect) -> String {
+    match effect {
+        RuleEffect::AddChips(value) => format!("+{} chips", value),
+        RuleEffect::AddMult(value) => format!("+{:.2} mult", value),
+        RuleEffect::MultiplyMult(value) => format!("×{:.2} mult", value),
+        RuleEffect::MultiplyChips(value) => format!("×{:.2} chips", value),
     }
 }
 

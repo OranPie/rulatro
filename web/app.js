@@ -312,6 +312,21 @@ function renderScore(breakdown) {
     scoring.innerHTML = `<div><strong>Scoring cards:</strong></div><div>${list}</div>`;
     elements.scoreBreakdown.appendChild(scoring);
   }
+
+  if (breakdown.steps && breakdown.steps.length > 0) {
+    const steps = document.createElement("div");
+    steps.className = "score-row";
+    const list = breakdown.steps
+      .map(
+        (step, idx) =>
+          `${idx + 1}. ${step.source} | ${step.effect} | ${step.before_chips}×${step.before_mult.toFixed(
+            2
+          )} → ${step.after_chips}×${step.after_mult.toFixed(2)}`
+      )
+      .join("<br/>");
+    steps.innerHTML = `<div><strong>Effect steps:</strong></div><div>${list}</div>`;
+    elements.scoreBreakdown.appendChild(steps);
+  }
 }
 
 function renderLevels(levels) {

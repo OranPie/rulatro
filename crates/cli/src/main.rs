@@ -1,7 +1,7 @@
 use rulatro_core::{
     BlindKind, BlindOutcome, Card, ConsumableKind, Edition, Enhancement, EventBus, PackOpen,
-    PackOption, Phase, Rank, RunError, RunState, ScoreBreakdown, ScoreTables, Seal, ShopOfferRef,
-    Suit,
+    PackOption, Phase, Rank, RunError, RunState, ScoreBreakdown, ScoreTables, ScoreTraceStep, Seal,
+    ShopOfferRef, Suit,
 };
 use rulatro_data::{load_content_with_mods, load_game_config};
 use rulatro_modding::ModManager;
@@ -169,7 +169,12 @@ fn run_cui() {
                         let preview = collect_played_cards(&run.hand, &indices).ok();
                         match run.play_hand(&indices, &mut events) {
                             Ok(breakdown) => {
-                                print_score_breakdown(&breakdown, preview.as_deref(), &run.tables);
+                                print_score_breakdown(
+                                    &breakdown,
+                                    preview.as_deref(),
+                                    &run.tables,
+                                    &run.last_score_trace,
+                                );
                             }
                             Err(err) => println!("error: {err:?}"),
                         }
@@ -611,6 +616,7 @@ fn print_score_breakdown(
     breakdown: &ScoreBreakdown,
     played: Option<&[Card]>,
     tables: &ScoreTables,
+    trace: &[ScoreTraceStep],
 ) {
     println!("hand: {:?}", breakdown.hand);
     if let Some(cards) = played {
@@ -654,6 +660,24 @@ fn print_score_breakdown(
         breakdown.total.mult,
         breakdown.total.total()
     );
+
+    if trace.is_empty() {
+        println!("effect steps: none");
+    } else {
+        println!("effect steps:");
+        for (idx, step) in trace.iter().enumerate() {
+            println!(
+                "  {:>2}. {} | {:?} | {}×{:.2} -> {}×{:.2}",
+                idx + 1,
+                step.source,
+                step.effect,
+                step.before.chips,
+                step.before.mult,
+                step.after.chips,
+                step.after.mult
+            );
+        }
+    }
 }
 
 fn estimate_interest(run: &RunState) -> i64 {

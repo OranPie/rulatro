@@ -113,6 +113,7 @@ impl RunState {
         if self.splash_active() {
             breakdown.scoring_indices = (0..played.len()).collect();
         }
+        self.clear_score_trace();
         if self.rule_flag("single_hand_type") {
             match self.state.round_hand_lock {
                 None => self.state.round_hand_lock = Some(breakdown.hand),
@@ -349,7 +350,11 @@ impl RunState {
                     let destroyed_event = destroyed_now || destroyed_before;
                     let card = played[idx];
                     if card.bonus_chips > 0 {
-                        score.apply(&crate::RuleEffect::AddChips(card.bonus_chips));
+                        self.apply_rule_effect(
+                            score,
+                            crate::RuleEffect::AddChips(card.bonus_chips),
+                            "card:bonus_chips",
+                        );
                     }
                     self.apply_card_seal_scored(card, score, money, &mut results);
                     self.apply_card_edition_scored(card, score);
@@ -487,10 +492,22 @@ impl RunState {
         let mut destroyed_now = false;
         let mut lucky_triggers = 0i64;
         match card.enhancement {
-            Some(Enhancement::Bonus) => score.apply(&crate::RuleEffect::AddChips(30)),
-            Some(Enhancement::Mult) => score.apply(&crate::RuleEffect::AddMult(4.0)),
+            Some(Enhancement::Bonus) => self.apply_rule_effect(
+                score,
+                crate::RuleEffect::AddChips(30),
+                "enhancement:bonus",
+            ),
+            Some(Enhancement::Mult) => self.apply_rule_effect(
+                score,
+                crate::RuleEffect::AddMult(4.0),
+                "enhancement:mult",
+            ),
             Some(Enhancement::Glass) => {
-                score.apply(&crate::RuleEffect::MultiplyMult(2.0));
+                self.apply_rule_effect(
+                    score,
+                    crate::RuleEffect::MultiplyMult(2.0),
+                    "enhancement:glass_mult",
+                );
                 if self.roll(4) {
                     if !destroyed.iter().any(|&existing| existing == idx) {
                         destroyed.push(idx);
@@ -498,10 +515,18 @@ impl RunState {
                     }
                 }
             }
-            Some(Enhancement::Stone) => score.apply(&crate::RuleEffect::AddChips(50)),
+            Some(Enhancement::Stone) => self.apply_rule_effect(
+                score,
+                crate::RuleEffect::AddChips(50),
+                "enhancement:stone",
+            ),
             Some(Enhancement::Lucky) => {
                 if self.roll(5) {
-                    score.apply(&crate::RuleEffect::AddMult(20.0));
+                    self.apply_rule_effect(
+                        score,
+                        crate::RuleEffect::AddMult(20.0),
+                        "enhancement:lucky_mult",
+                    );
                     lucky_triggers += 1;
                 }
                 if self.roll(15) {
@@ -516,7 +541,11 @@ impl RunState {
 
     pub(super) fn apply_card_enhancement_held(&mut self, card: Card, score: &mut Score, _money: &mut i64) {
         match card.enhancement {
-            Some(Enhancement::Steel) => score.apply(&crate::RuleEffect::MultiplyMult(1.5)),
+            Some(Enhancement::Steel) => self.apply_rule_effect(
+                score,
+                crate::RuleEffect::MultiplyMult(1.5),
+                "enhancement:steel",
+            ),
             _ => {}
         }
     }
@@ -542,11 +571,23 @@ impl RunState {
     ) {
     }
 
-    pub(super) fn apply_card_edition_scored(&self, card: Card, score: &mut Score) {
+    pub(super) fn apply_card_edition_scored(&mut self, card: Card, score: &mut Score) {
         match card.edition {
-            Some(Edition::Foil) => score.apply(&crate::RuleEffect::AddChips(50)),
-            Some(Edition::Holographic) => score.apply(&crate::RuleEffect::AddMult(10.0)),
-            Some(Edition::Polychrome) => score.apply(&crate::RuleEffect::MultiplyMult(1.5)),
+            Some(Edition::Foil) => self.apply_rule_effect(
+                score,
+                crate::RuleEffect::AddChips(50),
+                "edition:foil",
+            ),
+            Some(Edition::Holographic) => self.apply_rule_effect(
+                score,
+                crate::RuleEffect::AddMult(10.0),
+                "edition:holographic",
+            ),
+            Some(Edition::Polychrome) => self.apply_rule_effect(
+                score,
+                crate::RuleEffect::MultiplyMult(1.5),
+                "edition:polychrome",
+            ),
             _ => {}
         }
     }
