@@ -18,6 +18,7 @@ const elements = {
   invJokers: document.getElementById("inv-jokers"),
   invConsumables: document.getElementById("inv-consumables"),
   packOptions: document.getElementById("pack-options"),
+  scoreBreakdown: document.getElementById("score-breakdown"),
   levels: document.getElementById("levels"),
   tags: document.getElementById("tags"),
   log: document.getElementById("log"),
@@ -124,6 +125,7 @@ function render(data) {
   renderShop(data.state.shop);
   renderInventory(data.state);
   renderPack(data.open_pack);
+  renderScore(data.last_breakdown);
   renderLevels(data.state.hand_levels);
   renderTags(data.state.tags, data.state.duplicate_next_tag, data.state.duplicate_tag_exclude);
   renderLog();
@@ -265,6 +267,51 @@ function renderPack(openPack) {
     el.addEventListener("click", () => toggleSelection(state.selectedPackOptions, idx, el));
     elements.packOptions.appendChild(el);
   });
+}
+
+function renderScore(breakdown) {
+  elements.scoreBreakdown.innerHTML = "";
+  if (!breakdown) {
+    const empty = document.createElement("div");
+    empty.textContent = "No scoring yet.";
+    elements.scoreBreakdown.appendChild(empty);
+    return;
+  }
+  const summary = document.createElement("div");
+  summary.className = "score-row";
+  summary.innerHTML = `
+    <div><strong>Hand:</strong> ${breakdown.hand}</div>
+    <div><strong>Base:</strong> ${breakdown.base_chips} chips × ${breakdown.base_mult.toFixed(2)}</div>
+    <div><strong>Rank chips:</strong> ${breakdown.rank_chips}</div>
+    <div><strong>Total:</strong> ${breakdown.total_chips} chips × ${breakdown.total_mult.toFixed(
+      2
+    )} = ${breakdown.total_score}</div>
+    <div><strong>Scoring indices:</strong> ${breakdown.scoring_indices.join(", ")}</div>
+  `;
+  elements.scoreBreakdown.appendChild(summary);
+
+  if (breakdown.played_cards && breakdown.played_cards.length > 0) {
+    const played = document.createElement("div");
+    played.className = "score-row";
+    const list = breakdown.played_cards
+      .map((card, idx) => `${idx}: ${formatCard(card)} ${formatMods(card)}`)
+      .join("<br/>");
+    played.innerHTML = `<div><strong>Played cards:</strong></div><div>${list}</div>`;
+    elements.scoreBreakdown.appendChild(played);
+  }
+
+  if (breakdown.scoring_cards && breakdown.scoring_cards.length > 0) {
+    const scoring = document.createElement("div");
+    scoring.className = "score-row";
+    const list = breakdown.scoring_cards
+      .map(
+        (entry) =>
+          `${entry.index}: ${formatCard(entry.card)} ${formatMods(entry.card)} ⇒ ${entry.chips}`
+      )
+      .join("<br/>");
+    scoring.innerHTML = `<div><strong>Scoring cards:</strong></div><div>${list}</div>`;
+    elements.scoreBreakdown.appendChild(scoring);
+  }
 }
 
 function renderLevels(levels) {

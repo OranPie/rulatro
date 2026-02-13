@@ -165,6 +165,7 @@ fn run_cui() {
                 let indices = parse_indices(&args);
                 match indices {
                     Some(indices) => {
+                        println!("selected indices: {:?}", indices);
                         let preview = collect_played_cards(&run.hand, &indices).ok();
                         match run.play_hand(&indices, &mut events) {
                             Ok(breakdown) => {
@@ -642,7 +643,13 @@ fn print_score_breakdown(
         println!("rank chips total: {}", breakdown.rank_chips);
     }
     println!(
-        "total: chips={} mult={:.2} score={}",
+        "chips: base {} + rank {} = {} (before effects)",
+        breakdown.base.chips,
+        breakdown.rank_chips,
+        breakdown.base.chips + breakdown.rank_chips
+    );
+    println!(
+        "final: chips={} mult={:.2} score={}",
         breakdown.total.chips,
         breakdown.total.mult,
         breakdown.total.total()

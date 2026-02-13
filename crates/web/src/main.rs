@@ -1,6 +1,6 @@
 use rulatro_core::{
     BlindKind, BlindOutcome, Card, ConsumableKind, EventBus, PackOpen, PackOption, Phase, RunState,
-    ShopOfferKind, ShopOfferRef,
+    ScoreBreakdown, ScoreTables, ShopOfferKind, ShopOfferRef,
 };
 use rulatro_data::{load_content_with_mods, load_game_config};
 use rulatro_modding::ModManager;
@@ -27,6 +27,8 @@ struct AppState {
     run: RunState,
     events: EventBus,
     open_pack: Option<PackOpen>,
+    last_breakdown: Option<ScoreBreakdown>,
+    last_played: Vec<Card>,
 }
 
 impl AppState {
@@ -44,6 +46,8 @@ impl AppState {
             run,
             events: EventBus::default(),
             open_pack: None,
+            last_breakdown: None,
+            last_played: Vec::new(),
         }
     }
 }
@@ -55,6 +59,7 @@ struct ApiResponse {
     state: UiState,
     events: Vec<rulatro_core::Event>,
     open_pack: Option<UiPackOpen>,
+    last_breakdown: Option<UiScoreBreakdown>,
 }
 
 #[derive(Serialize)]
@@ -156,6 +161,27 @@ struct UiHandLevel {
     level: u32,
 }
 
+#[derive(Serialize)]
+struct UiScoreBreakdown {
+    hand: rulatro_core::HandKind,
+    base_chips: i64,
+    base_mult: f64,
+    rank_chips: i64,
+    scoring_indices: Vec<usize>,
+    total_chips: i64,
+    total_mult: f64,
+    total_score: i64,
+    played_cards: Vec<UiCard>,
+    scoring_cards: Vec<UiScoringCard>,
+}
+
+#[derive(Serialize)]
+struct UiScoringCard {
+    index: usize,
+    card: UiCard,
+    chips: i64,
+}
+
 #[derive(Deserialize)]
 struct ActionRequest {
     action: String,
@@ -242,6 +268,10 @@ fn build_response(state: &mut AppState, err: Option<String>) -> ApiResponse {
         state: snapshot_state(&state.run),
         events,
         open_pack: state.open_pack.as_ref().map(snapshot_open_pack),
+        last_breakdown: state
+            .last_breakdown
+            .as_ref()
+            .map(|breakdown| snapshot_breakdown(breakdown, &state.last_played, &state.run.tables)),
     }
 }
 
@@ -352,6 +382,41 @@ fn snapshot_open_pack(open: &PackOpen) -> UiPackOpen {
     }
 }
 
+fn snapshot_breakdown(
+    breakdown: &ScoreBreakdown,
+    played: &[Card],
+    tables: &ScoreTables,
+) -> UiScoreBreakdown {
+    let played_cards: Vec<UiCard> = played.iter().map(snapshot_card).collect();
+    let mut scoring_cards = Vec::new();
+    for &idx in &breakdown.scoring_indices {
+        if let Some(card) = played.get(idx) {
+            let chips = if card.is_stone() {
+                0
+            } else {
+                tables.rank_chips(card.rank)
+            };
+            scoring_cards.push(UiScoringCard {
+                index: idx,
+                card: snapshot_card(card),
+                chips,
+            });
+        }
+    }
+    UiScoreBreakdown {
+        hand: breakdown.hand,
+        base_chips: breakdown.base.chips,
+        base_mult: breakdown.base.mult,
+        rank_chips: breakdown.rank_chips,
+        scoring_indices: breakdown.scoring_indices.clone(),
+        total_chips: breakdown.total.chips,
+        total_mult: breakdown.total.mult,
+        total_score: breakdown.total.total(),
+        played_cards,
+        scoring_cards,
+    }
+}
+
 fn snapshot_card(card: &Card) -> UiCard {
     UiCard {
         id: card.id,
@@ -379,6 +444,8 @@ fn apply_action(state: &mut AppState, req: ActionRequest) -> Option<String> {
                 .as_deref()
                 .and_then(|value| value.parse::<u8>().ok())
                 .unwrap_or(1);
+            state.last_breakdown = None;
+            state.last_played.clear();
             run.start_blind(ante, run.state.blind, events)
                 .map_err(|err| format!("{err:?}"))
                 .err()
@@ -387,11 +454,20 @@ fn apply_action(state: &mut AppState, req: ActionRequest) -> Option<String> {
             .prepare_hand(events)
             .map_err(|err| format!("{err:?}"))
             .err(),
-        "play" => run
-            .play_hand(&req.indices, events)
-            .map_err(|err| format!("{err:?}"))
-            .map(|_| ())
-            .err(),
+        "play" => {
+            let preview = match collect_played_preview(&run.hand, &req.indices) {
+                Ok(cards) => cards,
+                Err(err) => return Some(err),
+            };
+            match run.play_hand(&req.indices, events) {
+                Ok(breakdown) => {
+                    state.last_breakdown = Some(breakdown);
+                    state.last_played = preview;
+                    None
+                }
+                Err(err) => Some(format!("{err:?}")),
+            }
+        }
         "discard" => run
             .discard(&req.indices, events)
             .map_err(|err| format!("{err:?}"))
@@ -498,18 +574,27 @@ fn apply_action(state: &mut AppState, req: ActionRequest) -> Option<String> {
                 .map_err(|err| format!("{err:?}"))
                 .err()
         }
-        "next_blind" => run
-            .start_next_blind(events)
-            .map_err(|err| format!("{err:?}"))
-            .err(),
-        "start_next" => run
-            .start_next_blind(events)
-            .map_err(|err| format!("{err:?}"))
-            .err(),
-        "start" => run
-            .start_blind(run.state.ante, run.state.blind, events)
-            .map_err(|err| format!("{err:?}"))
-            .err(),
+        "next_blind" => {
+            state.last_breakdown = None;
+            state.last_played.clear();
+            run.start_next_blind(events)
+                .map_err(|err| format!("{err:?}"))
+                .err()
+        }
+        "start_next" => {
+            state.last_breakdown = None;
+            state.last_played.clear();
+            run.start_next_blind(events)
+                .map_err(|err| format!("{err:?}"))
+                .err()
+        }
+        "start" => {
+            state.last_breakdown = None;
+            state.last_played.clear();
+            run.start_blind(run.state.ante, run.state.blind, events)
+                .map_err(|err| format!("{err:?}"))
+                .err()
+        }
         _ => Some("unknown action".to_string()),
     }
 }
@@ -544,4 +629,22 @@ fn index(target: Option<String>) -> Result<usize, String> {
         .ok_or_else(|| "missing target index".to_string())?
         .parse::<usize>()
         .map_err(|_| "invalid index".to_string())
+}
+
+fn collect_played_preview(hand: &[Card], indices: &[usize]) -> Result<Vec<Card>, String> {
+    if indices.is_empty() {
+        return Err("no cards selected".to_string());
+    }
+    let mut unique = indices.to_vec();
+    unique.sort_unstable();
+    unique.dedup();
+    if unique.iter().any(|&idx| idx >= hand.len()) {
+        return Err("invalid card index".to_string());
+    }
+    unique.sort_unstable_by(|a, b| b.cmp(a));
+    let mut picked = Vec::with_capacity(unique.len());
+    for idx in unique {
+        picked.push(hand[idx]);
+    }
+    Ok(picked)
 }
