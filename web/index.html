@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rulatro Web</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>Rulatro</h1>
+        <p class="subtitle">Web frontend (API connected)</p>
+      </div>
+      <div class="status" id="status">
+        <div>Ante: <span data-field="ante">-</span></div>
+        <div>Blind: <span data-field="blind">-</span></div>
+        <div>Phase: <span data-field="phase">-</span></div>
+        <div>Money: <span data-field="money">-</span></div>
+        <div>Score: <span data-field="score">-</span> / <span data-field="target">-</span></div>
+        <div>Hands: <span data-field="hands_left">-</span></div>
+        <div>Discards: <span data-field="discards_left">-</span></div>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Hand</h2>
+          <div class="toolbar">
+            <button data-action="start">Start Blind</button>
+            <button data-action="deal">Deal</button>
+            <button data-action="play">Play Selected</button>
+            <button data-action="discard">Discard Selected</button>
+          </div>
+        </div>
+        <div class="card-grid" id="hand"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Shop</h2>
+          <div class="toolbar">
+            <button data-action="enter_shop">Enter Shop</button>
+            <button data-action="reroll">Reroll</button>
+            <button data-action="leave_shop">Leave Shop</button>
+          </div>
+        </div>
+        <div class="shop">
+          <div>
+            <h3>Cards</h3>
+            <div class="shop-list" id="shop-cards"></div>
+          </div>
+          <div>
+            <h3>Packs</h3>
+            <div class="shop-list" id="shop-packs"></div>
+          </div>
+          <div>
+            <h3>Vouchers</h3>
+            <div class="shop-list" id="shop-vouchers"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Inventory</h2>
+          <div class="toolbar">
+            <button data-action="use_consumable">Use Consumable</button>
+            <button data-action="sell_joker">Sell Joker</button>
+          </div>
+        </div>
+        <div class="inventory">
+          <div>
+            <h3>Jokers</h3>
+            <div class="inventory-list" id="inv-jokers"></div>
+          </div>
+          <div>
+            <h3>Consumables</h3>
+            <div class="inventory-list" id="inv-consumables"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Pack</h2>
+          <div class="toolbar">
+            <button data-action="pick_pack">Pick Selected</button>
+            <button data-action="skip_pack">Skip Pack</button>
+          </div>
+        </div>
+        <div class="pack-options" id="pack-options"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Actions</h2>
+          <div class="toolbar">
+            <button data-action="next_blind">Next Blind</button>
+            <button data-action="reset">Reset</button>
+          </div>
+        </div>
+        <div class="levels" id="levels"></div>
+        <div class="tags" id="tags"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Log</h2>
+          <div class="toolbar">
+            <button data-action="clear_log">Clear Log</button>
+          </div>
+        </div>
+        <div class="log" id="log"></div>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
