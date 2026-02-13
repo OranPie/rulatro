@@ -259,6 +259,21 @@ fn run_cui() {
                     println!("no open pack");
                 }
             }
+            "edit" => {
+                if args.is_empty() {
+                    println!(
+                        "usage: edit <idx..> enh=<kind|none> ed=<kind|none> seal=<kind|none> bonus=<n|+n|-n> face_down=<0|1>"
+                    );
+                    continue;
+                }
+                match parse_edit_args(&args) {
+                    Ok((indices, edits)) => match apply_card_edits(&mut run.hand, &indices, edits) {
+                        Ok(_) => println!("edited cards: {:?}", indices),
+                        Err(err) => println!("error: {err}"),
+                    },
+                    Err(err) => println!("error: {err}"),
+                }
+            }
             "pick" => {
                 if let Some(open) = open_pack.clone() {
                     let indices = parse_indices(&args);
@@ -369,12 +384,14 @@ fn print_help() {
     println!("  pack                show open pack options");
     println!("  pick <idx..>        pick open pack options");
     println!("  skip                skip open pack");
+    println!("  edit <idx..> enh=.. ed=.. seal=.. bonus=.. face_down=..");
     println!("  peek draw|discard [n]  show top cards");
     println!("  use <idx> [sel..]   use consumable");
     println!("  sell <idx>          sell joker");
     println!("  leave               leave shop");
     println!("  next                start next blind");
     println!("  quit                exit");
+    println!("note: indices support comma and ranges (e.g. 0,2-4 7)");
     println!("tip: run with --auto for scripted demo");
 }
 
@@ -582,17 +599,47 @@ fn drain_events(events: &mut EventBus) {
 }
 
 fn parse_indices(args: &[&str]) -> Option<Vec<usize>> {
+    parse_indices_result(args).ok()
+}
+
+fn parse_indices_result(args: &[&str]) -> Result<Vec<usize>, String> {
     if args.is_empty() {
-        return None;
+        return Err("missing indices".to_string());
     }
     let mut indices = Vec::new();
     for arg in args {
-        match arg.parse::<usize>() {
-            Ok(idx) => indices.push(idx),
-            Err(_) => return None,
+        for part in arg.split(',') {
+            let part = part.trim();
+            if part.is_empty() {
+                continue;
+            }
+            if let Some((start, end)) = part.split_once('-') {
+                let start = start
+                    .trim()
+                    .parse::<usize>()
+                    .map_err(|_| "invalid range start".to_string())?;
+                let end = end
+                    .trim()
+                    .parse::<usize>()
+                    .map_err(|_| "invalid range end".to_string())?;
+                if start > end {
+                    return Err("range start larger than end".to_string());
+                }
+                for idx in start..=end {
+                    indices.push(idx);
+                }
+            } else {
+                let idx = part
+                    .parse::<usize>()
+                    .map_err(|_| format!("invalid index '{part}'"))?;
+                indices.push(idx);
+            }
         }
     }
-    Some(indices)
+    if indices.is_empty() {
+        return Err("missing indices".to_string());
+    }
+    Ok(indices)
 }
 
 fn collect_played_cards(hand: &[Card], indices: &[usize]) -> Result<Vec<Card>, RunError> {
@@ -611,6 +658,191 @@ fn collect_played_cards(hand: &[Card], indices: &[usize]) -> Result<Vec<Card>, R
         picked.push(hand[idx]);
     }
     Ok(picked)
+}
+
+#[derive(Debug, Clone, Copy)]
+enum BonusEdit {
+    Set(i64),
+    Add(i64),
+}
+
+#[derive(Debug, Clone)]
+struct CardEdits {
+    enhancement: Option<Option<Enhancement>>,
+    edition: Option<Option<Edition>>,
+    seal: Option<Option<Seal>>,
+    bonus: Option<BonusEdit>,
+    face_down: Option<bool>,
+}
+
+fn parse_edit_args(args: &[&str]) -> Result<(Vec<usize>, CardEdits), String> {
+    let mut index_tokens = Vec::new();
+    let mut edits = CardEdits {
+        enhancement: None,
+        edition: None,
+        seal: None,
+        bonus: None,
+        face_down: None,
+    };
+
+    for arg in args {
+        if let Some((key, value)) = arg.split_once('=') {
+            let key = key.trim().to_lowercase();
+            let value = value.trim();
+            match key.as_str() {
+                "enh" | "enhancement" => {
+                    edits.enhancement = Some(parse_optional_enhancement(value)?);
+                }
+                "ed" | "edition" => {
+                    edits.edition = Some(parse_optional_edition(value)?);
+                }
+                "seal" => {
+                    edits.seal = Some(parse_optional_seal(value)?);
+                }
+                "bonus" => {
+                    edits.bonus = Some(parse_bonus_edit(value)?);
+                }
+                "face" | "face_down" => {
+                    edits.face_down = Some(parse_bool(value)?);
+                }
+                _ => return Err(format!("unknown edit key '{key}'")),
+            }
+        } else {
+            index_tokens.push(*arg);
+        }
+    }
+
+    let indices = parse_indices_result(&index_tokens)?;
+    Ok((indices, edits))
+}
+
+fn apply_card_edits(hand: &mut [Card], indices: &[usize], edits: CardEdits) -> Result<(), String> {
+    if indices.is_empty() {
+        return Err("missing indices".to_string());
+    }
+    for &idx in indices {
+        if idx >= hand.len() {
+            return Err(format!("index {idx} out of range"));
+        }
+    }
+    for &idx in indices {
+        let card = &mut hand[idx];
+        if let Some(enh) = edits.enhancement {
+            card.enhancement = enh;
+        }
+        if let Some(edition) = edits.edition {
+            card.edition = edition;
+        }
+        if let Some(seal) = edits.seal {
+            card.seal = seal;
+        }
+        if let Some(bonus) = edits.bonus {
+            match bonus {
+                BonusEdit::Set(value) => card.bonus_chips = value,
+                BonusEdit::Add(delta) => {
+                    card.bonus_chips = card.bonus_chips.saturating_add(delta)
+                }
+            }
+        }
+        if let Some(face_down) = edits.face_down {
+            card.face_down = face_down;
+        }
+    }
+    Ok(())
+}
+
+fn parse_optional_enhancement(value: &str) -> Result<Option<Enhancement>, String> {
+    if is_none(value) {
+        return Ok(None);
+    }
+    parse_enhancement(value).map(Some)
+}
+
+fn parse_enhancement(value: &str) -> Result<Enhancement, String> {
+    let value = value.trim().to_lowercase();
+    match value.as_str() {
+        "bonus" => Ok(Enhancement::Bonus),
+        "mult" => Ok(Enhancement::Mult),
+        "wild" => Ok(Enhancement::Wild),
+        "glass" => Ok(Enhancement::Glass),
+        "steel" => Ok(Enhancement::Steel),
+        "stone" => Ok(Enhancement::Stone),
+        "lucky" => Ok(Enhancement::Lucky),
+        "gold" => Ok(Enhancement::Gold),
+        _ => Err(format!("invalid enhancement '{value}'")),
+    }
+}
+
+fn parse_optional_edition(value: &str) -> Result<Option<Edition>, String> {
+    if is_none(value) {
+        return Ok(None);
+    }
+    parse_edition(value).map(Some)
+}
+
+fn parse_edition(value: &str) -> Result<Edition, String> {
+    let value = value.trim().to_lowercase();
+    match value.as_str() {
+        "foil" => Ok(Edition::Foil),
+        "holo" | "holographic" => Ok(Edition::Holographic),
+        "poly" | "polychrome" => Ok(Edition::Polychrome),
+        "neg" | "negative" => Ok(Edition::Negative),
+        _ => Err(format!("invalid edition '{value}'")),
+    }
+}
+
+fn parse_optional_seal(value: &str) -> Result<Option<Seal>, String> {
+    if is_none(value) {
+        return Ok(None);
+    }
+    parse_seal(value).map(Some)
+}
+
+fn parse_seal(value: &str) -> Result<Seal, String> {
+    let value = value.trim().to_lowercase();
+    match value.as_str() {
+        "red" => Ok(Seal::Red),
+        "blue" => Ok(Seal::Blue),
+        "gold" => Ok(Seal::Gold),
+        "purple" => Ok(Seal::Purple),
+        _ => Err(format!("invalid seal '{value}'")),
+    }
+}
+
+fn parse_bonus_edit(value: &str) -> Result<BonusEdit, String> {
+    let value = value.trim();
+    if let Some(rest) = value.strip_prefix('+') {
+        let amount = rest
+            .parse::<i64>()
+            .map_err(|_| "invalid bonus delta".to_string())?;
+        return Ok(BonusEdit::Add(amount));
+    }
+    if let Some(rest) = value.strip_prefix('-') {
+        let amount = rest
+            .parse::<i64>()
+            .map_err(|_| "invalid bonus delta".to_string())?;
+        return Ok(BonusEdit::Add(-amount));
+    }
+    let amount = value
+        .parse::<i64>()
+        .map_err(|_| "invalid bonus value".to_string())?;
+    Ok(BonusEdit::Set(amount))
+}
+
+fn parse_bool(value: &str) -> Result<bool, String> {
+    let value = value.trim().to_lowercase();
+    match value.as_str() {
+        "1" | "true" | "yes" | "on" => Ok(true),
+        "0" | "false" | "no" | "off" => Ok(false),
+        _ => Err(format!("invalid boolean '{value}'")),
+    }
+}
+
+fn is_none(value: &str) -> bool {
+    matches!(
+        value.trim().to_lowercase().as_str(),
+        "none" | "null" | "clear"
+    )
 }
 
 fn print_score_breakdown(
