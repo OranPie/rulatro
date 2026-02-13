@@ -86,6 +86,23 @@ button {
   cursor: pointer;
 }
 
+select {
+  background: #2c3142;
+  border: 1px solid #3a4054;
+  color: #e6e6e6;
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+.inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #c4c7d4;
+}
+
 button:hover {
   background: #3a4054;
 }

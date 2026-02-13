@@ -32,6 +32,15 @@
             <button data-action="deal">Deal</button>
             <button data-action="play">Play Selected</button>
             <button data-action="discard">Discard Selected</button>
+            <label class="inline">
+              Sort:
+              <select id="sort-key">
+                <option value="none">None</option>
+                <option value="rank">Rank</option>
+                <option value="value">Value</option>
+              </select>
+            </label>
+            <button id="sort-dir">Desc</button>
           </div>
         </div>
         <div class="card-grid" id="hand"></div>

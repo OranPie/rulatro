@@ -877,6 +877,121 @@ fn scoring_joker_edition_polychrome_multiplies_mult() {
 }
 
 #[test]
+fn shop_add_joker_offer_action_adds_card() {
+    let mut run = new_run();
+    run.content.jokers.push(JokerDef {
+        id: "add_shop_joker".to_string(),
+        name: "Add Shop Joker".to_string(),
+        rarity: JokerRarity::Common,
+        effects: vec![JokerEffect {
+            trigger: ActivationType::OnShopEnter,
+            when: Expr::Bool(true),
+            actions: vec![Action {
+                op: ActionOp::AddShopJoker,
+                target: Some("rare".to_string()),
+                value: Expr::Number(0.0),
+            }],
+        }],
+    });
+    run.inventory
+        .add_joker("add_shop_joker".to_string(), JokerRarity::Common, 1)
+        .expect("add joker");
+    mark_blind_cleared(&mut run);
+    run.enter_shop(&mut EventBus::default()).expect("enter shop");
+    let shop = run.shop.as_ref().expect("shop");
+    assert!(shop.cards.iter().any(|card| {
+        matches!(card.kind, ShopCardKind::Joker)
+            && card.rarity == Some(JokerRarity::Rare)
+            && card.price == 0
+    }));
+}
+
+#[test]
+fn shop_set_reroll_cost_action_applies() {
+    let mut run = new_run();
+    run.content.jokers.push(JokerDef {
+        id: "set_reroll".to_string(),
+        name: "Set Reroll".to_string(),
+        rarity: JokerRarity::Common,
+        effects: vec![JokerEffect {
+            trigger: ActivationType::OnShopEnter,
+            when: Expr::Bool(true),
+            actions: vec![Action {
+                op: ActionOp::SetRerollCost,
+                target: None,
+                value: Expr::Number(1.0),
+            }],
+        }],
+    });
+    run.inventory
+        .add_joker("set_reroll".to_string(), JokerRarity::Common, 1)
+        .expect("add joker");
+    mark_blind_cleared(&mut run);
+    run.enter_shop(&mut EventBus::default()).expect("enter shop");
+    let shop = run.shop.as_ref().expect("shop");
+    assert_eq!(shop.reroll_cost, 1);
+}
+
+#[test]
+fn shop_add_voucher_action_increases_slots() {
+    let mut run = new_run();
+    run.content.jokers.push(JokerDef {
+        id: "add_voucher".to_string(),
+        name: "Add Voucher".to_string(),
+        rarity: JokerRarity::Common,
+        effects: vec![JokerEffect {
+            trigger: ActivationType::OnShopEnter,
+            when: Expr::Bool(true),
+            actions: vec![Action {
+                op: ActionOp::AddVoucher,
+                target: None,
+                value: Expr::Number(2.0),
+            }],
+        }],
+    });
+    run.inventory
+        .add_joker("add_voucher".to_string(), JokerRarity::Common, 1)
+        .expect("add joker");
+    mark_blind_cleared(&mut run);
+    run.enter_shop(&mut EventBus::default()).expect("enter shop");
+    let shop = run.shop.as_ref().expect("shop");
+    let base = run.config.shop.voucher_slots as usize;
+    assert_eq!(shop.vouchers, base + 2);
+}
+
+#[test]
+fn prevent_death_action_clears_failed_blind() {
+    let mut run = new_run();
+    run.content.jokers.push(JokerDef {
+        id: "prevent_death".to_string(),
+        name: "Prevent Death".to_string(),
+        rarity: JokerRarity::Common,
+        effects: vec![JokerEffect {
+            trigger: ActivationType::OnBlindFailed,
+            when: Expr::Bool(true),
+            actions: vec![Action {
+                op: ActionOp::PreventDeath,
+                target: None,
+                value: Expr::Number(1.0),
+            }],
+        }],
+    });
+    run.inventory
+        .add_joker("prevent_death".to_string(), JokerRarity::Common, 1)
+        .expect("add joker");
+    run.start_blind(1, BlindKind::Small, &mut EventBus::default())
+        .expect("start blind");
+    run.state.target = 10_000;
+    run.state.hands_left = 1;
+    run.state.phase = Phase::Play;
+    run.hand = vec![Card::standard(Suit::Spades, Rank::Two)];
+    run.play_hand(&[0], &mut EventBus::default())
+        .expect("play hand");
+    assert!(run.blind_cleared());
+    assert_eq!(run.state.blind_score, run.state.target);
+}
+
+#[test]
 fn duplicate_next_tag_action_duplicates_tag() {
     let mut run = new_run();
     run.content.jokers.push(JokerDef {

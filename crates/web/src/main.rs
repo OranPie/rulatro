@@ -79,6 +79,7 @@ struct UiState {
     hand: Vec<UiCard>,
     deck_draw: usize,
     deck_discard: usize,
+    rank_chips: Vec<UiRankChip>,
     jokers: Vec<UiJoker>,
     consumables: Vec<UiConsumable>,
     shop: Option<UiShop>,
@@ -159,6 +160,12 @@ enum UiPackOption {
 struct UiHandLevel {
     hand: rulatro_core::HandKind,
     level: u32,
+}
+
+#[derive(Serialize)]
+struct UiRankChip {
+    rank: rulatro_core::Rank,
+    chips: i64,
 }
 
 #[derive(Serialize)]
@@ -347,6 +354,15 @@ fn snapshot_state(run: &RunState) -> UiState {
         })
         .collect();
     hand_levels.sort_by(|a, b| a.hand.id().cmp(b.hand.id()));
+    let rank_chips = run
+        .config
+        .ranks
+        .iter()
+        .map(|rule| UiRankChip {
+            rank: rule.rank,
+            chips: rule.chips,
+        })
+        .collect();
     UiState {
         ante: run.state.ante,
         blind: run.state.blind,
@@ -363,6 +379,7 @@ fn snapshot_state(run: &RunState) -> UiState {
         hand,
         deck_draw: run.deck.draw.len(),
         deck_discard: run.deck.discard.len(),
+        rank_chips,
         jokers,
         consumables,
         shop,

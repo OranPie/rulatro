@@ -7,6 +7,10 @@ const state = {
   selectedConsumable: null,
   selectedPackOptions: new Set(),
   logLines: [],
+  sortKey: "none",
+  sortDir: "desc",
+  rankChipMap: new Map(),
+  lastSnapshot: null,
 };
 
 const elements = {
@@ -22,11 +26,28 @@ const elements = {
   levels: document.getElementById("levels"),
   tags: document.getElementById("tags"),
   log: document.getElementById("log"),
+  sortKey: document.getElementById("sort-key"),
+  sortDir: document.getElementById("sort-dir"),
 };
 
 const buttons = document.querySelectorAll("[data-action]");
 buttons.forEach((button) => {
   button.addEventListener("click", () => handleAction(button.dataset.action));
+});
+
+elements.sortKey.addEventListener("change", () => {
+  state.sortKey = elements.sortKey.value;
+  if (state.lastSnapshot) {
+    render(state.lastSnapshot);
+  }
+});
+
+elements.sortDir.addEventListener("click", () => {
+  state.sortDir = state.sortDir === "asc" ? "desc" : "asc";
+  elements.sortDir.textContent = state.sortDir === "asc" ? "Asc" : "Desc";
+  if (state.lastSnapshot) {
+    render(state.lastSnapshot);
+  }
 });
 
 async function fetchState() {
@@ -117,6 +138,10 @@ function handleAction(action) {
 }
 
 function render(data) {
+  state.lastSnapshot = data;
+  state.rankChipMap = new Map(
+    (data.state.rank_chips || []).map((entry) => [entry.rank, entry.chips])
+  );
   if (data.events && data.events.length > 0) {
     data.events.forEach((event) => pushLog(JSON.stringify(event)));
   }
@@ -146,7 +171,9 @@ function renderHand(hand) {
       state.selectedHand.delete(idx);
     }
   });
-  hand.forEach((card, idx) => {
+  const entries = hand.map((card, idx) => ({ card, idx }));
+  const sorted = sortHandEntries(entries);
+  sorted.forEach(({ card, idx }) => {
     const el = document.createElement("div");
     el.className = "card";
     if (state.selectedHand.has(idx)) {
@@ -154,11 +181,35 @@ function renderHand(hand) {
     }
     el.innerHTML = `
       <div class="title">${formatCard(card)}</div>
-      <div class="meta">#${idx} ${formatMods(card)}</div>
+      <div class="meta">#${idx} ${formatMods(card)} ${formatValue(card)}</div>
     `;
     el.addEventListener("click", () => toggleSelection(state.selectedHand, idx, el));
     elements.hand.appendChild(el);
   });
+}
+
+function sortHandEntries(entries) {
+  if (state.sortKey === "none") {
+    return entries;
+  }
+  const dir = state.sortDir === "asc" ? 1 : -1;
+  const sorted = [...entries];
+  if (state.sortKey === "rank") {
+    sorted.sort((a, b) => {
+      const left = rankValue(a.card.rank);
+      const right = rankValue(b.card.rank);
+      if (left === right) return (a.idx - b.idx) * dir;
+      return (left - right) * dir;
+    });
+  } else if (state.sortKey === "value") {
+    sorted.sort((a, b) => {
+      const left = cardValue(a.card);
+      const right = cardValue(b.card);
+      if (left === right) return (a.idx - b.idx) * dir;
+      return (left - right) * dir;
+    });
+  }
+  return sorted;
 }
 
 function renderShop(shop) {
@@ -420,6 +471,19 @@ function formatPackOption(option) {
   return "Unknown";
 }
 
+function formatValue(card) {
+  const value = cardValue(card);
+  return value === 0 ? "" : `value:${value}`;
+}
+
+function cardValue(card) {
+  if (card.enhancement === "Stone") {
+    return 0;
+  }
+  const base = state.rankChipMap.get(card.rank) || 0;
+  return base + (card.bonus_chips || 0);
+}
+
 function rankShort(rank) {
   switch (rank) {
     case "Ace":
@@ -452,6 +516,41 @@ function rankShort(rank) {
       return "Jk";
     default:
       return "?";
+  }
+}
+
+function rankValue(rank) {
+  switch (rank) {
+    case "Ace":
+      return 14;
+    case "King":
+      return 13;
+    case "Queen":
+      return 12;
+    case "Jack":
+      return 11;
+    case "Ten":
+      return 10;
+    case "Nine":
+      return 9;
+    case "Eight":
+      return 8;
+    case "Seven":
+      return 7;
+    case "Six":
+      return 6;
+    case "Five":
+      return 5;
+    case "Four":
+      return 4;
+    case "Three":
+      return 3;
+    case "Two":
+      return 2;
+    case "Joker":
+      return 0;
+    default:
+      return 0;
   }
 }
 
