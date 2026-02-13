@@ -877,6 +877,128 @@ fn scoring_joker_edition_polychrome_multiplies_mult() {
 }
 
 #[test]
+fn duplicate_next_tag_action_duplicates_tag() {
+    let mut run = new_run();
+    run.content.jokers.push(JokerDef {
+        id: "dup_tag".to_string(),
+        name: "Dup Tag".to_string(),
+        rarity: JokerRarity::Common,
+        effects: vec![JokerEffect {
+            trigger: ActivationType::OnBlindStart,
+            when: Expr::Bool(true),
+            actions: vec![Action {
+                op: ActionOp::DuplicateNextTag,
+                target: None,
+                value: Expr::Number(1.0),
+            }],
+        }],
+    });
+    run.content.jokers.push(JokerDef {
+        id: "add_tag".to_string(),
+        name: "Add Tag".to_string(),
+        rarity: JokerRarity::Common,
+        effects: vec![JokerEffect {
+            trigger: ActivationType::OnBlindStart,
+            when: Expr::Bool(true),
+            actions: vec![Action {
+                op: ActionOp::AddTag,
+                target: Some("coupon_tag".to_string()),
+                value: Expr::Number(1.0),
+            }],
+        }],
+    });
+    run.inventory
+        .add_joker("dup_tag".to_string(), JokerRarity::Common, 1)
+        .expect("add joker");
+    run.inventory
+        .add_joker("add_tag".to_string(), JokerRarity::Common, 1)
+        .expect("add joker");
+    run.start_blind(1, BlindKind::Small, &mut EventBus::default())
+        .expect("start blind");
+    assert_eq!(run.state.tags.len(), 2);
+    assert!(run.state.tags.iter().all(|tag| tag == "coupon_tag"));
+    assert!(!run.state.duplicate_next_tag);
+}
+
+#[test]
+fn duplicate_next_tag_exclude_skips_duplicate() {
+    let mut run = new_run();
+    run.content.jokers.push(JokerDef {
+        id: "dup_tag_exclude".to_string(),
+        name: "Dup Tag Exclude".to_string(),
+        rarity: JokerRarity::Common,
+        effects: vec![JokerEffect {
+            trigger: ActivationType::OnBlindStart,
+            when: Expr::Bool(true),
+            actions: vec![Action {
+                op: ActionOp::DuplicateNextTag,
+                target: Some("coupon_tag".to_string()),
+                value: Expr::Number(1.0),
+            }],
+        }],
+    });
+    run.content.jokers.push(JokerDef {
+        id: "add_tag".to_string(),
+        name: "Add Tag".to_string(),
+        rarity: JokerRarity::Common,
+        effects: vec![JokerEffect {
+            trigger: ActivationType::OnBlindStart,
+            when: Expr::Bool(true),
+            actions: vec![Action {
+                op: ActionOp::AddTag,
+                target: Some("coupon_tag".to_string()),
+                value: Expr::Number(1.0),
+            }],
+        }],
+    });
+    run.inventory
+        .add_joker("dup_tag_exclude".to_string(), JokerRarity::Common, 1)
+        .expect("add joker");
+    run.inventory
+        .add_joker("add_tag".to_string(), JokerRarity::Common, 1)
+        .expect("add joker");
+    run.start_blind(1, BlindKind::Small, &mut EventBus::default())
+        .expect("start blind");
+    assert_eq!(run.state.tags.len(), 1);
+    assert_eq!(run.state.tags[0], "coupon_tag");
+    assert!(run.state.duplicate_next_tag);
+}
+
+#[test]
+fn add_pack_action_adds_pack_offer() {
+    let mut baseline = new_run();
+    mark_blind_cleared(&mut baseline);
+    baseline.enter_shop(&mut EventBus::default()).expect("enter shop");
+    let base_packs = baseline.shop.as_ref().expect("shop").packs.len();
+
+    let mut run = new_run();
+    run.content.jokers.push(JokerDef {
+        id: "add_pack".to_string(),
+        name: "Add Pack".to_string(),
+        rarity: JokerRarity::Common,
+        effects: vec![JokerEffect {
+            trigger: ActivationType::OnShopEnter,
+            when: Expr::Bool(true),
+            actions: vec![Action {
+                op: ActionOp::AddPack,
+                target: Some("buffoon_mega".to_string()),
+                value: Expr::Number(0.0),
+            }],
+        }],
+    });
+    run.inventory
+        .add_joker("add_pack".to_string(), JokerRarity::Common, 1)
+        .expect("add joker");
+    mark_blind_cleared(&mut run);
+    run.enter_shop(&mut EventBus::default()).expect("enter shop");
+    let shop = run.shop.as_ref().expect("shop");
+    assert_eq!(shop.packs.len(), base_packs + 1);
+    assert!(shop.packs.iter().any(|pack| {
+        pack.kind == PackKind::Buffoon && pack.size == PackSize::Mega && pack.price == 0
+    }));
+}
+
+#[test]
 fn score_tables_level_scaling() {
     let config = load_game_config(&assets_root()).expect("load config");
     let tables = ScoreTables::from_config(&config);
