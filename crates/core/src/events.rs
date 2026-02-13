@@ -17,7 +17,11 @@ pub enum Event {
         mult: f64,
         total: i64,
     },
-    ShopEntered { offers: usize, reroll_cost: i64 },
+    ShopEntered {
+        offers: usize,
+        reroll_cost: i64,
+        reentered: bool,
+    },
     ShopRerolled {
         offers: usize,
         reroll_cost: i64,

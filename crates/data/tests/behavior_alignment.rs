@@ -2629,9 +2629,41 @@ fn leave_shop_resets_state() {
     run.enter_shop(&mut EventBus::default()).expect("enter shop");
     run.state.shop_free_rerolls = 2;
     run.leave_shop();
-    assert!(run.shop.is_none());
+    assert!(run.shop.is_some());
     assert_eq!(run.state.phase, Phase::Deal);
     assert_eq!(run.state.shop_free_rerolls, 0);
+}
+
+#[test]
+fn shop_reenter_keeps_offers() {
+    let mut run = new_run();
+    mark_blind_cleared(&mut run);
+    run.enter_shop(&mut EventBus::default()).expect("enter shop");
+    let first = run.shop.as_ref().expect("shop");
+    let first_cards: Vec<String> = first.cards.iter().map(|card| card.item_id.clone()).collect();
+    let first_packs: Vec<(PackKind, PackSize, i64)> = first
+        .packs
+        .iter()
+        .map(|pack| (pack.kind, pack.size, pack.price))
+        .collect();
+    let first_reroll = first.reroll_cost;
+    let first_vouchers = first.vouchers;
+
+    run.leave_shop();
+    run.enter_shop(&mut EventBus::default()).expect("reenter shop");
+    let second = run.shop.as_ref().expect("shop");
+    let second_cards: Vec<String> =
+        second.cards.iter().map(|card| card.item_id.clone()).collect();
+    let second_packs: Vec<(PackKind, PackSize, i64)> = second
+        .packs
+        .iter()
+        .map(|pack| (pack.kind, pack.size, pack.price))
+        .collect();
+
+    assert_eq!(first_cards, second_cards);
+    assert_eq!(first_packs, second_packs);
+    assert_eq!(first_reroll, second.reroll_cost);
+    assert_eq!(first_vouchers, second.vouchers);
 }
 
 #[test]

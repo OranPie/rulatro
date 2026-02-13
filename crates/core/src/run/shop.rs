@@ -69,9 +69,21 @@ impl RunState {
         if !self.blind_cleared() {
             return Err(RunError::BlindNotCleared);
         }
+        if let Some(shop) = self.shop.as_ref() {
+            let offers = shop.cards.len() + shop.packs.len() + shop.vouchers;
+            self.state.phase = Phase::Shop;
+            events.push(Event::ShopEntered {
+                offers,
+                reroll_cost: shop.reroll_cost,
+                reentered: true,
+            });
+            return Ok(());
+        }
         let restrictions = self.shop_restrictions();
-        let shop = ShopState::generate(&self.config.shop, &self.content, &mut self.rng, &restrictions);
+        let shop =
+            ShopState::generate(&self.config.shop, &self.content, &mut self.rng, &restrictions);
         let offers = shop.cards.len() + shop.packs.len() + shop.vouchers;
+        let reroll_cost = shop.reroll_cost;
         self.shop = Some(shop);
         self.state.phase = Phase::Shop;
         self.state.shop_free_rerolls = 0;
@@ -94,7 +106,8 @@ impl RunState {
 
         events.push(Event::ShopEntered {
             offers,
-            reroll_cost: self.shop.as_ref().map(|s| s.reroll_cost).unwrap_or(0),
+            reroll_cost,
+            reentered: false,
         });
         Ok(())
     }
@@ -359,7 +372,6 @@ impl RunState {
     }
 
     pub fn leave_shop(&mut self) {
-        self.shop = None;
         self.state.phase = Phase::Deal;
         self.state.shop_free_rerolls = 0;
     }
