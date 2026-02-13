@@ -106,6 +106,18 @@ fn add_scoring_joker(run: &mut RunState, id: &str, op: ActionOp, value: f64) {
         .expect("add joker");
 }
 
+fn add_plain_joker_with_edition(run: &mut RunState, id: &str, edition: Edition) {
+    run.content.jokers.push(JokerDef {
+        id: id.to_string(),
+        name: id.to_string(),
+        rarity: JokerRarity::Common,
+        effects: Vec::new(),
+    });
+    run.inventory
+        .add_joker_with_edition(id.to_string(), JokerRarity::Common, 1, Some(edition))
+        .expect("add joker");
+}
+
 macro_rules! test_play_hand_invalid_phase {
     ($name:ident, $phase:expr) => {
         #[test]
@@ -745,6 +757,123 @@ fn scoring_joker_mul_chips_trace() {
         .last_score_trace
         .iter()
         .any(|step| step.source == "joker:trace_mul_chips:mul_chips"));
+}
+
+#[test]
+fn scoring_holographic_edition_adds_mult() {
+    let mut run = new_run();
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    let mut card = Card::standard(Suit::Spades, Rank::Ace);
+    card.edition = Some(Edition::Holographic);
+    run.hand = vec![card];
+    let breakdown = run
+        .play_hand(&[0], &mut EventBus::default())
+        .expect("play hand");
+    assert_eq!(breakdown.total.mult, breakdown.base.mult + 10.0);
+    assert!(run
+        .last_score_trace
+        .iter()
+        .any(|step| step.source == "edition:holographic"));
+}
+
+#[test]
+fn scoring_red_seal_retriggers_bonus() {
+    let mut run = new_run();
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    let mut card = Card::standard(Suit::Spades, Rank::Ace);
+    card.enhancement = Some(Enhancement::Bonus);
+    card.seal = Some(Seal::Red);
+    run.hand = vec![card];
+    let breakdown = run
+        .play_hand(&[0], &mut EventBus::default())
+        .expect("play hand");
+    assert_eq!(
+        breakdown.total.chips,
+        breakdown.base.chips + breakdown.rank_chips + 60
+    );
+    let bonus_hits = run
+        .last_score_trace
+        .iter()
+        .filter(|step| step.source == "enhancement:bonus")
+        .count();
+    assert_eq!(bonus_hits, 2);
+}
+
+#[test]
+fn scoring_held_steel_red_seal_retriggers() {
+    let mut run = new_run();
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    let mut steel = Card::standard(Suit::Hearts, Rank::Two);
+    steel.enhancement = Some(Enhancement::Steel);
+    steel.seal = Some(Seal::Red);
+    run.hand = vec![Card::standard(Suit::Spades, Rank::Ace), steel];
+    let breakdown = run
+        .play_hand(&[0], &mut EventBus::default())
+        .expect("play hand");
+    assert_eq!(breakdown.total.mult, breakdown.base.mult * 2.25);
+    let steel_hits = run
+        .last_score_trace
+        .iter()
+        .filter(|step| step.source == "enhancement:steel")
+        .count();
+    assert_eq!(steel_hits, 2);
+}
+
+#[test]
+fn scoring_joker_edition_foil_adds_chips() {
+    let mut run = new_run();
+    add_plain_joker_with_edition(&mut run, "joker_foil", Edition::Foil);
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    run.hand = vec![Card::standard(Suit::Spades, Rank::Ace)];
+    let breakdown = run
+        .play_hand(&[0], &mut EventBus::default())
+        .expect("play hand");
+    assert_eq!(
+        breakdown.total.chips,
+        breakdown.base.chips + breakdown.rank_chips + 50
+    );
+    assert!(run
+        .last_score_trace
+        .iter()
+        .any(|step| step.source == "joker_edition:foil"));
+}
+
+#[test]
+fn scoring_joker_edition_holographic_adds_mult() {
+    let mut run = new_run();
+    add_plain_joker_with_edition(&mut run, "joker_holo", Edition::Holographic);
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    run.hand = vec![Card::standard(Suit::Spades, Rank::Ace)];
+    let breakdown = run
+        .play_hand(&[0], &mut EventBus::default())
+        .expect("play hand");
+    assert_eq!(breakdown.total.mult, breakdown.base.mult + 10.0);
+    assert!(run
+        .last_score_trace
+        .iter()
+        .any(|step| step.source == "joker_edition:holographic"));
+}
+
+#[test]
+fn scoring_joker_edition_polychrome_multiplies_mult() {
+    let mut run = new_run();
+    add_plain_joker_with_edition(&mut run, "joker_poly", Edition::Polychrome);
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    run.hand = vec![Card::standard(Suit::Spades, Rank::Ace)];
+    let breakdown = run
+        .play_hand(&[0], &mut EventBus::default())
+        .expect("play hand");
+    assert_eq!(breakdown.total.mult, breakdown.base.mult * 1.5);
+    assert!(run
+        .last_score_trace
+        .iter()
+        .any(|step| step.source == "joker_edition:polychrome"));
 }
 
 #[test]
