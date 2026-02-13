@@ -86,6 +86,26 @@ fn add_rule_joker(run: &mut RunState, id: &str, key: &str, value: f64) {
         .expect("add joker");
 }
 
+fn add_scoring_joker(run: &mut RunState, id: &str, op: ActionOp, value: f64) {
+    run.content.jokers.push(JokerDef {
+        id: id.to_string(),
+        name: id.to_string(),
+        rarity: JokerRarity::Common,
+        effects: vec![JokerEffect {
+            trigger: ActivationType::Independent,
+            when: Expr::Bool(true),
+            actions: vec![Action {
+                op,
+                target: None,
+                value: Expr::Number(value),
+            }],
+        }],
+    });
+    run.inventory
+        .add_joker(id.to_string(), JokerRarity::Common, 1)
+        .expect("add joker");
+}
+
 macro_rules! test_play_hand_invalid_phase {
     ($name:ident, $phase:expr) => {
         #[test]
@@ -613,6 +633,118 @@ fn scoring_polychrome_edition_multiplies_mult() {
         .last_score_trace
         .iter()
         .any(|step| step.source == "edition:polychrome"));
+}
+
+#[test]
+fn scoring_card_bonus_chips_trace() {
+    let mut run = new_run();
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    let mut card = Card::standard(Suit::Spades, Rank::Ace);
+    card.bonus_chips = 25;
+    run.hand = vec![card];
+    let breakdown = run
+        .play_hand(&[0], &mut EventBus::default())
+        .expect("play hand");
+    assert_eq!(
+        breakdown.total.chips,
+        breakdown.base.chips + breakdown.rank_chips + 25
+    );
+    assert!(run
+        .last_score_trace
+        .iter()
+        .any(|step| step.source == "card:bonus_chips"));
+}
+
+#[test]
+fn scoring_steel_held_mult_trace() {
+    let mut run = new_run();
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    let mut steel = Card::standard(Suit::Hearts, Rank::Two);
+    steel.enhancement = Some(Enhancement::Steel);
+    run.hand = vec![Card::standard(Suit::Spades, Rank::Ace), steel];
+    let breakdown = run
+        .play_hand(&[0], &mut EventBus::default())
+        .expect("play hand");
+    assert_eq!(breakdown.total.mult, breakdown.base.mult * 1.5);
+    assert!(run
+        .last_score_trace
+        .iter()
+        .any(|step| step.source == "enhancement:steel"));
+}
+
+#[test]
+fn scoring_joker_add_chips_trace() {
+    let mut run = new_run();
+    add_scoring_joker(&mut run, "trace_add_chips", ActionOp::AddChips, 40.0);
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    run.hand = vec![Card::standard(Suit::Spades, Rank::Ace)];
+    let breakdown = run
+        .play_hand(&[0], &mut EventBus::default())
+        .expect("play hand");
+    assert_eq!(
+        breakdown.total.chips,
+        breakdown.base.chips + breakdown.rank_chips + 40
+    );
+    assert!(run
+        .last_score_trace
+        .iter()
+        .any(|step| step.source == "joker:trace_add_chips:add_chips"));
+}
+
+#[test]
+fn scoring_joker_add_mult_trace() {
+    let mut run = new_run();
+    add_scoring_joker(&mut run, "trace_add_mult", ActionOp::AddMult, 3.0);
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    run.hand = vec![Card::standard(Suit::Spades, Rank::Ace)];
+    let breakdown = run
+        .play_hand(&[0], &mut EventBus::default())
+        .expect("play hand");
+    assert_eq!(breakdown.total.mult, breakdown.base.mult + 3.0);
+    assert!(run
+        .last_score_trace
+        .iter()
+        .any(|step| step.source == "joker:trace_add_mult:add_mult"));
+}
+
+#[test]
+fn scoring_joker_mul_mult_trace() {
+    let mut run = new_run();
+    add_scoring_joker(&mut run, "trace_mul_mult", ActionOp::MultiplyMult, 2.0);
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    run.hand = vec![Card::standard(Suit::Spades, Rank::Ace)];
+    let breakdown = run
+        .play_hand(&[0], &mut EventBus::default())
+        .expect("play hand");
+    assert_eq!(breakdown.total.mult, breakdown.base.mult * 2.0);
+    assert!(run
+        .last_score_trace
+        .iter()
+        .any(|step| step.source == "joker:trace_mul_mult:mul_mult"));
+}
+
+#[test]
+fn scoring_joker_mul_chips_trace() {
+    let mut run = new_run();
+    add_scoring_joker(&mut run, "trace_mul_chips", ActionOp::MultiplyChips, 1.5);
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    run.hand = vec![Card::standard(Suit::Spades, Rank::Ace)];
+    let breakdown = run
+        .play_hand(&[0], &mut EventBus::default())
+        .expect("play hand");
+    let base = breakdown.base.chips + breakdown.rank_chips;
+    let expected = (base as f64 * 1.5).floor() as i64;
+    assert_eq!(breakdown.total.chips, expected);
+    assert!(run
+        .last_score_trace
+        .iter()
+        .any(|step| step.source == "joker:trace_mul_chips:mul_chips"));
 }
 
 #[test]
