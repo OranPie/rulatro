@@ -1,9 +1,10 @@
 use rulatro_core::{
-    Action, ActionOp, ActivationType, BlindKind, BossDef, Card, CardWeight, ConsumableKind,
-    Enhancement, Edition, Seal, EventBus, Expr, HandKind, JokerDef, JokerEffect, JokerRarity,
-    LastConsumable, PackKind, PackOffer, PackSize, Phase, Rank, RunError, RunState, ScoreTables,
-    ShopCardKind, ShopOfferRef, ShopPurchase, Suit, evaluate_hand, evaluate_hand_with_rules,
-    scoring_cards, score_hand, HandEvalRules,
+    Action, ActionOp, ActivationType, BlindKind, BossDef, Card, CardWeight, ConsumableDef,
+    ConsumableKind, Enhancement, Edition, EventBus, Expr, HandKind, JokerDef, JokerEffect,
+    JokerRarity, JokerRarityWeight, LastConsumable, PackKind, PackOffer, PackOption, PackSize,
+    Phase, Rank, RngState, RunError, RunState, ScoreTables, Seal, ShopCardKind, ShopOfferRef,
+    ShopPurchase, ShopRestrictions, ShopState, Suit, evaluate_hand, evaluate_hand_with_rules,
+    open_pack, scoring_cards, score_hand, HandEvalRules,
 };
 use rulatro_data::{load_content, load_game_config};
 use std::path::PathBuf;
@@ -2947,4 +2948,183 @@ fn gold_seal_adds_money_on_score() {
     run.play_hand(&[0, 1, 2, 3, 4], &mut EventBus::default())
         .expect("play hand");
     assert_eq!(run.state.money, 3);
+}
+
+#[test]
+fn shop_restrictions_block_owned_joker() {
+    let run = new_run();
+    let mut content = run.content.clone();
+    content.jokers = vec![
+        JokerDef {
+            id: "owned".to_string(),
+            name: "owned".to_string(),
+            rarity: JokerRarity::Common,
+            effects: Vec::new(),
+        },
+        JokerDef {
+            id: "free".to_string(),
+            name: "free".to_string(),
+            rarity: JokerRarity::Common,
+            effects: Vec::new(),
+        },
+    ];
+    let mut rule = run.config.shop.clone();
+    rule.card_slots = 1;
+    rule.booster_slots = 0;
+    rule.voucher_slots = 0;
+    rule.card_weights = vec![CardWeight {
+        kind: ShopCardKind::Joker,
+        weight: 1,
+    }];
+    rule.joker_rarity_weights = vec![JokerRarityWeight {
+        rarity: JokerRarity::Common,
+        weight: 1,
+    }];
+    let mut rng = RngState::from_seed(1);
+    let mut restrictions = ShopRestrictions::default();
+    restrictions.allow_duplicates = false;
+    restrictions.owned_jokers.insert("owned".to_string());
+
+    let shop = ShopState::generate(&rule, &content, &mut rng, &restrictions);
+
+    assert_eq!(shop.cards.len(), 1);
+    assert_eq!(shop.cards[0].item_id, "free");
+}
+
+#[test]
+fn shop_restrictions_all_owned_yields_empty() {
+    let run = new_run();
+    let mut content = run.content.clone();
+    content.jokers = vec![JokerDef {
+        id: "owned".to_string(),
+        name: "owned".to_string(),
+        rarity: JokerRarity::Common,
+        effects: Vec::new(),
+    }];
+    let mut rule = run.config.shop.clone();
+    rule.card_slots = 1;
+    rule.booster_slots = 0;
+    rule.voucher_slots = 0;
+    rule.card_weights = vec![CardWeight {
+        kind: ShopCardKind::Joker,
+        weight: 1,
+    }];
+    rule.joker_rarity_weights = vec![JokerRarityWeight {
+        rarity: JokerRarity::Common,
+        weight: 1,
+    }];
+    let mut rng = RngState::from_seed(2);
+    let mut restrictions = ShopRestrictions::default();
+    restrictions.allow_duplicates = false;
+    restrictions.owned_jokers.insert("owned".to_string());
+
+    let shop = ShopState::generate(&rule, &content, &mut rng, &restrictions);
+
+    assert!(shop.cards.is_empty());
+}
+
+#[test]
+fn pack_open_blocks_owned_tarot_when_duplicates_disabled() {
+    let run = new_run();
+    let mut content = run.content.clone();
+    content.tarots = vec![ConsumableDef {
+        id: "only".to_string(),
+        name: "only".to_string(),
+        kind: ConsumableKind::Tarot,
+        hand: None,
+        effects: Vec::new(),
+    }];
+    let offer = PackOffer {
+        kind: PackKind::Arcana,
+        size: PackSize::Normal,
+        options: 2,
+        picks: 1,
+        price: 0,
+    };
+    let mut rng = RngState::from_seed(3);
+    let mut restrictions = ShopRestrictions::default();
+    restrictions.owned_tarots.insert("only".to_string());
+
+    let open = open_pack(
+        &offer,
+        &content,
+        &run.config.shop.joker_rarity_weights,
+        &mut rng,
+        &restrictions,
+    );
+
+    assert!(open.options.is_empty());
+}
+
+#[test]
+fn pack_open_allows_owned_tarot_when_duplicates_enabled() {
+    let run = new_run();
+    let mut content = run.content.clone();
+    content.tarots = vec![ConsumableDef {
+        id: "only".to_string(),
+        name: "only".to_string(),
+        kind: ConsumableKind::Tarot,
+        hand: None,
+        effects: Vec::new(),
+    }];
+    let offer = PackOffer {
+        kind: PackKind::Arcana,
+        size: PackSize::Normal,
+        options: 2,
+        picks: 1,
+        price: 0,
+    };
+    let mut rng = RngState::from_seed(4);
+    let mut restrictions = ShopRestrictions::default();
+    restrictions.allow_duplicates = true;
+    restrictions.owned_tarots.insert("only".to_string());
+
+    let open = open_pack(
+        &offer,
+        &content,
+        &run.config.shop.joker_rarity_weights,
+        &mut rng,
+        &restrictions,
+    );
+
+    assert_eq!(open.options.len(), 2);
+    for option in open.options {
+        match option {
+            PackOption::Consumable(kind, id) => {
+                assert_eq!(kind, ConsumableKind::Tarot);
+                assert_eq!(id, "only");
+            }
+            _ => panic!("expected tarot consumable option"),
+        }
+    }
+}
+
+#[test]
+fn money_floor_blocks_reroll_below_floor() {
+    let mut run = new_run();
+    add_rule_joker(&mut run, "rule_floor_block", "money_floor", -2.0);
+    run.state.money = 0;
+    mark_blind_cleared(&mut run);
+    run.enter_shop(&mut EventBus::default())
+        .expect("enter shop");
+    run.shop.as_mut().expect("shop").reroll_cost = 3;
+
+    let err = run.reroll_shop(&mut EventBus::default()).unwrap_err();
+    assert!(matches!(err, RunError::NotEnoughMoney));
+}
+
+#[test]
+fn money_floor_allows_reroll_to_floor() {
+    let mut run = new_run();
+    add_rule_joker(&mut run, "rule_floor_ok", "money_floor", -2.0);
+    run.state.money = 0;
+    mark_blind_cleared(&mut run);
+    run.enter_shop(&mut EventBus::default())
+        .expect("enter shop");
+    run.shop.as_mut().expect("shop").reroll_cost = 2;
+
+    run.reroll_shop(&mut EventBus::default())
+        .expect("reroll");
+
+    assert_eq!(run.state.money, -2);
 }
