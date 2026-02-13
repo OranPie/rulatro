@@ -479,7 +479,8 @@ fn print_summary(run: &RunState) {
 fn print_hand(run: &RunState) {
     println!("hand ({} cards):", run.hand.len());
     for (idx, card) in run.hand.iter().enumerate() {
-        println!("{:>2}: {}", idx, format_card(card));
+        let value = card_value(card, &run.tables);
+        println!("{:>2}: {} | value {}", idx, format_card(card), value);
     }
 }
 
@@ -719,6 +720,13 @@ fn format_card(card: &Card) -> String {
         out.push(']');
     }
     out
+}
+
+fn card_value(card: &Card, tables: &ScoreTables) -> i64 {
+    if card.is_stone() {
+        return 0;
+    }
+    tables.rank_chips(card.rank) + card.bonus_chips
 }
 
 fn rank_short(rank: Rank) -> &'static str {

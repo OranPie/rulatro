@@ -32,6 +32,7 @@
             <button data-action="deal">Deal</button>
             <button data-action="play">Play Selected</button>
             <button data-action="discard">Discard Selected</button>
+            <button data-action="clear_hand">Clear Selection</button>
             <label class="inline">
               Sort:
               <select id="sort-key">
@@ -43,6 +44,7 @@
             <button id="sort-dir">Desc</button>
           </div>
         </div>
+        <div class="panel-summary" id="hand-summary"></div>
         <div class="card-grid" id="hand"></div>
       </section>
 
@@ -62,6 +64,7 @@
             <button data-action="leave_shop">Leave Shop</button>
           </div>
         </div>
+        <div class="panel-summary" id="shop-summary"></div>
         <div class="shop">
           <div>
             <h3>Cards</h3>
@@ -86,6 +89,7 @@
             <button data-action="sell_joker">Sell Joker</button>
           </div>
         </div>
+        <div class="panel-summary" id="inv-summary"></div>
         <div class="inventory">
           <div>
             <h3>Jokers</h3>
@@ -104,8 +108,10 @@
           <div class="toolbar">
             <button data-action="pick_pack">Pick Selected</button>
             <button data-action="skip_pack">Skip Pack</button>
+            <button data-action="clear_pack">Clear Selection</button>
           </div>
         </div>
+        <div class="panel-summary" id="pack-summary"></div>
         <div class="pack-options" id="pack-options"></div>
       </section>
 
@@ -128,6 +134,7 @@
             <button data-action="clear_log">Clear Log</button>
           </div>
         </div>
+        <div class="panel-summary" id="log-summary"></div>
         <div class="log" id="log"></div>
       </section>
     </main>

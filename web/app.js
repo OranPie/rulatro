@@ -11,27 +11,35 @@ const state = {
   sortDir: "desc",
   rankChipMap: new Map(),
   lastSnapshot: null,
+  openPackKey: null,
 };
 
 const elements = {
   status: document.getElementById("status"),
   hand: document.getElementById("hand"),
+  handSummary: document.getElementById("hand-summary"),
   shopCards: document.getElementById("shop-cards"),
   shopPacks: document.getElementById("shop-packs"),
   shopVouchers: document.getElementById("shop-vouchers"),
+  shopSummary: document.getElementById("shop-summary"),
   invJokers: document.getElementById("inv-jokers"),
   invConsumables: document.getElementById("inv-consumables"),
+  invSummary: document.getElementById("inv-summary"),
   packOptions: document.getElementById("pack-options"),
+  packSummary: document.getElementById("pack-summary"),
   scoreBreakdown: document.getElementById("score-breakdown"),
   levels: document.getElementById("levels"),
   tags: document.getElementById("tags"),
   log: document.getElementById("log"),
+  logSummary: document.getElementById("log-summary"),
   sortKey: document.getElementById("sort-key"),
   sortDir: document.getElementById("sort-dir"),
 };
 
 const buttons = document.querySelectorAll("[data-action]");
+const actionButtons = {};
 buttons.forEach((button) => {
+  actionButtons[button.dataset.action] = button;
   button.addEventListener("click", () => handleAction(button.dataset.action));
 });
 
@@ -132,9 +140,52 @@ function handleAction(action) {
       state.logLines = [];
       renderLog();
       break;
+    case "clear_hand":
+      state.selectedHand.clear();
+      if (state.lastSnapshot) {
+        render(state.lastSnapshot);
+      }
+      break;
+    case "clear_pack":
+      state.selectedPackOptions.clear();
+      if (state.lastSnapshot) {
+        render(state.lastSnapshot);
+      }
+      break;
     default:
       break;
   }
+}
+
+function setActionEnabled(action, enabled) {
+  const button = actionButtons[action];
+  if (!button) return;
+  button.disabled = !enabled;
+}
+
+function updateControls(snapshot) {
+  if (!snapshot) return;
+  const phase = snapshot.state.phase;
+  const hasHandSelection = state.selectedHand.size > 0;
+  const hasPackSelection = state.selectedPackOptions.size > 0;
+  const hasConsumable = state.selectedConsumable != null;
+  const hasJoker = state.selectedJoker != null;
+  setActionEnabled("play", phase === "Play" && hasHandSelection);
+  setActionEnabled(
+    "discard",
+    phase === "Play" && hasHandSelection && snapshot.state.discards_left > 0
+  );
+  setActionEnabled("deal", phase === "Deal");
+  setActionEnabled("start", phase === "Setup" || phase === "Shop");
+  setActionEnabled("enter_shop", phase !== "Shop");
+  setActionEnabled("leave_shop", phase === "Shop");
+  setActionEnabled("reroll", phase === "Shop");
+  setActionEnabled("use_consumable", hasConsumable);
+  setActionEnabled("sell_joker", hasJoker);
+  setActionEnabled("pick_pack", snapshot.open_pack && hasPackSelection);
+  setActionEnabled("skip_pack", snapshot.open_pack != null);
+  setActionEnabled("clear_hand", state.selectedHand.size > 0);
+  setActionEnabled("clear_pack", state.selectedPackOptions.size > 0);
 }
 
 function render(data) {
@@ -153,6 +204,8 @@ function render(data) {
   renderScore(data.last_breakdown);
   renderLevels(data.state.hand_levels);
   renderTags(data.state.tags, data.state.duplicate_next_tag, data.state.duplicate_tag_exclude);
+  updateSummaries(data);
+  updateControls(data);
   renderLog();
 }
 
@@ -162,6 +215,39 @@ function renderStatus(run) {
     const key = el.dataset.field;
     el.textContent = run[key] ?? "-";
   });
+}
+
+function updateSummaries(snapshot) {
+  const run = snapshot.state;
+  const handCount = run.hand.length;
+  elements.handSummary.textContent = `Selected: ${state.selectedHand.size} | Hand: ${handCount} | Hands: ${run.hands_left}/${run.hands_max} | Discards: ${run.discards_left}/${run.discards_max}`;
+
+  if (!run.shop) {
+    elements.shopSummary.textContent = "Shop closed.";
+  } else {
+    let selected = "none";
+    if (state.selectedShopCard != null) {
+      selected = `card #${state.selectedShopCard}`;
+    } else if (state.selectedShopPack != null) {
+      selected = `pack #${state.selectedShopPack}`;
+    } else if (state.selectedVoucher != null) {
+      selected = `voucher #${state.selectedVoucher}`;
+    }
+    elements.shopSummary.textContent = `Cards: ${run.shop.cards.length} | Packs: ${run.shop.packs.length} | Vouchers: ${run.shop.vouchers} | Reroll: ${run.shop.reroll_cost} | Selected: ${selected}`;
+  }
+
+  elements.invSummary.textContent = `Jokers: ${run.jokers.length} | Consumables: ${run.consumables.length} | Selected: ${
+    state.selectedJoker != null ? `joker #${state.selectedJoker}` : state.selectedConsumable != null ? `consumable #${state.selectedConsumable}` : "none"
+  }`;
+
+  if (!snapshot.open_pack) {
+    elements.packSummary.textContent = "No open pack.";
+  } else {
+    const picks = snapshot.open_pack.offer.picks;
+    elements.packSummary.textContent = `Options: ${snapshot.open_pack.options.length} | Picks: ${picks} | Selected: ${state.selectedPackOptions.size}`;
+  }
+
+  elements.logSummary.textContent = `Entries: ${state.logLines.length}`;
 }
 
 function renderHand(hand) {
@@ -179,9 +265,10 @@ function renderHand(hand) {
     if (state.selectedHand.has(idx)) {
       el.classList.add("selected");
     }
+    el.title = formatCardTooltip(card, idx);
     el.innerHTML = `
       <div class="title">${formatCard(card)}</div>
-      <div class="meta">#${idx} ${formatMods(card)} ${formatValue(card)}</div>
+      <div class="meta">${formatCardMeta(card, idx)}</div>
     `;
     el.addEventListener("click", () => toggleSelection(state.selectedHand, idx, el));
     elements.hand.appendChild(el);
@@ -216,23 +303,44 @@ function renderShop(shop) {
   elements.shopCards.innerHTML = "";
   elements.shopPacks.innerHTML = "";
   elements.shopVouchers.innerHTML = "";
-  state.selectedShopCard = null;
-  state.selectedShopPack = null;
-  state.selectedVoucher = null;
 
   if (!shop) {
+    state.selectedShopCard = null;
+    state.selectedShopPack = null;
+    state.selectedVoucher = null;
     return;
+  }
+  if (state.selectedShopCard != null && state.selectedShopCard >= shop.cards.length) {
+    state.selectedShopCard = null;
+  }
+  if (state.selectedShopPack != null && state.selectedShopPack >= shop.packs.length) {
+    state.selectedShopPack = null;
+  }
+  if (state.selectedVoucher != null && state.selectedVoucher >= shop.vouchers) {
+    state.selectedVoucher = null;
   }
 
   shop.cards.forEach((card, idx) => {
     const el = document.createElement("div");
     el.className = "list-item";
+    if (state.selectedShopCard === idx) {
+      el.classList.add("selected");
+    }
+    el.title = `price ${card.price}${card.rarity ? ` | rarity ${card.rarity}` : ""}${
+      card.edition ? ` | edition ${card.edition}` : ""
+    }`;
     el.innerHTML = `[${idx}] ${card.kind} ${card.item_id} (${card.price})`;
     el.addEventListener("click", () => {
       state.selectedShopCard = idx;
       state.selectedShopPack = null;
       state.selectedVoucher = null;
       highlightSelection(elements.shopCards, idx);
+      clearSelection(elements.shopPacks);
+      clearSelection(elements.shopVouchers);
+      if (state.lastSnapshot) {
+        updateSummaries(state.lastSnapshot);
+        updateControls(state.lastSnapshot);
+      }
     });
     el.addEventListener("dblclick", () => {
       callAction("buy_card", { target: String(idx) });
@@ -243,12 +351,22 @@ function renderShop(shop) {
   shop.packs.forEach((pack, idx) => {
     const el = document.createElement("div");
     el.className = "list-item";
+    if (state.selectedShopPack === idx) {
+      el.classList.add("selected");
+    }
+    el.title = `options ${pack.options} | picks ${pack.picks} | price ${pack.price}`;
     el.innerHTML = `[${idx}] ${pack.kind} ${pack.size} (pick ${pack.picks}) ${pack.price}`;
     el.addEventListener("click", () => {
       state.selectedShopPack = idx;
       state.selectedShopCard = null;
       state.selectedVoucher = null;
       highlightSelection(elements.shopPacks, idx);
+      clearSelection(elements.shopCards);
+      clearSelection(elements.shopVouchers);
+      if (state.lastSnapshot) {
+        updateSummaries(state.lastSnapshot);
+        updateControls(state.lastSnapshot);
+      }
     });
     el.addEventListener("dblclick", () => {
       callAction("buy_pack", { target: String(idx) });
@@ -259,12 +377,21 @@ function renderShop(shop) {
   for (let idx = 0; idx < shop.vouchers; idx += 1) {
     const el = document.createElement("div");
     el.className = "list-item";
+    if (state.selectedVoucher === idx) {
+      el.classList.add("selected");
+    }
     el.textContent = `[${idx}] Voucher`;
     el.addEventListener("click", () => {
       state.selectedVoucher = idx;
       state.selectedShopCard = null;
       state.selectedShopPack = null;
       highlightSelection(elements.shopVouchers, idx);
+      clearSelection(elements.shopCards);
+      clearSelection(elements.shopPacks);
+      if (state.lastSnapshot) {
+        updateSummaries(state.lastSnapshot);
+        updateControls(state.lastSnapshot);
+      }
     });
     el.addEventListener("dblclick", () => {
       callAction("buy_voucher", { target: String(idx) });
@@ -276,16 +403,28 @@ function renderShop(shop) {
 function renderInventory(run) {
   elements.invJokers.innerHTML = "";
   elements.invConsumables.innerHTML = "";
-  state.selectedJoker = null;
-  state.selectedConsumable = null;
+  if (state.selectedJoker != null && state.selectedJoker >= run.jokers.length) {
+    state.selectedJoker = null;
+  }
+  if (state.selectedConsumable != null && state.selectedConsumable >= run.consumables.length) {
+    state.selectedConsumable = null;
+  }
 
   run.jokers.forEach((joker, idx) => {
     const el = document.createElement("div");
     el.className = "list-item";
+    if (state.selectedJoker === idx) {
+      el.classList.add("selected");
+    }
+    el.title = `rarity ${joker.rarity}${joker.edition ? ` | edition ${joker.edition}` : ""}`;
     el.innerHTML = `[${idx}] ${joker.id} (${joker.rarity})`;
     el.addEventListener("click", () => {
       state.selectedJoker = idx;
       highlightSelection(elements.invJokers, idx);
+      if (state.lastSnapshot) {
+        updateSummaries(state.lastSnapshot);
+        updateControls(state.lastSnapshot);
+      }
     });
     elements.invJokers.appendChild(el);
   });
@@ -293,10 +432,18 @@ function renderInventory(run) {
   run.consumables.forEach((consumable, idx) => {
     const el = document.createElement("div");
     el.className = "list-item";
+    if (state.selectedConsumable === idx) {
+      el.classList.add("selected");
+    }
+    el.title = consumable.edition ? `edition ${consumable.edition}` : "";
     el.innerHTML = `[${idx}] ${consumable.kind} ${consumable.id}`;
     el.addEventListener("click", () => {
       state.selectedConsumable = idx;
       highlightSelection(elements.invConsumables, idx);
+      if (state.lastSnapshot) {
+        updateSummaries(state.lastSnapshot);
+        updateControls(state.lastSnapshot);
+      }
     });
     elements.invConsumables.appendChild(el);
   });
@@ -304,18 +451,32 @@ function renderInventory(run) {
 
 function renderPack(openPack) {
   elements.packOptions.innerHTML = "";
-  state.selectedPackOptions.clear();
   if (!openPack) {
+    state.selectedPackOptions.clear();
+    state.openPackKey = null;
     const empty = document.createElement("div");
     empty.textContent = "No open pack.";
     elements.packOptions.appendChild(empty);
     return;
   }
+  const packKey = `${openPack.offer.kind}|${openPack.offer.size}|${openPack.offer.picks}|${openPack.options.length}`;
+  if (state.openPackKey !== packKey) {
+    state.selectedPackOptions.clear();
+    state.openPackKey = packKey;
+  }
+  state.selectedPackOptions.forEach((idx) => {
+    if (idx >= openPack.options.length) {
+      state.selectedPackOptions.delete(idx);
+    }
+  });
   openPack.options.forEach((option, idx) => {
     const el = document.createElement("div");
     el.className = "list-item";
     el.textContent = `[${idx}] ${formatPackOption(option)}`;
     el.addEventListener("click", () => toggleSelection(state.selectedPackOptions, idx, el));
+    if (state.selectedPackOptions.has(idx)) {
+      el.classList.add("selected");
+    }
     elements.packOptions.appendChild(el);
   });
 }
@@ -411,12 +572,22 @@ function renderTags(tags, dupNext, dupExclude) {
 }
 
 function renderLog() {
-  elements.log.textContent = state.logLines.join("\n");
+  elements.log.innerHTML = "";
+  state.logLines.forEach((line) => {
+    const el = document.createElement("div");
+    el.className = "log-line";
+    if (line.includes("error:")) {
+      el.classList.add("error");
+    }
+    el.textContent = line;
+    elements.log.appendChild(el);
+  });
   elements.log.scrollTop = elements.log.scrollHeight;
 }
 
 function pushLog(line) {
-  state.logLines.push(line);
+  const timestamp = new Date().toLocaleTimeString();
+  state.logLines.push(`[${timestamp}] ${line}`);
   if (state.logLines.length > 200) {
     state.logLines.shift();
   }
@@ -430,6 +601,10 @@ function toggleSelection(set, idx, element) {
     set.add(idx);
     element.classList.add("selected");
   }
+  if (state.lastSnapshot) {
+    updateSummaries(state.lastSnapshot);
+    updateControls(state.lastSnapshot);
+  }
 }
 
 function highlightSelection(container, index) {
@@ -442,11 +617,43 @@ function highlightSelection(container, index) {
   });
 }
 
+function clearSelection(container) {
+  Array.from(container.children).forEach((child) => {
+    child.classList.remove("selected");
+  });
+}
+
 function formatCard(card) {
   if (card.face_down) {
     return "??";
   }
   return `${rankShort(card.rank)}${suitShort(card.suit)}`;
+}
+
+function formatCardMeta(card, idx) {
+  const parts = [`#${idx}`];
+  const mods = formatMods(card);
+  if (mods) parts.push(mods);
+  const value = formatValue(card);
+  if (value) parts.push(value);
+  return parts.join(" | ");
+}
+
+function formatCardTooltip(card, idx) {
+  const lines = [`index: ${idx}`];
+  if (card.face_down) {
+    lines.push("face down");
+    return lines.join(" | ");
+  }
+  lines.push(`rank: ${card.rank}`);
+  lines.push(`suit: ${card.suit}`);
+  if (card.enhancement) lines.push(`enhancement: ${card.enhancement}`);
+  if (card.edition) lines.push(`edition: ${card.edition}`);
+  if (card.seal) lines.push(`seal: ${card.seal}`);
+  if (card.bonus_chips) lines.push(`bonus: ${card.bonus_chips}`);
+  const value = cardValue(card);
+  if (value) lines.push(`value: ${value}`);
+  return lines.join(" | ");
 }
 
 function formatMods(card) {
