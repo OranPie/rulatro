@@ -1,10 +1,11 @@
 use rulatro_core::{
-    Action, ActionOp, ActivationType, BlindKind, BossDef, Card, CardWeight, ConsumableDef,
-    ConsumableKind, Enhancement, Edition, EventBus, Expr, HandKind, JokerDef, JokerEffect,
-    JokerRarity, JokerRarityWeight, LastConsumable, PackKind, PackOffer, PackOption, PackSize,
-    Phase, Rank, RngState, RunError, RunState, ScoreTables, Seal, ShopCardKind, ShopOfferRef,
-    ShopPurchase, ShopRestrictions, ShopState, Suit, evaluate_hand, evaluate_hand_with_rules,
-    open_pack, scoring_cards, score_hand, HandEvalRules,
+    Action, ActionOp, ActivationType, BlindKind, BossDef, Card, CardOffer, CardWeight,
+    ConsumableDef, ConsumableKind, Enhancement, Edition, EventBus, Expr, HandKind, JokerDef,
+    JokerEffect, JokerRarity, JokerRarityWeight, LastConsumable, PackError, PackKind, PackOffer,
+    PackOpen, PackOption, PackSize, Phase, Rank, RngState, RunError, RunState, ScoreTables, Seal,
+    ShopCardKind, ShopOfferRef, ShopPurchase, ShopRestrictions, ShopState, Suit,
+    evaluate_hand, evaluate_hand_with_rules, open_pack, pick_pack_options, scoring_cards,
+    score_hand, HandEvalRules,
 };
 use rulatro_data::{load_content, load_game_config};
 use std::path::PathBuf;
@@ -3126,5 +3127,302 @@ fn money_floor_allows_reroll_to_floor() {
     run.reroll_shop(&mut EventBus::default())
         .expect("reroll");
 
+    assert_eq!(run.state.money, -2);
+}
+
+#[test]
+fn shop_restrictions_block_owned_tarot_offer() {
+    let run = new_run();
+    let mut content = run.content.clone();
+    content.tarots = vec![
+        ConsumableDef {
+            id: "owned".to_string(),
+            name: "owned".to_string(),
+            kind: ConsumableKind::Tarot,
+            hand: None,
+            effects: Vec::new(),
+        },
+        ConsumableDef {
+            id: "free".to_string(),
+            name: "free".to_string(),
+            kind: ConsumableKind::Tarot,
+            hand: None,
+            effects: Vec::new(),
+        },
+    ];
+    let mut rule = run.config.shop.clone();
+    rule.card_slots = 1;
+    rule.booster_slots = 0;
+    rule.voucher_slots = 0;
+    rule.card_weights = vec![CardWeight {
+        kind: ShopCardKind::Tarot,
+        weight: 1,
+    }];
+    let mut rng = RngState::from_seed(10);
+    let mut restrictions = ShopRestrictions::default();
+    restrictions.allow_duplicates = false;
+    restrictions.owned_tarots.insert("owned".to_string());
+
+    let shop = ShopState::generate(&rule, &content, &mut rng, &restrictions);
+
+    assert_eq!(shop.cards.len(), 1);
+    assert_eq!(shop.cards[0].item_id, "free");
+}
+
+#[test]
+fn shop_restrictions_block_owned_planet_offer() {
+    let run = new_run();
+    let mut content = run.content.clone();
+    content.planets = vec![
+        ConsumableDef {
+            id: "owned".to_string(),
+            name: "owned".to_string(),
+            kind: ConsumableKind::Planet,
+            hand: None,
+            effects: Vec::new(),
+        },
+        ConsumableDef {
+            id: "free".to_string(),
+            name: "free".to_string(),
+            kind: ConsumableKind::Planet,
+            hand: None,
+            effects: Vec::new(),
+        },
+    ];
+    let mut rule = run.config.shop.clone();
+    rule.card_slots = 1;
+    rule.booster_slots = 0;
+    rule.voucher_slots = 0;
+    rule.card_weights = vec![CardWeight {
+        kind: ShopCardKind::Planet,
+        weight: 1,
+    }];
+    let mut rng = RngState::from_seed(11);
+    let mut restrictions = ShopRestrictions::default();
+    restrictions.allow_duplicates = false;
+    restrictions.owned_planets.insert("owned".to_string());
+
+    let shop = ShopState::generate(&rule, &content, &mut rng, &restrictions);
+
+    assert_eq!(shop.cards.len(), 1);
+    assert_eq!(shop.cards[0].item_id, "free");
+}
+
+#[test]
+fn pack_open_blocks_owned_planet_when_duplicates_disabled() {
+    let run = new_run();
+    let mut content = run.content.clone();
+    content.planets = vec![ConsumableDef {
+        id: "only".to_string(),
+        name: "only".to_string(),
+        kind: ConsumableKind::Planet,
+        hand: None,
+        effects: Vec::new(),
+    }];
+    let offer = PackOffer {
+        kind: PackKind::Celestial,
+        size: PackSize::Normal,
+        options: 2,
+        picks: 1,
+        price: 0,
+    };
+    let mut rng = RngState::from_seed(12);
+    let mut restrictions = ShopRestrictions::default();
+    restrictions.owned_planets.insert("only".to_string());
+
+    let open = open_pack(
+        &offer,
+        &content,
+        &run.config.shop.joker_rarity_weights,
+        &mut rng,
+        &restrictions,
+    );
+
+    assert!(open.options.is_empty());
+}
+
+#[test]
+fn pack_open_allows_owned_planet_when_duplicates_enabled() {
+    let run = new_run();
+    let mut content = run.content.clone();
+    content.planets = vec![ConsumableDef {
+        id: "only".to_string(),
+        name: "only".to_string(),
+        kind: ConsumableKind::Planet,
+        hand: None,
+        effects: Vec::new(),
+    }];
+    let offer = PackOffer {
+        kind: PackKind::Celestial,
+        size: PackSize::Normal,
+        options: 2,
+        picks: 1,
+        price: 0,
+    };
+    let mut rng = RngState::from_seed(13);
+    let mut restrictions = ShopRestrictions::default();
+    restrictions.allow_duplicates = true;
+    restrictions.owned_planets.insert("only".to_string());
+
+    let open = open_pack(
+        &offer,
+        &content,
+        &run.config.shop.joker_rarity_weights,
+        &mut rng,
+        &restrictions,
+    );
+
+    assert_eq!(open.options.len(), 2);
+    for option in open.options {
+        match option {
+            PackOption::Consumable(kind, id) => {
+                assert_eq!(kind, ConsumableKind::Planet);
+                assert_eq!(id, "only");
+            }
+            _ => panic!("expected planet consumable option"),
+        }
+    }
+}
+
+#[test]
+fn pack_open_blocks_owned_spectral_when_duplicates_disabled() {
+    let run = new_run();
+    let mut content = run.content.clone();
+    content.spectrals = vec![ConsumableDef {
+        id: "only".to_string(),
+        name: "only".to_string(),
+        kind: ConsumableKind::Spectral,
+        hand: None,
+        effects: Vec::new(),
+    }];
+    let offer = PackOffer {
+        kind: PackKind::Spectral,
+        size: PackSize::Normal,
+        options: 2,
+        picks: 1,
+        price: 0,
+    };
+    let mut rng = RngState::from_seed(14);
+    let mut restrictions = ShopRestrictions::default();
+    restrictions.owned_spectrals.insert("only".to_string());
+
+    let open = open_pack(
+        &offer,
+        &content,
+        &run.config.shop.joker_rarity_weights,
+        &mut rng,
+        &restrictions,
+    );
+
+    assert!(open.options.is_empty());
+}
+
+#[test]
+fn pack_pick_rejects_out_of_range_index() {
+    let open = PackOpen {
+        offer: PackOffer {
+            kind: PackKind::Buffoon,
+            size: PackSize::Normal,
+            options: 2,
+            picks: 1,
+            price: 0,
+        },
+        options: vec![
+            PackOption::Joker("a".to_string()),
+            PackOption::Joker("b".to_string()),
+        ],
+    };
+
+    let err = pick_pack_options(&open, &[2]).unwrap_err();
+    assert!(matches!(err, PackError::InvalidSelection));
+}
+
+#[test]
+fn pack_pick_rejects_too_many_indices() {
+    let open = PackOpen {
+        offer: PackOffer {
+            kind: PackKind::Buffoon,
+            size: PackSize::Normal,
+            options: 2,
+            picks: 1,
+            price: 0,
+        },
+        options: vec![
+            PackOption::Joker("a".to_string()),
+            PackOption::Joker("b".to_string()),
+        ],
+    };
+
+    let err = pick_pack_options(&open, &[0, 1]).unwrap_err();
+    assert!(matches!(err, PackError::TooManyPicks));
+}
+
+#[test]
+fn pack_pick_dedups_duplicate_indices() {
+    let open = PackOpen {
+        offer: PackOffer {
+            kind: PackKind::Buffoon,
+            size: PackSize::Normal,
+            options: 1,
+            picks: 2,
+            price: 0,
+        },
+        options: vec![PackOption::Joker("a".to_string())],
+    };
+
+    let picked = pick_pack_options(&open, &[0, 0]).expect("pick options");
+    assert_eq!(picked.len(), 1);
+    match &picked[0] {
+        PackOption::Joker(id) => assert_eq!(id, "a"),
+        _ => panic!("expected joker option"),
+    }
+}
+
+#[test]
+fn money_floor_blocks_purchase_below_floor() {
+    let mut run = new_run();
+    add_rule_joker(&mut run, "rule_floor_buy_block", "money_floor", -2.0);
+    run.state.money = 0;
+    run.state.phase = Phase::Shop;
+    run.shop = Some(ShopState {
+        cards: vec![CardOffer {
+            kind: ShopCardKind::Tarot,
+            item_id: "tarot".to_string(),
+            rarity: None,
+            price: 3,
+            edition: None,
+        }],
+        packs: Vec::new(),
+        vouchers: 0,
+        reroll_cost: 0,
+    });
+
+    let err = run
+        .buy_shop_offer(ShopOfferRef::Card(0), &mut EventBus::default())
+        .unwrap_err();
+    assert!(matches!(err, RunError::NotEnoughMoney));
+}
+
+#[test]
+fn money_floor_allows_purchase_to_floor() {
+    let mut run = new_run();
+    add_rule_joker(&mut run, "rule_floor_buy_ok", "money_floor", -2.0);
+    run.state.money = 0;
+    run.state.phase = Phase::Shop;
+    run.shop = Some(ShopState {
+        cards: vec![CardOffer {
+            kind: ShopCardKind::Tarot,
+            item_id: "tarot".to_string(),
+            rarity: None,
+            price: 2,
+            edition: None,
+        }],
+        packs: Vec::new(),
+        vouchers: 0,
+        reroll_cost: 0,
+    });
+
+    run.buy_shop_offer(ShopOfferRef::Card(0), &mut EventBus::default())
+        .expect("buy offer");
     assert_eq!(run.state.money, -2);
 }
