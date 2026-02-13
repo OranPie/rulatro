@@ -333,7 +333,6 @@ function updateSummaries(snapshot) {
 
 function renderHand(run, breakdown) {
   const hand = run.hand;
-  const hand = run.hand;
   elements.hand.innerHTML = "";
   state.selectedHand.forEach((idx) => {
     if (idx >= hand.length) {
