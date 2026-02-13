@@ -140,6 +140,16 @@ button:disabled {
   box-shadow: 0 0 0 2px rgba(107, 220, 255, 0.3);
 }
 
+.card.scoring {
+  border-color: #7cff7c;
+  box-shadow: 0 0 0 2px rgba(124, 255, 124, 0.25);
+}
+
+.card.selected.scoring {
+  border-color: #6bdcff;
+  box-shadow: 0 0 0 2px rgba(107, 220, 255, 0.35), 0 0 0 4px rgba(124, 255, 124, 0.2);
+}
+
 .card .title {
   font-weight: 600;
 }

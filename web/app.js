@@ -19,6 +19,7 @@ const state = {
     scoring: true,
     steps: false,
   },
+  highlightScoring: true,
 };
 
 const elements = {
@@ -70,6 +71,7 @@ const shortcutHints = {
   use_consumable: "U",
   sell_joker: "J",
   next_blind: "N",
+  skip_blind: "G",
   reset: "Shift+R",
   undo_pending: "Z",
 };
@@ -267,10 +269,10 @@ function render(data) {
     (data.state.rank_chips || []).map((entry) => [entry.rank, entry.chips])
   );
   if (data.events && data.events.length > 0) {
-    data.events.forEach((event) => pushLog(JSON.stringify(event)));
+    data.events.forEach((event) => pushLog(formatEvent(event)));
   }
   renderStatus(data.state);
-  renderHand(data.state.hand);
+  renderHand(data.state, data.last_breakdown);
   renderShop(data.state.shop);
   renderInventory(data.state);
   renderPack(data.open_pack);
@@ -326,16 +328,33 @@ function updateSummaries(snapshot) {
 
   elements.logSummary.textContent = `Entries: ${state.logLines.length}`;
   elements.logSummary.title =
-    "Shortcuts: S D P X O R L B Q K Y U J N Shift+R Z (Shift+C clears pack)";
+    "Shortcuts: S D P X O R L B Q K Y U J N G Shift+R Z (Shift+C clears pack)";
 }
 
-function renderHand(hand) {
+function renderHand(run, breakdown) {
+  const hand = run.hand;
+  const hand = run.hand;
   elements.hand.innerHTML = "";
   state.selectedHand.forEach((idx) => {
     if (idx >= hand.length) {
       state.selectedHand.delete(idx);
     }
   });
+  let scoringSet = new Set();
+  let scoringChips = new Map();
+  if (
+    state.highlightScoring &&
+    breakdown &&
+    Array.isArray(breakdown.scoring_indices) &&
+    breakdown.scoring_indices.every((idx) => idx < hand.length)
+  ) {
+    scoringSet = new Set(breakdown.scoring_indices);
+    if (Array.isArray(breakdown.scoring_cards)) {
+      breakdown.scoring_cards.forEach((entry) => {
+        scoringChips.set(entry.index, entry.chips);
+      });
+    }
+  }
   const entries = hand.map((card, idx) => ({ card, idx }));
   const sorted = sortHandEntries(entries);
   sorted.forEach(({ card, idx }) => {
@@ -345,10 +364,17 @@ function renderHand(hand) {
     if (state.selectedHand.has(idx)) {
       el.classList.add("selected");
     }
+    if (scoringSet.has(idx)) {
+      el.classList.add("scoring");
+    }
+    const scoreValue = scoringChips.get(idx);
     el.title = formatCardTooltip(card, idx);
+    if (scoreValue != null) {
+      el.title += " | scoring: " + scoreValue;
+    }
     el.innerHTML = `
       <div class="title">${formatCard(card)}</div>
-      <div class="meta">${formatCardMeta(card, idx)}</div>
+      <div class="meta">${formatCardMeta(card, idx, scoreValue)}</div>
     `;
     el.addEventListener("click", () => toggleSelection(state.selectedHand, idx, el));
     el.addEventListener("keydown", (event) => {
@@ -925,8 +951,9 @@ function formatCard(card) {
   return `${rankShort(card.rank)}${suitShort(card.suit)}`;
 }
 
-function formatCardMeta(card, idx) {
+function formatCardMeta(card, idx, scoringValue) {
   const parts = [`#${idx}`];
+  if (scoringValue != null) parts.push("score:" + scoringValue);
   const mods = formatMods(card);
   if (mods) parts.push(mods);
   const value = formatValue(card);
@@ -971,6 +998,58 @@ function formatPackOption(option) {
     return `Card ${formatCard(option.value)}`;
   }
   return "Unknown";
+}
+
+function formatEvent(event) {
+  if (!event || typeof event !== "object") {
+    return String(event);
+  }
+  if (event.BlindStarted) {
+    const e = event.BlindStarted;
+    return "blind started: ante " + e.ante + " " + e.blind + " target " + e.target + " hands " + e.hands + " discards " + e.discards;
+  }
+  if (event.BlindSkipped) {
+    const e = event.BlindSkipped;
+    return "blind skipped: ante " + e.ante + " " + e.blind + " tag " + (e.tag ?? "none");
+  }
+  if (event.HandDealt) {
+    return "hand dealt: " + event.HandDealt.count + " cards";
+  }
+  if (event.HandScored) {
+    const e = event.HandScored;
+    return "hand scored: " + e.hand + " " + e.chips + "×" + e.mult.toFixed(2) + " = " + e.total;
+  }
+  if (event.ShopEntered) {
+    const e = event.ShopEntered;
+    return "shop entered: offers " + e.offers + " reroll " + e.reroll_cost + (e.reentered ? " (reenter)" : "");
+  }
+  if (event.ShopRerolled) {
+    const e = event.ShopRerolled;
+    return "shop reroll: offers " + e.offers + " reroll " + e.reroll_cost + " cost " + e.cost + " money " + e.money;
+  }
+  if (event.ShopBought) {
+    const e = event.ShopBought;
+    return "shop bought: " + e.offer + " cost " + e.cost + " money " + e.money;
+  }
+  if (event.PackOpened) {
+    const e = event.PackOpened;
+    return "pack opened: " + e.kind + " options " + e.options + " picks " + e.picks;
+  }
+  if (event.PackChosen) {
+    return "pack chosen: picks " + event.PackChosen.picks;
+  }
+  if (event.JokerSold) {
+    const e = event.JokerSold;
+    return "joker sold: " + e.id + " value " + e.sell_value + " money " + e.money;
+  }
+  if (event.BlindCleared) {
+    const e = event.BlindCleared;
+    return "blind cleared: score " + e.score + " reward " + e.reward + " money " + e.money;
+  }
+  if (event.BlindFailed) {
+    return "blind failed: score " + event.BlindFailed.score;
+  }
+  return JSON.stringify(event);
 }
 
 function formatValue(card) {
@@ -1157,6 +1236,10 @@ document.addEventListener("keydown", (event) => {
     case "n":
       event.preventDefault();
       handleAction("next_blind");
+      break;
+    case "g":
+      event.preventDefault();
+      handleAction("skip_blind");
       break;
     case "z":
       event.preventDefault();
