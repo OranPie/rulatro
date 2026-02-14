@@ -4,8 +4,9 @@ use crate::persistence::{
 use anyhow::{Context, Result};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use rulatro_core::{
-    BlindKind, BlindOutcome, Card, ConsumableKind, Edition, Enhancement, Event, EventBus, PackOpen,
-    PackOption, Phase, RunError, RunState, ScoreBreakdown, Seal, ShopOfferRef, ShopPurchase,
+    voucher_by_id, BlindKind, BlindOutcome, Card, ConsumableKind, Edition, Enhancement, Event,
+    EventBus, PackOpen, PackOption, Phase, RuleEffect, RunError, RunState, ScoreBreakdown, Seal,
+    ShopOfferRef, ShopPurchase,
 };
 use rulatro_data::{load_content_with_mods_locale, load_game_config, normalize_locale};
 use rulatro_modding::ModManager;
@@ -14,6 +15,7 @@ use std::path::{Path, PathBuf};
 
 pub const DEFAULT_RUN_SEED: u64 = 0xC0FFEE;
 const MAX_EVENT_LOG: usize = 200;
+const MAX_TRACE_LINES: usize = 16;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UiLocale {
@@ -210,6 +212,49 @@ impl App {
         }
     }
 
+    pub fn boss_status_label(&self) -> String {
+        if self.run.state.blind != BlindKind::Boss {
+            return self.locale.text("none", "无").to_string();
+        }
+        if self.run.boss_effects_disabled() {
+            return self.locale.text("disabled", "已禁用").to_string();
+        }
+        match self.run.current_boss() {
+            Some(boss) => format!("{} ({})", boss.name, boss.id),
+            None => self.locale.text("pending", "待定").to_string(),
+        }
+    }
+
+    pub fn boss_effect_lines(&self, max_lines: usize) -> Vec<String> {
+        if self.run.state.blind != BlindKind::Boss || self.run.boss_effects_disabled() {
+            return Vec::new();
+        }
+        let effects = self.run.current_boss_effect_summaries();
+        if effects.is_empty() {
+            return Vec::new();
+        }
+        let total = effects.len();
+        let mut lines = effects.into_iter().take(max_lines).collect::<Vec<_>>();
+        if total > max_lines {
+            lines.push(self.locale.text("...", "...").to_string());
+        }
+        lines
+    }
+
+    pub fn active_voucher_lines(&self, max_lines: usize) -> Vec<String> {
+        let mut rows = self
+            .run
+            .active_voucher_summaries(matches!(self.locale, UiLocale::ZhCn));
+        if rows.is_empty() {
+            return rows;
+        }
+        if rows.len() > max_lines {
+            rows.truncate(max_lines);
+            rows.push(self.locale.text("...", "...").to_string());
+        }
+        rows
+    }
+
     pub fn cycle_focus(&mut self, forward: bool) {
         self.focus = match (self.focus, forward) {
             (FocusPane::Hand, true) => FocusPane::Shop,
@@ -243,6 +288,111 @@ impl App {
                 move_index(&mut self.inventory_cursor, len, down);
             }
             FocusPane::Events => {}
+        }
+    }
+
+    pub fn select_number(&mut self, index: usize) {
+        match self.focus {
+            FocusPane::Hand => {
+                let len = self.hand_len();
+                if len == 0 {
+                    self.push_status(self.locale.text("hand is empty", "手牌为空"));
+                    return;
+                }
+                if index >= len {
+                    self.push_status(format!(
+                        "{} {} {}",
+                        self.locale.text("index out of range:", "索引超出范围："),
+                        index,
+                        self.locale.text("(hand)", "（手牌）")
+                    ));
+                    return;
+                }
+                self.hand_cursor = index;
+                toggle_set(&mut self.selected_hand, index);
+                self.push_status(format!(
+                    "{} {}",
+                    self.locale.text("hand select", "手牌选择"),
+                    index
+                ));
+            }
+            FocusPane::Shop => {
+                if self.open_pack.is_some() {
+                    let len = self.pack_len();
+                    if len == 0 {
+                        self.push_status(
+                            self.locale
+                                .text("pack has no options", "当前卡包没有可选项"),
+                        );
+                        return;
+                    }
+                    if index >= len {
+                        self.push_status(format!(
+                            "{} {} {}",
+                            self.locale.text("index out of range:", "索引超出范围："),
+                            index,
+                            self.locale.text("(pack)", "（卡包）")
+                        ));
+                        return;
+                    }
+                    self.pack_cursor = index;
+                    toggle_set(&mut self.selected_pack, index);
+                    self.push_status(format!(
+                        "{} {}",
+                        self.locale.text("pack select", "卡包选择"),
+                        index
+                    ));
+                    return;
+                }
+                let len = self.shop_rows().len();
+                if len == 0 {
+                    self.push_status(self.locale.text("shop has no offers", "商店没有商品"));
+                    return;
+                }
+                if index >= len {
+                    self.push_status(format!(
+                        "{} {} {}",
+                        self.locale.text("index out of range:", "索引超出范围："),
+                        index,
+                        self.locale.text("(shop)", "（商店）")
+                    ));
+                    return;
+                }
+                self.shop_cursor = index;
+                self.push_status(format!(
+                    "{} {}",
+                    self.locale.text("shop focus", "商店焦点"),
+                    index
+                ));
+            }
+            FocusPane::Inventory => {
+                let len = self.inventory_rows().len();
+                if len == 0 {
+                    self.push_status(self.locale.text("inventory is empty", "库存为空"));
+                    return;
+                }
+                if index >= len {
+                    self.push_status(format!(
+                        "{} {} {}",
+                        self.locale.text("index out of range:", "索引超出范围："),
+                        index,
+                        self.locale.text("(inventory)", "（库存）")
+                    ));
+                    return;
+                }
+                self.inventory_cursor = index;
+                self.push_status(format!(
+                    "{} {}",
+                    self.locale.text("inventory focus", "库存焦点"),
+                    index
+                ));
+            }
+            FocusPane::Events => {
+                self.push_status(self.locale.text(
+                    "number select unavailable in events",
+                    "事件面板不支持数字选择",
+                ));
+            }
         }
     }
 
@@ -377,13 +527,24 @@ impl App {
                 ),
             });
         }
-        for idx in 0..shop.vouchers {
+        for (idx, offer) in shop.voucher_offers.iter().enumerate() {
+            let (name, effect) = if let Some(def) = voucher_by_id(&offer.id) {
+                (
+                    def.name(matches!(self.locale, UiLocale::ZhCn)).to_string(),
+                    def.effect_text(matches!(self.locale, UiLocale::ZhCn))
+                        .to_string(),
+                )
+            } else {
+                (offer.id.clone(), String::new())
+            };
             rows.push(ShopRow {
                 offer: ShopOfferRef::Voucher(idx),
                 label: format!(
-                    "V{idx} {} ${}",
+                    "V{idx} {} ({}) ${} {}",
                     self.locale.text("voucher", "优惠券"),
-                    self.run.config.shop.prices.voucher
+                    name,
+                    self.run.config.shop.prices.voucher,
+                    effect
                 ),
             });
         }
@@ -1035,6 +1196,39 @@ impl App {
             self.locale.text("total score", "总分"),
             breakdown.total.total()
         ));
+        let trace = self.run.last_score_trace.clone();
+        if trace.is_empty() {
+            self.push_event_line(
+                self.locale
+                    .text("effect steps: none", "效果步骤：无")
+                    .to_string(),
+            );
+            return;
+        }
+        self.push_event_line(format!(
+            "{}: {}",
+            self.locale.text("effect steps", "效果步骤"),
+            trace.len()
+        ));
+        for (idx, step) in trace.iter().take(MAX_TRACE_LINES).enumerate() {
+            self.push_event_line(format!(
+                "#{:02} {} | {} | {}x{:.2} -> {}x{:.2}",
+                idx + 1,
+                step.source,
+                format_rule_effect(self.locale, &step.effect),
+                step.before.chips,
+                step.before.mult,
+                step.after.chips,
+                step.after.mult
+            ));
+        }
+        if trace.len() > MAX_TRACE_LINES {
+            self.push_event_line(format!(
+                "... {} {}",
+                trace.len() - MAX_TRACE_LINES,
+                self.locale.text("more effect steps", "条效果未展示")
+            ));
+        }
     }
 
     fn flush_events(&mut self) {
@@ -1415,6 +1609,35 @@ fn shop_offer_label(locale: UiLocale, offer: rulatro_core::ShopOfferKind) -> Str
             format!("{} {:?}/{:?}", locale.text("pack", "卡包"), kind, size)
         }
         rulatro_core::ShopOfferKind::Voucher => locale.text("voucher", "优惠券").to_string(),
+    }
+}
+
+fn format_rule_effect(locale: UiLocale, effect: &RuleEffect) -> String {
+    match effect {
+        RuleEffect::AddChips(value) => {
+            format!("{}{}", locale.text("+chips ", "+筹码 "), value)
+        }
+        RuleEffect::AddMult(value) => {
+            format!(
+                "{}{}",
+                locale.text("+mult ", "+倍率 "),
+                format!("{value:.2}")
+            )
+        }
+        RuleEffect::MultiplyMult(value) => {
+            format!(
+                "{}{}",
+                locale.text("xmult ", "倍率x"),
+                format!("{value:.2}")
+            )
+        }
+        RuleEffect::MultiplyChips(value) => {
+            format!(
+                "{}{}",
+                locale.text("xchips ", "筹码x"),
+                format!("{value:.2}")
+            )
+        }
     }
 }
 

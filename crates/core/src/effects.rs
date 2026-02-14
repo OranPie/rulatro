@@ -314,3 +314,167 @@ pub enum BinaryOp {
     Mul,
     Div,
 }
+
+pub fn format_joker_effect_compact(effect: &JokerEffect) -> String {
+    let mut out = format!("on {}", activation_short(effect.trigger));
+    if !matches!(effect.when, Expr::Bool(true)) {
+        out.push_str(" when ");
+        out.push_str(&format_expr_compact(&effect.when));
+    }
+    if effect.actions.is_empty() {
+        return out;
+    }
+    out.push_str(" { ");
+    let body = effect
+        .actions
+        .iter()
+        .map(format_action_compact)
+        .collect::<Vec<_>>()
+        .join("; ");
+    out.push_str(&body);
+    out.push_str(" }");
+    out
+}
+
+pub fn format_action_compact(action: &Action) -> String {
+    let op = action_op_name(action.op);
+    let value = format_expr_compact(&action.value);
+    match action.target.as_deref() {
+        Some(target) => format!("{op} {target} {value}"),
+        None => format!("{op} {value}"),
+    }
+}
+
+pub fn format_expr_compact(expr: &Expr) -> String {
+    match expr {
+        Expr::Bool(value) => value.to_string(),
+        Expr::Number(value) => format_number(*value),
+        Expr::String(value) => format!("\"{value}\""),
+        Expr::Ident(value) => value.clone(),
+        Expr::Call { name, args } => {
+            let inner = args
+                .iter()
+                .map(format_expr_compact)
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("{name}({inner})")
+        }
+        Expr::Unary { op, expr } => {
+            let symbol = match op {
+                UnaryOp::Not => "!",
+                UnaryOp::Neg => "-",
+            };
+            format!("{symbol}{}", format_expr_child(expr))
+        }
+        Expr::Binary { left, op, right } => {
+            let symbol = match op {
+                BinaryOp::Or => "||",
+                BinaryOp::And => "&&",
+                BinaryOp::Eq => "==",
+                BinaryOp::Ne => "!=",
+                BinaryOp::Lt => "<",
+                BinaryOp::Le => "<=",
+                BinaryOp::Gt => ">",
+                BinaryOp::Ge => ">=",
+                BinaryOp::Add => "+",
+                BinaryOp::Sub => "-",
+                BinaryOp::Mul => "*",
+                BinaryOp::Div => "/",
+            };
+            format!(
+                "{} {symbol} {}",
+                format_expr_child(left),
+                format_expr_child(right)
+            )
+        }
+    }
+}
+
+fn activation_short(trigger: ActivationType) -> &'static str {
+    match trigger {
+        ActivationType::OnPlayed => "played",
+        ActivationType::OnScoredPre => "scored_pre",
+        ActivationType::OnScored => "scored",
+        ActivationType::OnHeld => "held",
+        ActivationType::Independent => "independent",
+        ActivationType::OnOtherJokers => "other_jokers",
+        ActivationType::OnDiscard => "discard",
+        ActivationType::OnDiscardBatch => "discard_batch",
+        ActivationType::OnCardDestroyed => "card_destroyed",
+        ActivationType::OnCardAdded => "card_added",
+        ActivationType::OnRoundEnd => "round_end",
+        ActivationType::OnHandEnd => "hand_end",
+        ActivationType::OnBlindStart => "blind_start",
+        ActivationType::OnBlindFailed => "blind_failed",
+        ActivationType::OnShopEnter => "shop_enter",
+        ActivationType::OnShopReroll => "shop_reroll",
+        ActivationType::OnShopExit => "shop_exit",
+        ActivationType::OnPackOpened => "pack_opened",
+        ActivationType::OnPackSkipped => "pack_skipped",
+        ActivationType::OnUse => "use",
+        ActivationType::OnSell => "sell",
+        ActivationType::OnAnySell => "any_sell",
+        ActivationType::OnAcquire => "acquire",
+        ActivationType::Passive => "passive",
+    }
+}
+
+fn action_op_name(op: ActionOp) -> String {
+    camel_to_snake(&format!("{op:?}"))
+}
+
+fn camel_to_snake(value: &str) -> String {
+    let mut out = String::new();
+    for (idx, ch) in value.chars().enumerate() {
+        if ch.is_uppercase() {
+            if idx > 0 {
+                out.push('_');
+            }
+            for item in ch.to_lowercase() {
+                out.push(item);
+            }
+        } else {
+            out.push(ch);
+        }
+    }
+    out
+}
+
+fn format_expr_child(expr: &Expr) -> String {
+    if matches!(expr, Expr::Binary { .. }) {
+        format!("({})", format_expr_compact(expr))
+    } else {
+        format_expr_compact(expr)
+    }
+}
+
+fn format_number(value: f64) -> String {
+    if (value.fract()).abs() < f64::EPSILON {
+        format!("{}", value as i64)
+    } else {
+        let text = format!("{value:.4}");
+        text.trim_end_matches('0').trim_end_matches('.').to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn formats_effect_compact() {
+        let effect = JokerEffect {
+            trigger: ActivationType::OnBlindStart,
+            when: Expr::Bool(true),
+            actions: vec![Action {
+                op: ActionOp::MultiplyTarget,
+                target: None,
+                value: Expr::Number(2.0),
+            }],
+        };
+        assert_eq!(
+            format_joker_effect_compact(&effect),
+            "on blind_start { multiply_target 2 }"
+        );
+    }
+}

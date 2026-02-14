@@ -103,6 +103,12 @@ const UI_TEXT = {
     load_local_sig_mismatch:
       "local save does not match current content/mods (saved {saved}, current {current})",
     unknown: "Unknown",
+    boss_none: "none",
+    boss_disabled_state: "disabled",
+    boss_effects_none: "Boss effects: none",
+    boss_effects_title: "Boss effects",
+    active_vouchers_none: "Active vouchers: none",
+    active_vouchers_title: "Active vouchers",
   },
   zh_CN: {
     subtitle: "Web 前端（已连接 API）",
@@ -182,6 +188,12 @@ const UI_TEXT = {
     load_local_sig_mismatch:
       "本地存档与当前内容/模组不一致（存档 {saved}，当前 {current}）",
     unknown: "未知",
+    boss_none: "无",
+    boss_disabled_state: "已禁用",
+    boss_effects_none: "Boss 效果：无",
+    boss_effects_title: "Boss 效果",
+    active_vouchers_none: "已激活优惠券：无",
+    active_vouchers_title: "已激活优惠券",
   },
 };
 
@@ -210,6 +222,8 @@ const elements = {
   toastArea: document.getElementById("toast-area"),
   sortKey: document.getElementById("sort-key"),
   sortDir: document.getElementById("sort-dir"),
+  bossEffects: document.getElementById("boss-effects"),
+  activeVouchers: document.getElementById("active-vouchers"),
 };
 
 const QUICK_BUY_DELAY_MS = 2000;
@@ -663,6 +677,8 @@ function render(data) {
   renderInventory(data.state);
   renderPack(data.open_pack);
   renderScore(data.last_breakdown);
+  renderBoss(data.state);
+  renderVouchers(data.state);
   renderLevels(data.state.hand_levels);
   renderTags(data.state.tags, data.state.duplicate_next_tag, data.state.duplicate_tag_exclude);
   updateSummaries(data);
@@ -676,11 +692,72 @@ function renderStatus(snapshot) {
   const fields = elements.status.querySelectorAll("[data-field]");
   fields.forEach((el) => {
     const key = el.dataset.field;
-    el.textContent = run[key] ?? "-";
+    const value = run[key];
+    if (key === "boss_name") {
+      if (run.blind !== "Boss") {
+        el.textContent = tr("boss_none");
+      } else if (run.boss_disabled) {
+        el.textContent = tr("boss_disabled_state");
+      } else {
+        el.textContent = value || run.boss_id || "-";
+      }
+      return;
+    }
+    if (key === "boss_disabled") {
+      el.textContent = run.blind === "Boss" ? (run.boss_disabled ? "yes" : "no") : "-";
+      return;
+    }
+    el.textContent = value ?? "-";
   });
   if (elements.statusHint) {
     elements.statusHint.textContent = tr("status_hint_prefix") + nextActionHint(snapshot);
   }
+}
+
+function renderBoss(run) {
+  if (!elements.bossEffects) return;
+  elements.bossEffects.innerHTML = "";
+  if (run.blind !== "Boss") {
+    elements.bossEffects.textContent = tr("boss_effects_none");
+    return;
+  }
+  if (run.boss_disabled) {
+    elements.bossEffects.textContent = `${tr("boss_effects_title")}: ${tr("boss_disabled_state")}`;
+    return;
+  }
+  if (!Array.isArray(run.boss_effects) || run.boss_effects.length === 0) {
+    elements.bossEffects.textContent = tr("boss_effects_none");
+    return;
+  }
+  const title = document.createElement("div");
+  title.className = "badge";
+  title.textContent = `${tr("boss_effects_title")}: ${run.boss_name || run.boss_id || "-"}`;
+  elements.bossEffects.appendChild(title);
+  run.boss_effects.forEach((effect) => {
+    const row = document.createElement("div");
+    row.className = "badge";
+    row.textContent = effect;
+    elements.bossEffects.appendChild(row);
+  });
+}
+
+function renderVouchers(run) {
+  if (!elements.activeVouchers) return;
+  elements.activeVouchers.innerHTML = "";
+  if (!Array.isArray(run.active_vouchers) || run.active_vouchers.length === 0) {
+    elements.activeVouchers.textContent = tr("active_vouchers_none");
+    return;
+  }
+  const title = document.createElement("div");
+  title.className = "badge";
+  title.textContent = tr("active_vouchers_title");
+  elements.activeVouchers.appendChild(title);
+  run.active_vouchers.forEach((entry) => {
+    const row = document.createElement("div");
+    row.className = "badge";
+    row.textContent = entry;
+    elements.activeVouchers.appendChild(row);
+  });
 }
 
 function updateSummaries(snapshot) {
@@ -700,7 +777,10 @@ function updateSummaries(snapshot) {
       selected = `voucher #${state.selectedVoucher}`;
     }
     const quickHint = state.quickBuy ? tr("quick_buy_on") : tr("quick_buy_off");
-    elements.shopSummary.textContent = `Cards: ${run.shop.cards.length} | Packs: ${run.shop.packs.length} | Vouchers: ${run.shop.vouchers} | Reroll: ${run.shop.reroll_cost} | ${tr("selected_word")}: ${selected} | ${quickHint}`;
+    const voucherCount = Array.isArray(run.shop.voucher_offers)
+      ? run.shop.voucher_offers.length
+      : run.shop.vouchers;
+    elements.shopSummary.textContent = `Cards: ${run.shop.cards.length} | Packs: ${run.shop.packs.length} | Vouchers: ${voucherCount} ($${run.shop.voucher_price}) | Reroll: ${run.shop.reroll_cost} | ${tr("selected_word")}: ${selected} | ${quickHint}`;
   }
 
   elements.invSummary.textContent = `Jokers: ${run.jokers.length} | Consumables: ${run.consumables.length} | Selected: ${
@@ -819,7 +899,14 @@ function renderShop(shop) {
   if (state.selectedShopPack != null && state.selectedShopPack >= shop.packs.length) {
     state.selectedShopPack = null;
   }
-  if (state.selectedVoucher != null && state.selectedVoucher >= shop.vouchers) {
+  const voucherOffers = Array.isArray(shop.voucher_offers)
+    ? shop.voucher_offers
+    : Array.from({ length: shop.vouchers || 0 }, (_, idx) => ({
+        id: `voucher_${idx}`,
+        name: "Voucher",
+        effect: "",
+      }));
+  if (state.selectedVoucher != null && state.selectedVoucher >= voucherOffers.length) {
     state.selectedVoucher = null;
   }
 
@@ -922,14 +1009,15 @@ function renderShop(shop) {
     elements.shopPacks.appendChild(el);
   });
 
-  for (let idx = 0; idx < shop.vouchers; idx += 1) {
+  voucherOffers.forEach((voucher, idx) => {
     const el = document.createElement("div");
     el.className = "list-item";
     el.tabIndex = 0;
     if (state.selectedVoucher === idx) {
       el.classList.add("selected");
     }
-    el.textContent = `[${idx}] Voucher`;
+    const suffix = voucher.effect ? ` - ${voucher.effect}` : "";
+    el.textContent = `[${idx}] ${voucher.name || voucher.id} ($${shop.voucher_price})${suffix}`;
     const clickHandler = (event) => {
       state.selectedVoucher = idx;
       state.selectedShopCard = null;
@@ -963,7 +1051,7 @@ function renderShop(shop) {
       }
     });
     elements.shopVouchers.appendChild(el);
-  }
+  });
 }
 
 function renderInventory(run) {

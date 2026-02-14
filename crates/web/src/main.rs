@@ -1,6 +1,7 @@
 use rulatro_core::{
-    BlindKind, Card, ConsumableKind, EventBus, PackOpen, PackOption, Phase, RuleEffect, RunState,
-    ScoreBreakdown, ScoreTables, ScoreTraceStep, ShopOfferRef,
+    format_joker_effect_compact, voucher_by_id, BlindKind, Card, ConsumableKind, EventBus,
+    PackOpen, PackOption, Phase, RuleEffect, RunState, ScoreBreakdown, ScoreTables, ScoreTraceStep,
+    ShopOfferRef,
 };
 use rulatro_data::{load_content_with_mods_locale, load_game_config, normalize_locale};
 use rulatro_modding::ModManager;
@@ -106,6 +107,11 @@ struct UiState {
     duplicate_next_tag: bool,
     duplicate_tag_exclude: Option<String>,
     hand_levels: Vec<UiHandLevel>,
+    boss_id: Option<String>,
+    boss_name: Option<String>,
+    boss_disabled: bool,
+    boss_effects: Vec<String>,
+    active_vouchers: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -142,7 +148,16 @@ struct UiShop {
     cards: Vec<UiShopCard>,
     packs: Vec<UiShopPack>,
     vouchers: usize,
+    voucher_offers: Vec<UiVoucherOffer>,
+    voucher_price: i64,
     reroll_cost: i64,
+}
+
+#[derive(Serialize)]
+struct UiVoucherOffer {
+    id: String,
+    name: String,
+    effect: String,
 }
 
 #[derive(Serialize)]
@@ -398,7 +413,7 @@ fn build_response(state: &mut AppState, err: Option<String>) -> ApiResponse {
         locale: state.locale.clone(),
         ok: err.is_none(),
         error: err,
-        state: snapshot_state(&state.run, &state.content_signature),
+        state: snapshot_state(&state.run, &state.content_signature, &state.locale),
         events,
         open_pack: state
             .open_pack
@@ -415,7 +430,8 @@ fn build_response(state: &mut AppState, err: Option<String>) -> ApiResponse {
     }
 }
 
-fn snapshot_state(run: &RunState, content_signature: &str) -> UiState {
+fn snapshot_state(run: &RunState, content_signature: &str, locale: &str) -> UiState {
+    let zh_cn = normalize_locale(Some(locale)) == "zh_CN";
     let hand = run.hand.iter().map(snapshot_card).collect();
     let jokers = run
         .inventory
@@ -473,8 +489,43 @@ fn snapshot_state(run: &RunState, content_signature: &str) -> UiState {
             })
             .collect(),
         vouchers: shop.vouchers,
+        voucher_offers: shop
+            .voucher_offers
+            .iter()
+            .map(|offer| {
+                if let Some(def) = voucher_by_id(&offer.id) {
+                    UiVoucherOffer {
+                        id: offer.id.clone(),
+                        name: def.name(zh_cn).to_string(),
+                        effect: def.effect_text(zh_cn).to_string(),
+                    }
+                } else {
+                    UiVoucherOffer {
+                        id: offer.id.clone(),
+                        name: offer.id.clone(),
+                        effect: String::new(),
+                    }
+                }
+            })
+            .collect(),
+        voucher_price: run.config.shop.prices.voucher,
         reroll_cost: shop.reroll_cost,
     });
+    let boss_id = run.state.boss_id.clone();
+    let boss_name = run.current_boss().map(|boss| boss.name.clone());
+    let boss_disabled = run.boss_effects_disabled();
+    let boss_effects = if boss_disabled {
+        Vec::new()
+    } else {
+        run.current_boss()
+            .map(|boss| {
+                boss.effects
+                    .iter()
+                    .map(format_joker_effect_compact)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
+    };
     let mut hand_levels: Vec<_> = rulatro_core::HandKind::ALL
         .iter()
         .map(|kind| UiHandLevel {
@@ -519,6 +570,11 @@ fn snapshot_state(run: &RunState, content_signature: &str) -> UiState {
         duplicate_next_tag: run.state.duplicate_next_tag,
         duplicate_tag_exclude: run.state.duplicate_tag_exclude.clone(),
         hand_levels,
+        boss_id,
+        boss_name,
+        boss_disabled,
+        boss_effects,
+        active_vouchers: run.active_voucher_summaries(zh_cn),
     }
 }
 

@@ -31,6 +31,8 @@ impl RunState {
             .blind_rule(blind)
             .map(|rule| (rule.hands, rule.discards))
             .ok_or(RunError::MissingBlindRule(blind))?;
+        let hands = hands.saturating_add(self.voucher_hands_bonus());
+        let discards = discards.saturating_add(self.voucher_discards_bonus());
         let target = self
             .config
             .target_for(ante, blind)

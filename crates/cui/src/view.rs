@@ -98,7 +98,7 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &App) {
 
 fn draw_state(frame: &mut Frame, area: Rect, app: &App) {
     let content_sig_short: String = app.content_signature.chars().take(8).collect();
-    let lines = vec![
+    let mut lines = vec![
         Line::from(format!(
             "{}: {}",
             app.locale.text("Deck draw", "抽牌堆"),
@@ -141,6 +141,25 @@ fn draw_state(frame: &mut Frame, area: Rect, app: &App) {
             app.blind_outcome_label()
         )),
     ];
+    lines.push(Line::from(format!(
+        "{}: {}",
+        app.locale.text("Boss", "Boss"),
+        app.boss_status_label()
+    )));
+    for effect in app.boss_effect_lines(2) {
+        lines.push(Line::from(format!(
+            "  {} {}",
+            app.locale.text("effect", "效果"),
+            effect
+        )));
+    }
+    for voucher in app.active_voucher_lines(2) {
+        lines.push(Line::from(format!(
+            "  {} {}",
+            app.locale.text("voucher", "优惠券"),
+            voucher
+        )));
+    }
     let block = Block::default()
         .borders(Borders::ALL)
         .title(app.locale.text("Run", "对局"));
@@ -324,6 +343,10 @@ fn draw_help_popup(frame: &mut Frame, app: &App) {
             "空格 选中/取消 | 回车 执行上下文动作",
         )),
         Line::from(app.locale.text(
+            "0-9 quick select by index (focus pane)",
+            "0-9 按索引快速选择（当前焦点）",
+        )),
+        Line::from(app.locale.text(
             "d deal | p play | x discard | Shift+k skip blind",
             "d 发牌 | p 出牌 | x 弃牌 | Shift+k 跳过盲注",
         )),
@@ -342,6 +365,10 @@ fn draw_help_popup(frame: &mut Frame, app: &App) {
         Line::from(app.locale.text(
             "Shift+S/Ctrl+S save | Shift+L/Ctrl+L load",
             "Shift+S/Ctrl+S 保存 | Shift+L/Ctrl+L 读取",
+        )),
+        Line::from(app.locale.text(
+            "play now writes detailed effect trace to Events",
+            "出牌后会在事件面板写入详细效果轨迹",
         )),
     ];
     let block = Block::default()

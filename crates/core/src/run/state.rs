@@ -50,6 +50,51 @@ impl RunState {
         self.mod_runtime = runtime;
     }
 
+    pub fn current_boss(&self) -> Option<&BossDef> {
+        self.state
+            .boss_id
+            .as_deref()
+            .and_then(|id| self.content.boss_by_id(id))
+    }
+
+    pub fn boss_effects_disabled(&self) -> bool {
+        self.boss_disabled
+    }
+
+    pub fn current_boss_effect_summaries(&self) -> Vec<String> {
+        self.current_boss()
+            .map(|boss| {
+                boss.effects
+                    .iter()
+                    .map(format_joker_effect_compact)
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn active_voucher_ids(&self) -> &[String] {
+        &self.state.active_vouchers
+    }
+
+    pub fn active_voucher_summaries(&self, zh_cn: bool) -> Vec<String> {
+        self.state
+            .active_vouchers
+            .iter()
+            .map(|id| {
+                if let Some(voucher) = voucher_by_id(id) {
+                    format!(
+                        "{} ({}) - {}",
+                        voucher.name(zh_cn),
+                        voucher.id,
+                        voucher.effect_text(zh_cn)
+                    )
+                } else {
+                    id.clone()
+                }
+            })
+            .collect()
+    }
+
     pub(super) fn hand_eval_rules(&mut self) -> HandEvalRules {
         self.ensure_rule_vars();
         HandEvalRules {

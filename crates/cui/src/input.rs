@@ -24,6 +24,7 @@ pub enum InputAction {
     NextBlind,
     UseConsumable,
     SellJoker,
+    SelectNumber(u8),
     SaveState,
     LoadState,
 }
@@ -64,6 +65,7 @@ pub fn map_key(key: KeyEvent) -> InputAction {
         KeyCode::Char('n') => InputAction::NextBlind,
         KeyCode::Char('u') => InputAction::UseConsumable,
         KeyCode::Char('v') => InputAction::SellJoker,
+        KeyCode::Char(ch) if ch.is_ascii_digit() => InputAction::SelectNumber(ch as u8 - b'0'),
         KeyCode::Char('S') => InputAction::SaveState,
         KeyCode::Char('L') => InputAction::LoadState,
         _ => InputAction::None,
@@ -107,6 +109,18 @@ mod tests {
         assert_eq!(
             map_key(KeyEvent::new(KeyCode::Char('L'), KeyModifiers::SHIFT)),
             InputAction::LoadState
+        );
+    }
+
+    #[test]
+    fn maps_number_select() {
+        assert_eq!(
+            map_key(KeyEvent::new(KeyCode::Char('0'), KeyModifiers::NONE)),
+            InputAction::SelectNumber(0)
+        );
+        assert_eq!(
+            map_key(KeyEvent::new(KeyCode::Char('7'), KeyModifiers::NONE)),
+            InputAction::SelectNumber(7)
         );
     }
 }

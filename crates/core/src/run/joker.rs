@@ -902,9 +902,14 @@ impl RunState {
                     }
                 }
                 ActionOp::AddVoucher => {
-                    if let Some(shop) = self.shop.as_mut() {
+                    if self.shop.is_some() {
                         let delta = value.map(|v| v.floor() as i64).unwrap_or(1).max(0) as usize;
-                        shop.vouchers = shop.vouchers.saturating_add(delta);
+                        for _ in 0..delta {
+                            let offer = self.voucher_offer_for_shop();
+                            if let Some(shop) = self.shop.as_mut() {
+                                shop.add_voucher_offer(offer);
+                            }
+                        }
                     }
                 }
                 ActionOp::SetRerollCost => {

@@ -1750,13 +1750,47 @@ fn shop_buy_voucher_decrements_and_costs() {
         .buy_shop_offer(ShopOfferRef::Voucher(0), &mut events)
         .expect("buy voucher");
     match purchase {
-        ShopPurchase::Voucher => {}
+        ShopPurchase::Voucher(_) => {}
         _ => panic!("expected voucher purchase"),
     }
     let shop = run.shop.as_ref().expect("shop");
     assert_eq!(shop.vouchers, run.config.shop.voucher_slots as usize - 1);
     assert_eq!(run.state.money, initial_money - voucher_price);
     run.apply_purchase(&purchase).expect("apply purchase");
+}
+
+#[test]
+fn voucher_overstock_increases_future_shop_card_slots() {
+    let mut run = new_run();
+    run.apply_purchase(&ShopPurchase::Voucher(rulatro_core::VoucherOffer {
+        id: "overstock".to_string(),
+    }))
+    .expect("apply overstock");
+    mark_blind_cleared(&mut run);
+    run.enter_shop(&mut EventBus::default())
+        .expect("enter shop");
+    let shop = run.shop.as_ref().expect("shop");
+    assert!(shop.cards.len() >= run.config.shop.card_slots as usize + 1);
+}
+
+#[test]
+fn voucher_clearance_sale_discounts_shop_prices() {
+    let mut run = new_run();
+    run.config.shop.card_weights = vec![CardWeight {
+        kind: ShopCardKind::Tarot,
+        weight: 1,
+    }];
+    run.apply_purchase(&ShopPurchase::Voucher(rulatro_core::VoucherOffer {
+        id: "clearance_sale".to_string(),
+    }))
+    .expect("apply clearance sale");
+    mark_blind_cleared(&mut run);
+    run.enter_shop(&mut EventBus::default())
+        .expect("enter shop");
+    let shop = run.shop.as_ref().expect("shop");
+    let first = shop.cards.first().expect("card offer");
+    let expected = (run.config.shop.prices.tarot * 75) / 100;
+    assert_eq!(first.price, expected);
 }
 
 #[test]
@@ -2226,7 +2260,9 @@ fn buy_shop_offer_invalid_index() {
 #[test]
 fn open_pack_purchase_invalid_type() {
     let mut run = new_run();
-    let purchase = ShopPurchase::Voucher;
+    let purchase = ShopPurchase::Voucher(rulatro_core::VoucherOffer {
+        id: "blank".to_string(),
+    });
     let err = run
         .open_pack_purchase(&purchase, &mut EventBus::default())
         .unwrap_err();
@@ -3481,6 +3517,7 @@ fn money_floor_blocks_purchase_below_floor() {
         }],
         packs: Vec::new(),
         vouchers: 0,
+        voucher_offers: Vec::new(),
         reroll_cost: 0,
     });
 
@@ -3506,6 +3543,7 @@ fn money_floor_allows_purchase_to_floor() {
         }],
         packs: Vec::new(),
         vouchers: 0,
+        voucher_offers: Vec::new(),
         reroll_cost: 0,
     });
 

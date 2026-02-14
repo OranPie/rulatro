@@ -25,6 +25,7 @@ impl RunState {
                 }
             }
         }
+        restrictions.owned_vouchers = self.state.active_vouchers.iter().cloned().collect();
         restrictions
     }
 
@@ -75,12 +76,8 @@ impl RunState {
             return Ok(());
         }
         let restrictions = self.shop_restrictions();
-        let shop = ShopState::generate(
-            &self.config.shop,
-            &self.content,
-            &mut self.rng,
-            &restrictions,
-        );
+        let rule = self.effective_shop_rule();
+        let shop = ShopState::generate(&rule, &self.content, &mut self.rng, &restrictions);
         let offers = shop.cards.len() + shop.packs.len() + shop.vouchers;
         let reroll_cost = shop.reroll_cost;
         self.shop = Some(shop);
@@ -117,6 +114,7 @@ impl RunState {
         }
         let money_floor = self.money_floor();
         let restrictions = self.shop_restrictions();
+        let rule = self.effective_shop_rule();
         let (offers, reroll_cost, cost) = {
             let shop = self.shop.as_mut().ok_or(RunError::ShopNotAvailable)?;
             let mut cost = shop.reroll_cost;
@@ -130,12 +128,7 @@ impl RunState {
                 }
                 self.state.money -= cost;
             }
-            shop.reroll_cards(
-                &self.config.shop,
-                &self.content,
-                &mut self.rng,
-                &restrictions,
-            );
+            shop.reroll_cards(&rule, &self.content, &mut self.rng, &restrictions);
             let offers = shop.cards.len() + shop.packs.len() + shop.vouchers;
             let reroll_cost = shop.reroll_cost;
             (offers, reroll_cost, cost)
@@ -211,8 +204,20 @@ impl RunState {
                         .add_consumable(card.item_id.clone(), crate::ConsumableKind::Planet)?;
                 }
             },
-            ShopPurchase::Voucher => {
-                // TODO: apply voucher-specific effects.
+            ShopPurchase::Voucher(voucher) => {
+                if self
+                    .state
+                    .active_vouchers
+                    .iter()
+                    .any(|owned| owned == &voucher.id)
+                {
+                    return Ok(());
+                }
+                let old_rule = self.effective_shop_rule();
+                self.state.active_vouchers.push(voucher.id.clone());
+                self.apply_voucher_state_effect(&voucher.id);
+                let new_rule = self.effective_shop_rule();
+                self.reprice_open_shop_after_voucher(&old_rule, &new_rule);
             }
             ShopPurchase::Pack(_) => {}
         }
@@ -378,4 +383,182 @@ impl RunState {
         self.state.phase = Phase::Deal;
         self.state.shop_free_rerolls = 0;
     }
+
+    pub(super) fn voucher_offer_for_shop(&mut self) -> crate::VoucherOffer {
+        let mut pool: Vec<String> = crate::all_vouchers()
+            .iter()
+            .map(|entry| entry.id.to_string())
+            .collect();
+        if let Some(shop) = self.shop.as_ref() {
+            let in_shop: std::collections::HashSet<String> = shop
+                .voucher_offers
+                .iter()
+                .map(|offer| offer.id.clone())
+                .collect();
+            pool.retain(|id| !in_shop.contains(id));
+        }
+        pool.retain(|id| !self.state.active_vouchers.iter().any(|owned| owned == id));
+        if pool.is_empty() {
+            return crate::VoucherOffer {
+                id: "blank".to_string(),
+            };
+        }
+        let idx = (self.rng.next_u64() % pool.len() as u64) as usize;
+        crate::VoucherOffer {
+            id: pool[idx].clone(),
+        }
+    }
+
+    pub fn active_vouchers(&self) -> &[String] {
+        &self.state.active_vouchers
+    }
+
+    fn effective_shop_rule(&self) -> crate::ShopRule {
+        let mut rule = self.config.shop.clone();
+        let mut add_slots = 0u8;
+        let mut add_tarot_weight = 0u32;
+        let mut add_planet_weight = 0u32;
+        let mut reroll_reduce = 0i64;
+        let mut discount = 0u8;
+        for id in &self.state.active_vouchers {
+            if let Some(voucher) = crate::voucher_by_id(id) {
+                match voucher.effect {
+                    crate::VoucherEffect::AddShopCardSlots(value) => {
+                        add_slots = add_slots.saturating_add(value);
+                    }
+                    crate::VoucherEffect::AddTarotWeight(value) => {
+                        add_tarot_weight = add_tarot_weight.saturating_add(value);
+                    }
+                    crate::VoucherEffect::AddPlanetWeight(value) => {
+                        add_planet_weight = add_planet_weight.saturating_add(value);
+                    }
+                    crate::VoucherEffect::ReduceRerollBase(value) => {
+                        reroll_reduce = reroll_reduce.saturating_add(value.max(0));
+                    }
+                    crate::VoucherEffect::SetShopDiscountPercent(value) => {
+                        discount = discount.max(value.min(95));
+                    }
+                    _ => {}
+                }
+            }
+        }
+        rule.card_slots = rule.card_slots.saturating_add(add_slots);
+        for entry in &mut rule.card_weights {
+            match entry.kind {
+                crate::ShopCardKind::Tarot => {
+                    entry.weight = entry.weight.saturating_add(add_tarot_weight);
+                }
+                crate::ShopCardKind::Planet => {
+                    entry.weight = entry.weight.saturating_add(add_planet_weight);
+                }
+                _ => {}
+            }
+        }
+        rule.prices.reroll_base = rule.prices.reroll_base.saturating_sub(reroll_reduce).max(0);
+        if discount > 0 {
+            apply_discount_to_shop_prices(&mut rule.prices, discount);
+        }
+        rule
+    }
+
+    pub(super) fn voucher_hands_bonus(&self) -> u8 {
+        self.state
+            .active_vouchers
+            .iter()
+            .filter_map(|id| crate::voucher_by_id(id))
+            .filter_map(|voucher| match voucher.effect {
+                crate::VoucherEffect::AddHandsPerRound(value) => Some(value),
+                _ => None,
+            })
+            .fold(0u8, |acc, value| acc.saturating_add(value))
+    }
+
+    pub(super) fn voucher_discards_bonus(&self) -> u8 {
+        self.state
+            .active_vouchers
+            .iter()
+            .filter_map(|id| crate::voucher_by_id(id))
+            .filter_map(|voucher| match voucher.effect {
+                crate::VoucherEffect::AddDiscardsPerRound(value) => Some(value),
+                _ => None,
+            })
+            .fold(0u8, |acc, value| acc.saturating_add(value))
+    }
+
+    fn apply_voucher_state_effect(&mut self, voucher_id: &str) {
+        let Some(voucher) = crate::voucher_by_id(voucher_id) else {
+            return;
+        };
+        match voucher.effect {
+            crate::VoucherEffect::AddConsumableSlots(value) => {
+                self.inventory.consumable_slots = self
+                    .inventory
+                    .consumable_slots
+                    .saturating_add(value as usize);
+            }
+            crate::VoucherEffect::AddJokerSlots(value) => {
+                self.inventory.joker_slots =
+                    self.inventory.joker_slots.saturating_add(value as usize);
+            }
+            crate::VoucherEffect::AddHandSizeBase(value) => {
+                let value = value as usize;
+                self.state.hand_size_base = self.state.hand_size_base.saturating_add(value);
+                self.state.hand_size = self.state.hand_size.saturating_add(value);
+            }
+            _ => {}
+        }
+    }
+
+    fn reprice_open_shop_after_voucher(
+        &mut self,
+        old_rule: &crate::ShopRule,
+        new_rule: &crate::ShopRule,
+    ) {
+        let Some(shop) = self.shop.as_mut() else {
+            return;
+        };
+        let old_discount = discount_percent_from_prices(&self.config.shop.prices, &old_rule.prices);
+        let new_discount = discount_percent_from_prices(&self.config.shop.prices, &new_rule.prices);
+        if new_discount > old_discount {
+            let old_keep = (100 - old_discount as i64).max(1);
+            let new_keep = (100 - new_discount as i64).max(0);
+            for card in &mut shop.cards {
+                card.price = ((card.price * new_keep) / old_keep).max(0);
+            }
+            for pack in &mut shop.packs {
+                pack.price = ((pack.price * new_keep) / old_keep).max(0);
+            }
+        }
+        let old_base = old_rule.prices.reroll_base.max(0);
+        let new_base = new_rule.prices.reroll_base.max(0);
+        let step = shop.reroll_cost.saturating_sub(old_base);
+        shop.reroll_cost = new_base.saturating_add(step);
+    }
+}
+
+fn apply_discount_to_shop_prices(prices: &mut crate::ShopPrices, discount_percent: u8) {
+    let keep = (100 - discount_percent.min(95) as i64).max(1);
+    prices.joker_common.min = (prices.joker_common.min * keep) / 100;
+    prices.joker_common.max = (prices.joker_common.max * keep) / 100;
+    prices.joker_uncommon.min = (prices.joker_uncommon.min * keep) / 100;
+    prices.joker_uncommon.max = (prices.joker_uncommon.max * keep) / 100;
+    prices.joker_rare.min = (prices.joker_rare.min * keep) / 100;
+    prices.joker_rare.max = (prices.joker_rare.max * keep) / 100;
+    prices.joker_legendary = (prices.joker_legendary * keep) / 100;
+    prices.tarot = (prices.tarot * keep) / 100;
+    prices.planet = (prices.planet * keep) / 100;
+    prices.spectral = (prices.spectral * keep) / 100;
+    prices.playing_card = (prices.playing_card * keep) / 100;
+    for pack in &mut prices.pack_prices {
+        pack.price = (pack.price * keep) / 100;
+    }
+}
+
+fn discount_percent_from_prices(base: &crate::ShopPrices, current: &crate::ShopPrices) -> u8 {
+    if base.joker_common.min <= 0 {
+        return 0;
+    }
+    let ratio = (current.joker_common.min as f64 / base.joker_common.min as f64) * 100.0;
+    let keep = ratio.round().clamp(0.0, 100.0) as i64;
+    (100 - keep as u8).min(95)
 }

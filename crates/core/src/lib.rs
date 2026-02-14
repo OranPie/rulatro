@@ -15,6 +15,7 @@ pub mod run;
 pub mod scoring;
 pub mod shop;
 pub mod state;
+pub mod vouchers;
 
 pub use cards::*;
 pub use config::*;
@@ -31,3 +32,4 @@ pub use run::*;
 pub use scoring::*;
 pub use shop::*;
 pub use state::*;
+pub use vouchers::*;

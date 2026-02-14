@@ -66,6 +66,8 @@ pub struct GameState {
     pub last_consumable: Option<LastConsumable>,
     #[serde(default)]
     pub boss_id: Option<String>,
+    #[serde(default)]
+    pub active_vouchers: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -104,6 +106,7 @@ impl GameState {
             unused_discards: 0,
             last_consumable: None,
             boss_id: None,
+            active_vouchers: Vec::new(),
         }
     }
 

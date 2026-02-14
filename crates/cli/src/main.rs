@@ -1,7 +1,7 @@
 use rulatro_core::{
-    BlindKind, BlindOutcome, Card, ConsumableKind, Edition, Enhancement, Event, EventBus, PackOpen,
-    PackOption, Phase, Rank, RunError, RunState, ScoreBreakdown, ScoreTables, ScoreTraceStep, Seal,
-    ShopOfferRef, Suit,
+    voucher_by_id, BlindKind, BlindOutcome, Card, ConsumableKind, Edition, Enhancement, Event,
+    EventBus, PackOpen, PackOption, Phase, Rank, RunError, RunState, ScoreBreakdown, ScoreTables,
+    ScoreTraceStep, Seal, ShopOfferRef, Suit,
 };
 use rulatro_data::{load_content_with_mods_locale, load_game_config, normalize_locale};
 use rulatro_modding::ModManager;
@@ -2702,6 +2702,43 @@ fn print_state(locale: UiLocale, run: &RunState) {
         locale.text("Discard Pile", "弃牌堆"),
         run.deck.discard.len()
     );
+    print_boss_state(locale, run);
+}
+
+fn print_boss_state(locale: UiLocale, run: &RunState) {
+    if run.state.blind != BlindKind::Boss {
+        return;
+    }
+    if run.boss_effects_disabled() {
+        println!("{}", locale.text("Boss: disabled", "Boss：效果已禁用"));
+        return;
+    }
+    let Some(boss) = run.current_boss() else {
+        println!("{}", locale.text("Boss: pending", "Boss：待定"));
+        return;
+    };
+    println!(
+        "{} {} ({})",
+        locale.text("Boss:", "Boss："),
+        boss.name,
+        boss.id
+    );
+    let effects = run.current_boss_effect_summaries();
+    if effects.is_empty() {
+        println!("  {}", locale.text("effects: none", "效果：无"));
+        return;
+    }
+    println!("  {}", locale.text("effects:", "效果："));
+    for line in effects.iter().take(4) {
+        println!("    - {line}");
+    }
+    if effects.len() > 4 {
+        println!(
+            "    ... {} {}",
+            effects.len() - 4,
+            locale.text("more", "更多")
+        );
+    }
 }
 
 fn print_levels(locale: UiLocale, run: &RunState) {
@@ -2774,6 +2811,19 @@ fn print_reward(locale: UiLocale, run: &RunState) {
 }
 
 fn print_summary(locale: UiLocale, run: &RunState) {
+    let boss = if run.state.blind == BlindKind::Boss {
+        if run.boss_effects_disabled() {
+            locale
+                .text(" | Boss disabled", " | Boss 已禁用")
+                .to_string()
+        } else if let Some(def) = run.current_boss() {
+            format!(" | Boss {}", def.name)
+        } else {
+            locale.text(" | Boss pending", " | Boss 待定").to_string()
+        }
+    } else {
+        String::new()
+    };
     println!(
         "{} {} {} {} | ${} | {}/{} | {} {}/{} | {} {}/{} | {} {}",
         locale.text("A", "A"),
@@ -2792,6 +2842,9 @@ fn print_summary(locale: UiLocale, run: &RunState) {
         locale.text("skipped", "跳过"),
         run.state.blinds_skipped
     );
+    if !boss.is_empty() {
+        println!("{boss}");
+    }
 }
 
 fn print_flow_summary(locale: UiLocale, run: &RunState, open_pack: Option<&PackOpen>) {
@@ -2828,6 +2881,7 @@ fn print_flow_summary(locale: UiLocale, run: &RunState, open_pack: Option<&PackO
 
 fn print_overview(locale: UiLocale, run: &RunState, open_pack: Option<&PackOpen>) {
     print_summary(locale, run);
+    print_boss_state(locale, run);
     print_tags(locale, run);
     print_hand(locale, run);
     print_inventory(locale, run);
@@ -2958,6 +3012,19 @@ fn print_inventory(locale: UiLocale, run: &RunState) {
             idx, item.id, name, item.kind, suffix
         );
     }
+    let active = run.active_voucher_summaries(matches!(locale, UiLocale::ZhCn));
+    if active.is_empty() {
+        println!("{}", locale.text("Vouchers: none", "已激活优惠券：无"));
+    } else {
+        println!(
+            "{} ({})",
+            locale.text("Vouchers", "已激活优惠券"),
+            active.len()
+        );
+        for line in active {
+            println!("  - {line}");
+        }
+    }
 }
 
 fn print_shop(locale: UiLocale, run: &RunState) {
@@ -3022,7 +3089,26 @@ fn print_shop(locale: UiLocale, run: &RunState) {
             pack.price
         );
     }
-    println!("{}: {}", locale.text("vouchers", "优惠券"), shop.vouchers);
+    println!(
+        "{}: {} ({} ${})",
+        locale.text("vouchers", "优惠券"),
+        shop.vouchers,
+        locale.text("price", "价格"),
+        run.config.shop.prices.voucher
+    );
+    for (idx, offer) in shop.voucher_offers.iter().enumerate() {
+        if let Some(def) = voucher_by_id(&offer.id) {
+            println!(
+                "  {:>2}: {} ({}) - {}",
+                idx,
+                def.name(matches!(locale, UiLocale::ZhCn)),
+                def.id,
+                def.effect_text(matches!(locale, UiLocale::ZhCn))
+            );
+        } else {
+            println!("  {:>2}: {}", idx, offer.id);
+        }
+    }
 }
 
 fn print_pack_open(locale: UiLocale, open: &PackOpen, run: &RunState) {

@@ -1,6 +1,6 @@
 use crate::{
-    ConsumableKind, Content, Edition, JokerRarity, PackKind, PackPrice, PackSize, PackWeight,
-    PriceRange, RngState, ShopCardKind, ShopPrices, ShopRule,
+    all_vouchers, ConsumableKind, Content, Edition, JokerRarity, PackKind, PackPrice, PackSize,
+    PackWeight, PriceRange, RngState, ShopCardKind, ShopPrices, ShopRule,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -24,6 +24,11 @@ pub struct PackOffer {
     pub price: i64,
 }
 
+#[derive(Debug, Clone)]
+pub struct VoucherOffer {
+    pub id: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ShopOfferKind {
     Card(ShopCardKind),
@@ -43,6 +48,7 @@ pub struct ShopState {
     pub cards: Vec<CardOffer>,
     pub packs: Vec<PackOffer>,
     pub vouchers: usize,
+    pub voucher_offers: Vec<VoucherOffer>,
     pub reroll_cost: i64,
 }
 
@@ -53,6 +59,7 @@ pub struct ShopRestrictions {
     pub owned_tarots: HashSet<String>,
     pub owned_planets: HashSet<String>,
     pub owned_spectrals: HashSet<String>,
+    pub owned_vouchers: HashSet<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -85,10 +92,12 @@ impl ShopState {
     ) -> Self {
         let cards = generate_cards(rule, content, rng, restrictions);
         let packs = generate_packs(rule, rng);
+        let voucher_offers = generate_vouchers(rule.voucher_slots as usize, rng, restrictions);
         Self {
             cards,
             packs,
-            vouchers: rule.voucher_slots as usize,
+            vouchers: voucher_offers.len(),
+            voucher_offers,
             reroll_cost: rule.prices.reroll_base,
         }
     }
@@ -156,13 +165,34 @@ impl ShopState {
             }
             ShopOfferRef::Voucher(index) => {
                 if index < self.vouchers {
-                    self.vouchers -= 1;
-                    Some(ShopPurchase::Voucher)
+                    let taken = if index < self.voucher_offers.len() {
+                        self.voucher_offers.remove(index)
+                    } else {
+                        VoucherOffer {
+                            id: "blank".to_string(),
+                        }
+                    };
+                    self.vouchers = self.voucher_offers.len();
+                    Some(ShopPurchase::Voucher(taken))
                 } else {
                     None
                 }
             }
         }
+    }
+
+    pub fn add_voucher_offer(&mut self, offer: VoucherOffer) {
+        self.voucher_offers.push(offer);
+        self.vouchers = self.voucher_offers.len();
+    }
+
+    pub fn remove_voucher_slots(&mut self, count: usize) {
+        if count == 0 {
+            return;
+        }
+        let keep = self.voucher_offers.len().saturating_sub(count);
+        self.voucher_offers.truncate(keep);
+        self.vouchers = self.voucher_offers.len();
     }
 }
 
@@ -170,7 +200,7 @@ impl ShopState {
 pub enum ShopPurchase {
     Card(CardOffer),
     Pack(PackOffer),
-    Voucher,
+    Voucher(VoucherOffer),
 }
 
 impl ShopPurchase {
@@ -178,7 +208,7 @@ impl ShopPurchase {
         match self {
             ShopPurchase::Card(card) => ShopOfferKind::Card(card.kind),
             ShopPurchase::Pack(pack) => ShopOfferKind::Pack(pack.kind, pack.size),
-            ShopPurchase::Voucher => ShopOfferKind::Voucher,
+            ShopPurchase::Voucher(_) => ShopOfferKind::Voucher,
         }
     }
 }
@@ -324,6 +354,49 @@ fn generate_cards(
         }
     }
     cards
+}
+
+fn generate_vouchers(
+    slots: usize,
+    rng: &mut RngState,
+    restrictions: &ShopRestrictions,
+) -> Vec<VoucherOffer> {
+    if slots == 0 {
+        return Vec::new();
+    }
+    let all: Vec<String> = all_vouchers()
+        .iter()
+        .map(|entry| entry.id.to_string())
+        .collect();
+    let mut pool: Vec<String> = if restrictions.allow_duplicates {
+        all.clone()
+    } else {
+        all.into_iter()
+            .filter(|id| !restrictions.owned_vouchers.contains(id))
+            .collect()
+    };
+    if pool.is_empty() {
+        pool = all_vouchers()
+            .iter()
+            .map(|entry| entry.id.to_string())
+            .collect();
+    }
+    let mut picked = Vec::new();
+    for _ in 0..slots {
+        if pool.is_empty() {
+            break;
+        }
+        let idx = (rng.next_u64() % pool.len() as u64) as usize;
+        let id = pool.remove(idx);
+        picked.push(VoucherOffer { id });
+        if restrictions.allow_duplicates {
+            pool = all_vouchers()
+                .iter()
+                .map(|entry| entry.id.to_string())
+                .collect();
+        }
+    }
+    picked
 }
 
 fn generate_packs(rule: &ShopRule, rng: &mut RngState) -> Vec<PackOffer> {

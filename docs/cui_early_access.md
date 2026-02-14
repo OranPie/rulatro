@@ -93,6 +93,9 @@ cargo run -p rulatro-cli -- --auto
 - `rulatro-cui` quick persistence: `Shift+S` / `Ctrl+S` save and `Shift+L` / `Ctrl+L` load open a path prompt (empty input uses `$RULATRO_SAVE` or `~/.rulatro_cli_state.json`).
 - Locale can be set via `--lang zh_CN` (or `RULATRO_LANG=zh_CN`).
 - `rulatro-cui` now shows richer detail in-pane (card value/detail, expanded shop/inventory rows, score breakdown lines in event log).
+- Shop voucher rows now show voucher name/effect from the wiki-aligned voucher catalog (with partial core effect support).
+- Number keys `0-9` can quick-select by row index in the focused pane (hand/pack toggles selection; shop/inventory moves focus).
+- `play` now appends detailed effect trace steps (source + effect + before/after chips/mult) to the Events panel.
 - In `zh_CN`, CUI pane titles/help/status/event messages are localized for daily play.
 - Interactive input supports command history (`↑`/`↓`) and completion (`Tab` for commands, plus `buy`/`peek` subcommands).
 - `--menu` enables a guided CUI menu that prints context-aware numbered actions and still accepts direct commands.

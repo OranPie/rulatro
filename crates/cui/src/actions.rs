@@ -31,6 +31,7 @@ pub fn dispatch(app: &mut App, action: InputAction) {
         InputAction::NextBlind => app.next_blind(),
         InputAction::UseConsumable => app.use_selected_consumable(),
         InputAction::SellJoker => app.sell_selected_joker(),
+        InputAction::SelectNumber(value) => app.select_number(value as usize),
         InputAction::SaveState => app.open_save_prompt(),
         InputAction::LoadState => app.open_load_prompt(),
     }
