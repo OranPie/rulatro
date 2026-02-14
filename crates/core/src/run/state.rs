@@ -1,5 +1,5 @@
-use super::*;
 use super::helpers::{is_face, normalize};
+use super::*;
 use crate::*;
 
 impl RunState {
@@ -104,7 +104,11 @@ impl RunState {
 
     pub(super) fn money_floor(&mut self) -> i64 {
         let floor = self.rule_value("money_floor").floor() as i64;
-        if floor < 0 { floor } else { 0 }
+        if floor < 0 {
+            floor
+        } else {
+            0
+        }
     }
 
     pub(super) fn alloc_card_id(&mut self) -> u32 {
@@ -194,10 +198,7 @@ impl RunState {
     }
 
     pub(super) fn most_played_hand(&self) -> crate::HandKind {
-        let mut best = self
-            .state
-            .last_hand
-            .unwrap_or(crate::HandKind::HighCard);
+        let mut best = self.state.last_hand.unwrap_or(crate::HandKind::HighCard);
         let mut best_count = 0u32;
         for kind in crate::HandKind::ALL {
             let count = self.state.hand_play_counts.get(&kind).copied().unwrap_or(0);
@@ -253,5 +254,4 @@ impl RunState {
         let successes = sides.min(multiplier);
         self.rng.next_u64() % sides < successes
     }
-
 }

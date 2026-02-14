@@ -1,11 +1,11 @@
 use rulatro_core::{
-    Action, ActionOp, ActivationType, BlindKind, BossDef, Card, CardOffer, CardWeight,
-    ConsumableDef, ConsumableKind, Enhancement, Edition, EventBus, Expr, HandKind, JokerDef,
-    JokerEffect, JokerRarity, JokerRarityWeight, LastConsumable, PackError, PackKind, PackOffer,
-    PackOpen, PackOption, PackSize, Phase, Rank, RngState, RunError, RunState, ScoreTables, Seal,
-    ShopCardKind, ShopOfferRef, ShopPurchase, ShopRestrictions, ShopState, Suit, TagDef,
-    evaluate_hand, evaluate_hand_with_rules, open_pack, pick_pack_options, scoring_cards,
-    score_hand, HandEvalRules,
+    evaluate_hand, evaluate_hand_with_rules, open_pack, pick_pack_options, score_hand,
+    scoring_cards, Action, ActionOp, ActivationType, BlindKind, BossDef, Card, CardOffer,
+    CardWeight, ConsumableDef, ConsumableKind, Edition, Enhancement, EventBus, Expr, HandEvalRules,
+    HandKind, JokerDef, JokerEffect, JokerRarity, JokerRarityWeight, LastConsumable, PackError,
+    PackKind, PackOffer, PackOpen, PackOption, PackSize, Phase, Rank, RngState, RunError, RunState,
+    ScoreTables, Seal, ShopCardKind, ShopOfferRef, ShopPurchase, ShopRestrictions, ShopState, Suit,
+    TagDef,
 };
 use rulatro_data::{load_content, load_game_config};
 use std::path::PathBuf;
@@ -263,18 +263,8 @@ fn content_counts_and_ids() {
     }
 
     let planet_ids: Vec<&str> = vec![
-        "pluto",
-        "mercury",
-        "uranus",
-        "venus",
-        "saturn",
-        "jupiter",
-        "earth",
-        "mars",
-        "neptune",
-        "planet_x",
-        "ceres",
-        "eris",
+        "pluto", "mercury", "uranus", "venus", "saturn", "jupiter", "earth", "mars", "neptune",
+        "planet_x", "ceres", "eris",
     ];
     for id in planet_ids {
         assert!(content.planets.iter().any(|card| card.id == id));
@@ -600,10 +590,7 @@ fn scoring_stone_enhancement_adds_chips() {
         .play_hand(&[0], &mut EventBus::default())
         .expect("play hand");
     assert_eq!(breakdown.rank_chips, 0);
-    assert_eq!(
-        breakdown.total.chips,
-        breakdown.base.chips + 50
-    );
+    assert_eq!(breakdown.total.chips, breakdown.base.chips + 50);
     assert!(run
         .last_score_trace
         .iter()
@@ -899,7 +886,8 @@ fn shop_add_joker_offer_action_adds_card() {
         .add_joker("add_shop_joker".to_string(), JokerRarity::Common, 1)
         .expect("add joker");
     mark_blind_cleared(&mut run);
-    run.enter_shop(&mut EventBus::default()).expect("enter shop");
+    run.enter_shop(&mut EventBus::default())
+        .expect("enter shop");
     let shop = run.shop.as_ref().expect("shop");
     assert!(shop.cards.iter().any(|card| {
         matches!(card.kind, ShopCardKind::Joker)
@@ -929,7 +917,8 @@ fn shop_set_reroll_cost_action_applies() {
         .add_joker("set_reroll".to_string(), JokerRarity::Common, 1)
         .expect("add joker");
     mark_blind_cleared(&mut run);
-    run.enter_shop(&mut EventBus::default()).expect("enter shop");
+    run.enter_shop(&mut EventBus::default())
+        .expect("enter shop");
     let shop = run.shop.as_ref().expect("shop");
     assert_eq!(shop.reroll_cost, 1);
 }
@@ -955,7 +944,8 @@ fn shop_add_voucher_action_increases_slots() {
         .add_joker("add_voucher".to_string(), JokerRarity::Common, 1)
         .expect("add joker");
     mark_blind_cleared(&mut run);
-    run.enter_shop(&mut EventBus::default()).expect("enter shop");
+    run.enter_shop(&mut EventBus::default())
+        .expect("enter shop");
     let shop = run.shop.as_ref().expect("shop");
     let base = run.config.shop.voucher_slots as usize;
     assert_eq!(shop.vouchers, base + 2);
@@ -1085,7 +1075,9 @@ fn duplicate_next_tag_exclude_skips_duplicate() {
 fn add_pack_action_adds_pack_offer() {
     let mut baseline = new_run();
     mark_blind_cleared(&mut baseline);
-    baseline.enter_shop(&mut EventBus::default()).expect("enter shop");
+    baseline
+        .enter_shop(&mut EventBus::default())
+        .expect("enter shop");
     let base_packs = baseline.shop.as_ref().expect("shop").packs.len();
 
     let mut run = new_run();
@@ -1107,7 +1099,8 @@ fn add_pack_action_adds_pack_offer() {
         .add_joker("add_pack".to_string(), JokerRarity::Common, 1)
         .expect("add joker");
     mark_blind_cleared(&mut run);
-    run.enter_shop(&mut EventBus::default()).expect("enter shop");
+    run.enter_shop(&mut EventBus::default())
+        .expect("enter shop");
     let shop = run.shop.as_ref().expect("shop");
     assert_eq!(shop.packs.len(), base_packs + 1);
     assert!(shop.packs.iter().any(|pack| {
@@ -1241,12 +1234,7 @@ fn tarot_money_and_generation() {
         .all(|item| item.kind == ConsumableKind::Tarot));
 
     run.inventory.consumables.clear();
-    use_consumable(
-        &mut run,
-        "the_high_priestess",
-        ConsumableKind::Tarot,
-        &[],
-    );
+    use_consumable(&mut run, "the_high_priestess", ConsumableKind::Tarot, &[]);
     assert_eq!(run.inventory.consumables.len(), 2);
     assert!(run
         .inventory
@@ -1353,34 +1341,37 @@ fn spectral_destroy_and_add() {
     let before = run.hand.len();
     use_consumable(&mut run, "grim", ConsumableKind::Spectral, &[]);
     assert_eq!(run.hand.len(), before + 1);
-    assert!(run
-        .hand
-        .iter()
-        .filter(|card| card.enhancement.is_some())
-        .count()
-        >= 2);
+    assert!(
+        run.hand
+            .iter()
+            .filter(|card| card.enhancement.is_some())
+            .count()
+            >= 2
+    );
 
     run.hand = make_hand();
     let before = run.hand.len();
     use_consumable(&mut run, "familiar", ConsumableKind::Spectral, &[]);
     assert_eq!(run.hand.len(), before + 2);
-    assert!(run
-        .hand
-        .iter()
-        .filter(|card| card.enhancement.is_some())
-        .count()
-        >= 3);
+    assert!(
+        run.hand
+            .iter()
+            .filter(|card| card.enhancement.is_some())
+            .count()
+            >= 3
+    );
 
     run.hand = make_hand();
     let before = run.hand.len();
     use_consumable(&mut run, "incantation", ConsumableKind::Spectral, &[]);
     assert_eq!(run.hand.len(), before + 3);
-    assert!(run
-        .hand
-        .iter()
-        .filter(|card| card.enhancement.is_some())
-        .count()
-        >= 4);
+    assert!(
+        run.hand
+            .iter()
+            .filter(|card| card.enhancement.is_some())
+            .count()
+            >= 4
+    );
 }
 
 #[test]
@@ -1435,12 +1426,11 @@ fn spectral_joker_modifications() {
     );
 
     use_consumable(&mut run, "the_soul", ConsumableKind::Spectral, &[]);
-    assert!(
-        run.content
-            .jokers
-            .iter()
-            .any(|joker| joker.rarity == JokerRarity::Legendary)
-    );
+    assert!(run
+        .content
+        .jokers
+        .iter()
+        .any(|joker| joker.rarity == JokerRarity::Legendary));
     assert!(run.inventory.jokers.len() >= 2);
 }
 
@@ -1573,7 +1563,10 @@ fn tag_rare_plus_foil_sets_shop_joker_edition() {
         matches!(card.kind, rulatro_core::ShopCardKind::Joker)
             && card.rarity == Some(JokerRarity::Rare)
     }));
-    assert!(shop.cards.iter().any(|card| card.edition == Some(Edition::Foil)));
+    assert!(shop
+        .cards
+        .iter()
+        .any(|card| card.edition == Some(Edition::Foil)));
     assert!(run.state.tags.is_empty());
 }
 
@@ -2080,7 +2073,9 @@ fn play_and_discard_require_play_phase() {
     let mut run = new_run();
     run.hand = make_hand();
     run.state.phase = Phase::Deal;
-    let err = run.play_hand(&[0, 1, 2, 3, 4], &mut EventBus::default()).unwrap_err();
+    let err = run
+        .play_hand(&[0, 1, 2, 3, 4], &mut EventBus::default())
+        .unwrap_err();
     assert!(matches!(err, RunError::InvalidPhase(Phase::Deal)));
     let err = run.discard(&[0], &mut EventBus::default()).unwrap_err();
     assert!(matches!(err, RunError::InvalidPhase(Phase::Deal)));
@@ -2200,7 +2195,8 @@ fn enter_shop_resets_free_rerolls() {
     let mut run = new_run();
     mark_blind_cleared(&mut run);
     run.state.shop_free_rerolls = 3;
-    run.enter_shop(&mut EventBus::default()).expect("enter shop");
+    run.enter_shop(&mut EventBus::default())
+        .expect("enter shop");
     assert_eq!(run.state.shop_free_rerolls, 0);
 }
 
@@ -2208,7 +2204,8 @@ fn enter_shop_resets_free_rerolls() {
 fn reroll_shop_not_enough_money() {
     let mut run = new_run();
     mark_blind_cleared(&mut run);
-    run.enter_shop(&mut EventBus::default()).expect("enter shop");
+    run.enter_shop(&mut EventBus::default())
+        .expect("enter shop");
     run.state.money = 0;
     let err = run.reroll_shop(&mut EventBus::default()).unwrap_err();
     assert!(matches!(err, RunError::NotEnoughMoney));
@@ -2218,7 +2215,8 @@ fn reroll_shop_not_enough_money() {
 fn buy_shop_offer_invalid_index() {
     let mut run = new_run();
     mark_blind_cleared(&mut run);
-    run.enter_shop(&mut EventBus::default()).expect("enter shop");
+    run.enter_shop(&mut EventBus::default())
+        .expect("enter shop");
     let err = run
         .buy_shop_offer(ShopOfferRef::Card(99), &mut EventBus::default())
         .unwrap_err();
@@ -2278,7 +2276,9 @@ fn discard_rejects_empty_selection() {
 #[test]
 fn use_consumable_invalid_index() {
     let mut run = new_run();
-    let err = run.use_consumable(0, &[], &mut EventBus::default()).unwrap_err();
+    let err = run
+        .use_consumable(0, &[], &mut EventBus::default())
+        .unwrap_err();
     assert!(matches!(err, RunError::InvalidSelection));
 }
 
@@ -2550,7 +2550,10 @@ fn blind_outcome_failed_when_hands_zero() {
     run.state.target = 10;
     run.state.blind_score = 0;
     run.state.hands_left = 0;
-    assert!(matches!(run.blind_outcome(), Some(rulatro_core::BlindOutcome::Failed)));
+    assert!(matches!(
+        run.blind_outcome(),
+        Some(rulatro_core::BlindOutcome::Failed)
+    ));
 }
 
 #[test]
@@ -2559,7 +2562,10 @@ fn blind_outcome_cleared_when_score_reached() {
     run.state.target = 10;
     run.state.blind_score = 10;
     run.state.hands_left = 1;
-    assert!(matches!(run.blind_outcome(), Some(rulatro_core::BlindOutcome::Cleared)));
+    assert!(matches!(
+        run.blind_outcome(),
+        Some(rulatro_core::BlindOutcome::Cleared)
+    ));
 }
 
 #[test]
@@ -2632,10 +2638,10 @@ fn pack_options_buffoon_are_jokers() {
     let open = run
         .open_pack_purchase(&ShopPurchase::Pack(pack), &mut EventBus::default())
         .expect("open pack");
-    assert!(open.options.iter().all(|option| matches!(
-        option,
-        rulatro_core::PackOption::Joker(_)
-    )));
+    assert!(open
+        .options
+        .iter()
+        .all(|option| matches!(option, rulatro_core::PackOption::Joker(_))));
 }
 
 #[test]
@@ -2651,17 +2657,18 @@ fn pack_options_standard_are_playing_cards() {
     let open = run
         .open_pack_purchase(&ShopPurchase::Pack(pack), &mut EventBus::default())
         .expect("open pack");
-    assert!(open.options.iter().all(|option| matches!(
-        option,
-        rulatro_core::PackOption::PlayingCard(_)
-    )));
+    assert!(open
+        .options
+        .iter()
+        .all(|option| matches!(option, rulatro_core::PackOption::PlayingCard(_))));
 }
 
 #[test]
 fn leave_shop_resets_state() {
     let mut run = new_run();
     mark_blind_cleared(&mut run);
-    run.enter_shop(&mut EventBus::default()).expect("enter shop");
+    run.enter_shop(&mut EventBus::default())
+        .expect("enter shop");
     run.state.shop_free_rerolls = 2;
     run.leave_shop();
     assert!(run.shop.is_some());
@@ -2673,9 +2680,14 @@ fn leave_shop_resets_state() {
 fn shop_reenter_keeps_offers() {
     let mut run = new_run();
     mark_blind_cleared(&mut run);
-    run.enter_shop(&mut EventBus::default()).expect("enter shop");
+    run.enter_shop(&mut EventBus::default())
+        .expect("enter shop");
     let first = run.shop.as_ref().expect("shop");
-    let first_cards: Vec<String> = first.cards.iter().map(|card| card.item_id.clone()).collect();
+    let first_cards: Vec<String> = first
+        .cards
+        .iter()
+        .map(|card| card.item_id.clone())
+        .collect();
     let first_packs: Vec<(PackKind, PackSize, i64)> = first
         .packs
         .iter()
@@ -2685,10 +2697,14 @@ fn shop_reenter_keeps_offers() {
     let first_vouchers = first.vouchers;
 
     run.leave_shop();
-    run.enter_shop(&mut EventBus::default()).expect("reenter shop");
+    run.enter_shop(&mut EventBus::default())
+        .expect("reenter shop");
     let second = run.shop.as_ref().expect("shop");
-    let second_cards: Vec<String> =
-        second.cards.iter().map(|card| card.item_id.clone()).collect();
+    let second_cards: Vec<String> = second
+        .cards
+        .iter()
+        .map(|card| card.item_id.clone())
+        .collect();
     let second_packs: Vec<(PackKind, PackSize, i64)> = second
         .packs
         .iter()
@@ -2834,7 +2850,12 @@ fn rule_required_play_count_enforced() {
 #[test]
 fn rule_discard_held_after_hand() {
     let mut run = new_run();
-    add_rule_joker(&mut run, "rule_discard_held", "discard_held_after_hand", 3.0);
+    add_rule_joker(
+        &mut run,
+        "rule_discard_held",
+        "discard_held_after_hand",
+        3.0,
+    );
     run.state.phase = Phase::Play;
     run.state.hands_left = 1;
     run.hand = make_hand();
@@ -3191,8 +3212,7 @@ fn money_floor_allows_reroll_to_floor() {
         .expect("enter shop");
     run.shop.as_mut().expect("shop").reroll_cost = 2;
 
-    run.reroll_shop(&mut EventBus::default())
-        .expect("reroll");
+    run.reroll_shop(&mut EventBus::default()).expect("reroll");
 
     assert_eq!(run.state.money, -2);
 }

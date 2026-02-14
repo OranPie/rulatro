@@ -1,5 +1,5 @@
 use crate::{
-    Content, ConsumableKind, Edition, JokerRarity, PackKind, PackPrice, PackSize, PackWeight,
+    ConsumableKind, Content, Edition, JokerRarity, PackKind, PackPrice, PackSize, PackWeight,
     PriceRange, RngState, ShopCardKind, ShopPrices, ShopRule,
 };
 use serde::{Deserialize, Serialize};
@@ -110,9 +110,10 @@ impl ShopState {
                 .cards
                 .get(index)
                 .map(|card| ShopOfferKind::Card(card.kind)),
-            ShopOfferRef::Pack(index) => self.packs.get(index).map(|pack| {
-                ShopOfferKind::Pack(pack.kind, pack.size)
-            }),
+            ShopOfferRef::Pack(index) => self
+                .packs
+                .get(index)
+                .map(|pack| ShopOfferKind::Pack(pack.kind, pack.size)),
             ShopOfferRef::Voucher(index) => {
                 if index < self.vouchers {
                     Some(ShopOfferKind::Voucher)
@@ -193,13 +194,13 @@ pub fn open_pack(
     for _ in 0..offer.options {
         match offer.kind {
             PackKind::Arcana => {
-                if let Some(card) = pick_consumable_restricted(
-                    content,
-                    ConsumableKind::Tarot,
-                    rng,
-                    restrictions,
-                ) {
-                    options.push(PackOption::Consumable(ConsumableKind::Tarot, card.id.clone()));
+                if let Some(card) =
+                    pick_consumable_restricted(content, ConsumableKind::Tarot, rng, restrictions)
+                {
+                    options.push(PackOption::Consumable(
+                        ConsumableKind::Tarot,
+                        card.id.clone(),
+                    ));
                 }
             }
             PackKind::Buffoon => {
@@ -210,23 +211,23 @@ pub fn open_pack(
                 }
             }
             PackKind::Celestial => {
-                if let Some(card) = pick_consumable_restricted(
-                    content,
-                    ConsumableKind::Planet,
-                    rng,
-                    restrictions,
-                ) {
-                    options.push(PackOption::Consumable(ConsumableKind::Planet, card.id.clone()));
+                if let Some(card) =
+                    pick_consumable_restricted(content, ConsumableKind::Planet, rng, restrictions)
+                {
+                    options.push(PackOption::Consumable(
+                        ConsumableKind::Planet,
+                        card.id.clone(),
+                    ));
                 }
             }
             PackKind::Spectral => {
-                if let Some(card) = pick_consumable_restricted(
-                    content,
-                    ConsumableKind::Spectral,
-                    rng,
-                    restrictions,
-                ) {
-                    options.push(PackOption::Consumable(ConsumableKind::Spectral, card.id.clone()));
+                if let Some(card) =
+                    pick_consumable_restricted(content, ConsumableKind::Spectral, rng, restrictions)
+                {
+                    options.push(PackOption::Consumable(
+                        ConsumableKind::Spectral,
+                        card.id.clone(),
+                    ));
                 }
             }
             PackKind::Standard => {
@@ -255,7 +256,10 @@ pub fn pick_pack_options(open: &PackOpen, indices: &[usize]) -> Result<Vec<PackO
     if unique.iter().any(|&idx| idx >= open.options.len()) {
         return Err(PackError::InvalidSelection);
     }
-    Ok(unique.into_iter().map(|idx| open.options[idx].clone()).collect())
+    Ok(unique
+        .into_iter()
+        .map(|idx| open.options[idx].clone())
+        .collect())
 }
 
 fn generate_cards(
@@ -270,7 +274,9 @@ fn generate_cards(
             match kind {
                 ShopCardKind::Joker => {
                     if let Some(rarity) = pick_weighted_rarity(&rule.joker_rarity_weights, rng) {
-                        if let Some(joker) = pick_joker_restricted(content, rarity, rng, restrictions) {
+                        if let Some(joker) =
+                            pick_joker_restricted(content, rarity, rng, restrictions)
+                        {
                             let price = price_for_joker_rarity(rarity, &rule.prices, rng);
                             cards.push(CardOffer {
                                 kind,
@@ -419,10 +425,7 @@ fn pick_weighted_pack(
     })
 }
 
-fn pick_weighted<T: Clone>(
-    items: impl Iterator<Item = (T, u32)>,
-    rng: &mut RngState,
-) -> Option<T> {
+fn pick_weighted<T: Clone>(items: impl Iterator<Item = (T, u32)>, rng: &mut RngState) -> Option<T> {
     let items: Vec<(T, u32)> = items.filter(|(_, w)| *w > 0).collect();
     let total: u32 = items.iter().map(|(_, w)| *w).sum();
     if total == 0 {

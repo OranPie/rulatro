@@ -2,6 +2,7 @@
   {
     "id": "familiar",
     "name": "Familiar",
+    "names": { "zh_CN": "使魔" },
     "kind": "Spectral",
     "effects": [
       {

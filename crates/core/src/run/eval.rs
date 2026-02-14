@@ -1,6 +1,6 @@
+use super::helpers::*;
 use super::*;
 use crate::*;
-use super::helpers::*;
 
 impl RunState {
     pub(super) fn eval_bool(&mut self, expr: &Expr, ctx: &EvalContext<'_>) -> bool {
@@ -18,7 +18,10 @@ impl RunState {
                 let inner = self.eval_expr(expr, ctx);
                 match op {
                     UnaryOp::Not => EvalValue::Bool(!inner.truthy()),
-                    UnaryOp::Neg => inner.as_number().map(|v| EvalValue::Num(-v)).unwrap_or(EvalValue::None),
+                    UnaryOp::Neg => inner
+                        .as_number()
+                        .map(|v| EvalValue::Num(-v))
+                        .unwrap_or(EvalValue::None),
                 }
             }
             Expr::Binary { left, op, right } => {
@@ -37,14 +40,28 @@ impl RunState {
                         &right_val,
                         self.smeared_suits_active(),
                     )),
-                    BinaryOp::Lt => EvalValue::Bool(compare_numbers(&left_val, &right_val, |a, b| a < b)),
-                    BinaryOp::Le => EvalValue::Bool(compare_numbers(&left_val, &right_val, |a, b| a <= b)),
-                    BinaryOp::Gt => EvalValue::Bool(compare_numbers(&left_val, &right_val, |a, b| a > b)),
-                    BinaryOp::Ge => EvalValue::Bool(compare_numbers(&left_val, &right_val, |a, b| a >= b)),
+                    BinaryOp::Lt => {
+                        EvalValue::Bool(compare_numbers(&left_val, &right_val, |a, b| a < b))
+                    }
+                    BinaryOp::Le => {
+                        EvalValue::Bool(compare_numbers(&left_val, &right_val, |a, b| a <= b))
+                    }
+                    BinaryOp::Gt => {
+                        EvalValue::Bool(compare_numbers(&left_val, &right_val, |a, b| a > b))
+                    }
+                    BinaryOp::Ge => {
+                        EvalValue::Bool(compare_numbers(&left_val, &right_val, |a, b| a >= b))
+                    }
                     BinaryOp::Add => combine_numbers(&left_val, &right_val, |a, b| a + b),
                     BinaryOp::Sub => combine_numbers(&left_val, &right_val, |a, b| a - b),
                     BinaryOp::Mul => combine_numbers(&left_val, &right_val, |a, b| a * b),
-                    BinaryOp::Div => combine_numbers(&left_val, &right_val, |a, b| if b == 0.0 { a } else { a / b }),
+                    BinaryOp::Div => {
+                        combine_numbers(
+                            &left_val,
+                            &right_val,
+                            |a, b| if b == 0.0 { a } else { a / b },
+                        )
+                    }
                 }
             }
         }
@@ -100,9 +117,7 @@ impl RunState {
                 EvalValue::Num(count as f64)
             }
             "hand_level" => EvalValue::Num(self.hand_level(ctx.hand_kind) as f64),
-            "most_played_hand" => {
-                EvalValue::Str(normalize(hand_name(self.most_played_hand())))
-            }
+            "most_played_hand" => EvalValue::Str(normalize(hand_name(self.most_played_hand()))),
             "is_boss_blind" => EvalValue::Bool(self.state.blind == BlindKind::Boss),
             "boss_disabled" => EvalValue::Bool(self.boss_disabled()),
             "is_scoring" => EvalValue::Bool(ctx.is_scoring),
@@ -179,12 +194,12 @@ impl RunState {
                     EvalValue::Bool(ctx.card.map(is_face).unwrap_or(false))
                 }
             }
-            "card.is_odd" => EvalValue::Bool(
-                !card_debuffed && ctx.card.map(is_odd).unwrap_or(false),
-            ),
-            "card.is_even" => EvalValue::Bool(
-                !card_debuffed && ctx.card.map(is_even).unwrap_or(false),
-            ),
+            "card.is_odd" => {
+                EvalValue::Bool(!card_debuffed && ctx.card.map(is_odd).unwrap_or(false))
+            }
+            "card.is_even" => {
+                EvalValue::Bool(!card_debuffed && ctx.card.map(is_even).unwrap_or(false))
+            }
             "card.is_stone" => EvalValue::Bool(
                 !card_debuffed && ctx.card.map(|card| card.is_stone()).unwrap_or(false),
             ),
@@ -204,7 +219,12 @@ impl RunState {
         }
     }
 
-    pub(super) fn eval_call(&mut self, name: &str, args: &[Expr], ctx: &EvalContext<'_>) -> EvalValue {
+    pub(super) fn eval_call(
+        &mut self,
+        name: &str,
+        args: &[Expr],
+        ctx: &EvalContext<'_>,
+    ) -> EvalValue {
         match name.to_lowercase().as_str() {
             "contains" => {
                 if args.len() != 2 {
@@ -274,7 +294,7 @@ impl RunState {
                     _ => {
                         let cards = scope_cards(ctx, scope_str);
                         EvalValue::Num(
-                            self.count_matching_with_debuff(cards, target_str, smeared) as f64,
+                            self.count_matching_with_debuff(cards, target_str, smeared) as f64
                         )
                     }
                 }
@@ -331,7 +351,9 @@ impl RunState {
                             return EvalValue::Bool(false);
                         };
                         if smeared {
-                            EvalValue::Bool(smeared_suit_group(card.suit) == smeared_suit_group(suit))
+                            EvalValue::Bool(
+                                smeared_suit_group(card.suit) == smeared_suit_group(suit),
+                            )
                         } else {
                             EvalValue::Bool(card.suit == suit)
                         }
@@ -346,7 +368,9 @@ impl RunState {
                             _ => return EvalValue::Bool(false),
                         };
                         if smeared {
-                            EvalValue::Bool(smeared_suit_group(card.suit) == smeared_suit_group(suit))
+                            EvalValue::Bool(
+                                smeared_suit_group(card.suit) == smeared_suit_group(suit),
+                            )
                         } else {
                             EvalValue::Bool(card.suit == suit)
                         }
@@ -437,14 +461,18 @@ impl RunState {
                     return EvalValue::None;
                 }
                 let value = self.eval_expr(&args[0], ctx).as_number();
-                value.map(|v| EvalValue::Num(v.floor())).unwrap_or(EvalValue::None)
+                value
+                    .map(|v| EvalValue::Num(v.floor()))
+                    .unwrap_or(EvalValue::None)
             }
             "ceil" => {
                 if args.len() != 1 {
                     return EvalValue::None;
                 }
                 let value = self.eval_expr(&args[0], ctx).as_number();
-                value.map(|v| EvalValue::Num(v.ceil())).unwrap_or(EvalValue::None)
+                value
+                    .map(|v| EvalValue::Num(v.ceil()))
+                    .unwrap_or(EvalValue::None)
             }
             "pow" => {
                 if args.len() != 2 {
@@ -519,9 +547,7 @@ impl RunState {
                 .count(),
             "odd" => cards
                 .iter()
-                .filter(|card| {
-                    !card.is_stone() && !self.is_card_debuffed(**card) && is_odd(**card)
-                })
+                .filter(|card| !card.is_stone() && !self.is_card_debuffed(**card) && is_odd(**card))
                 .count(),
             "even" => cards
                 .iter()
@@ -594,9 +620,7 @@ impl RunState {
                 if let Some(kind) = edition_from_str(&target_norm) {
                     return cards
                         .iter()
-                        .filter(|card| {
-                            !self.is_card_debuffed(**card) && card.edition == Some(kind)
-                        })
+                        .filter(|card| !self.is_card_debuffed(**card) && card.edition == Some(kind))
                         .count();
                 }
                 if let Some(kind) = seal_from_str(&target_norm) {
@@ -684,9 +708,9 @@ impl RunState {
                 Condition::CardIsStone => card
                     .map(|c| !card_debuffed && c.is_stone())
                     .unwrap_or(false),
-                Condition::CardIsWild => card
-                    .map(|c| !card_debuffed && c.is_wild())
-                    .unwrap_or(false),
+                Condition::CardIsWild => {
+                    card.map(|c| !card_debuffed && c.is_wild()).unwrap_or(false)
+                }
                 Condition::IsBossBlind => self.state.blind == BlindKind::Boss,
                 Condition::IsScoringCard | Condition::IsHeldCard | Condition::IsPlayedCard => false,
             };
@@ -696,5 +720,4 @@ impl RunState {
         }
         true
     }
-
 }

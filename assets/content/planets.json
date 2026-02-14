@@ -2,6 +2,7 @@
   {
     "id": "pluto",
     "name": "Pluto",
+    "names": { "zh_CN": "冥王星" },
     "kind": "Planet",
     "hand": "HighCard",
     "effects": [

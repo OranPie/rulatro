@@ -2,6 +2,7 @@
   {
     "id": "the_fool",
     "name": "The Fool",
+    "names": { "zh_CN": "愚者" },
     "kind": "Tarot",
     "effects": [
       {

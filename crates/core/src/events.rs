@@ -15,7 +15,9 @@ pub enum Event {
         blind: BlindKind,
         tag: Option<String>,
     },
-    HandDealt { count: usize },
+    HandDealt {
+        count: usize,
+    },
     HandScored {
         hand: HandKind,
         chips: i64,
@@ -43,14 +45,22 @@ pub enum Event {
         options: usize,
         picks: u8,
     },
-    PackChosen { picks: usize },
+    PackChosen {
+        picks: usize,
+    },
     JokerSold {
         id: String,
         sell_value: i64,
         money: i64,
     },
-    BlindCleared { score: i64, reward: i64, money: i64 },
-    BlindFailed { score: i64 },
+    BlindCleared {
+        score: i64,
+        reward: i64,
+        money: i64,
+    },
+    BlindFailed {
+        score: i64,
+    },
 }
 
 #[derive(Debug, Default)]

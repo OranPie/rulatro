@@ -1,6 +1,6 @@
+use super::helpers::*;
 use super::*;
 use crate::*;
-use super::helpers::*;
 
 impl RunState {
     pub(super) fn shop_restrictions(&mut self) -> crate::ShopRestrictions {
@@ -48,12 +48,7 @@ impl RunState {
 
     pub(super) fn calc_joker_sell_value(&self, joker: &crate::JokerInstance) -> i64 {
         let base = joker.buy_price.max(0);
-        let bonus = joker
-            .vars
-            .get("sell_bonus")
-            .copied()
-            .unwrap_or(0.0)
-            .floor() as i64;
+        let bonus = joker.vars.get("sell_bonus").copied().unwrap_or(0.0).floor() as i64;
         let value = base / 2 + bonus;
         value.max(1)
     }
@@ -80,8 +75,12 @@ impl RunState {
             return Ok(());
         }
         let restrictions = self.shop_restrictions();
-        let shop =
-            ShopState::generate(&self.config.shop, &self.content, &mut self.rng, &restrictions);
+        let shop = ShopState::generate(
+            &self.config.shop,
+            &self.content,
+            &mut self.rng,
+            &restrictions,
+        );
         let offers = shop.cards.len() + shop.packs.len() + shop.vouchers;
         let reroll_cost = shop.reroll_cost;
         self.shop = Some(shop);
@@ -131,7 +130,12 @@ impl RunState {
                 }
                 self.state.money -= cost;
             }
-            shop.reroll_cards(&self.config.shop, &self.content, &mut self.rng, &restrictions);
+            shop.reroll_cards(
+                &self.config.shop,
+                &self.content,
+                &mut self.rng,
+                &restrictions,
+            );
             let offers = shop.cards.len() + shop.packs.len() + shop.vouchers;
             let reroll_cost = shop.reroll_cost;
             (offers, reroll_cost, cost)
@@ -199,16 +203,12 @@ impl RunState {
                     )?;
                 }
                 crate::ShopCardKind::Tarot => {
-                    self.inventory.add_consumable(
-                        card.item_id.clone(),
-                        crate::ConsumableKind::Tarot,
-                    )?;
+                    self.inventory
+                        .add_consumable(card.item_id.clone(), crate::ConsumableKind::Tarot)?;
                 }
                 crate::ShopCardKind::Planet => {
-                    self.inventory.add_consumable(
-                        card.item_id.clone(),
-                        crate::ConsumableKind::Planet,
-                    )?;
+                    self.inventory
+                        .add_consumable(card.item_id.clone(), crate::ConsumableKind::Planet)?;
                 }
             },
             ShopPurchase::Voucher => {
@@ -312,7 +312,8 @@ impl RunState {
         indices: &[usize],
         events: &mut EventBus,
     ) -> Result<(), RunError> {
-        let chosen = crate::pick_pack_options(open, indices).map_err(|_| RunError::InvalidSelection)?;
+        let chosen =
+            crate::pick_pack_options(open, indices).map_err(|_| RunError::InvalidSelection)?;
         for option in &chosen {
             match option {
                 crate::PackOption::Joker(id) => {
@@ -347,7 +348,9 @@ impl RunState {
                 }
             }
         }
-        events.push(Event::PackChosen { picks: chosen.len() });
+        events.push(Event::PackChosen {
+            picks: chosen.len(),
+        });
         Ok(())
     }
 
@@ -375,5 +378,4 @@ impl RunState {
         self.state.phase = Phase::Deal;
         self.state.shop_free_rerolls = 0;
     }
-
 }

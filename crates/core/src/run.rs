@@ -1,21 +1,20 @@
 use crate::{
-    BlindKind, Content, Deck, EffectOp, GameConfig, GameState, Inventory, InventoryError, Phase,
-    ModRuntime, RngState, ScoreTables, ScoreTraceStep, ShopState,
+    BlindKind, Content, Deck, EffectOp, GameConfig, GameState, Inventory, InventoryError,
+    ModRuntime, Phase, RngState, ScoreTables, ScoreTraceStep, ShopState,
 };
-use thiserror::Error;
-use std::fmt;
 use std::collections::HashMap;
+use std::fmt;
+use thiserror::Error;
 
-
-mod helpers;
-mod context;
-mod hooks;
-mod state;
 mod blind;
-mod shop;
-mod hand;
-mod joker;
+mod context;
 mod eval;
+mod hand;
+mod helpers;
+mod hooks;
+mod joker;
+mod shop;
+mod state;
 
 use context::{EvalContext, EvalValue};
 #[allow(unused_imports)]

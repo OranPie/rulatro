@@ -36,11 +36,7 @@ impl ModManager {
             let Some(entry) = item.manifest.entry.as_ref() else {
                 continue;
             };
-            let ext = entry
-                .rsplit('.')
-                .next()
-                .unwrap_or("")
-                .to_ascii_lowercase();
+            let ext = entry.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
             match ext.as_str() {
                 "lua" => {
                     #[cfg(feature = "mod_lua")]

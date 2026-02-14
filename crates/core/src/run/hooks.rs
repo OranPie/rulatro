@@ -190,14 +190,7 @@ impl<'a> HookArgs<'a> {
         money: &'a mut i64,
         results: &'a mut TriggerResults,
     ) -> Self {
-        Self::independent(
-            hand_kind,
-            blind,
-            inject,
-            score,
-            money,
-            results,
-        )
+        Self::independent(hand_kind, blind, inject, score, money, results)
     }
 
     pub(super) fn scoring(
@@ -636,7 +629,14 @@ impl RuleHook for JokerDslHook {
         };
         let ctx = build_eval_context(point, run, view);
         let card_mut = args.card_mut.as_deref_mut();
-        run.apply_joker_effects(trigger, &ctx, card_mut, args.score, args.money, args.results);
+        run.apply_joker_effects(
+            trigger,
+            &ctx,
+            card_mut,
+            args.score,
+            args.money,
+            args.results,
+        );
         args.inject = inject;
         HookResult::Continue
     }

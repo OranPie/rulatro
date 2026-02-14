@@ -1,5 +1,5 @@
-use super::*;
 use super::helpers::is_face;
+use super::*;
 use crate::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -108,8 +108,12 @@ impl RunState {
                 card.enhancement = None;
             }
         }
-        let mut breakdown =
-            score_hand_with_rules(&eval_cards, &self.tables, eval_rules, &self.state.hand_levels);
+        let mut breakdown = score_hand_with_rules(
+            &eval_cards,
+            &self.tables,
+            eval_rules,
+            &self.state.hand_levels,
+        );
         if self.splash_active() {
             breakdown.scoring_indices = (0..played.len()).collect();
         }
@@ -133,7 +137,8 @@ impl RunState {
         if level_delta != 0 {
             let base_level = self.hand_level(breakdown.hand) as i64;
             let effective = (base_level + level_delta).max(1) as u32;
-            let (base_chips, base_mult) = self.tables.hand_base_for_level(breakdown.hand, effective);
+            let (base_chips, base_mult) =
+                self.tables.hand_base_for_level(breakdown.hand, effective);
             breakdown.base.chips = base_chips;
             breakdown.base.mult = base_mult;
             breakdown.total.chips = breakdown.base.chips + breakdown.rank_chips;
@@ -179,16 +184,15 @@ impl RunState {
         );
         self.invoke_hooks(HookPoint::Played, &mut args, events);
 
-        let scored_outcome =
-            self.apply_scored_card_pipeline(
-                &mut played,
-                &mut scoring_cards,
-                &held_cards,
-                &breakdown,
-                events,
-                &mut total_score,
-                &mut money,
-            );
+        let scored_outcome = self.apply_scored_card_pipeline(
+            &mut played,
+            &mut scoring_cards,
+            &held_cards,
+            &breakdown,
+            events,
+            &mut total_score,
+            &mut money,
+        );
         self.apply_held_card_pipeline(
             &mut total_score,
             &mut money,
@@ -409,9 +413,7 @@ impl RunState {
                 } else {
                     false
                 };
-                if destroyed_after
-                    && !destroyed_indices.iter().any(|&existing| existing == idx)
-                {
+                if destroyed_after && !destroyed_indices.iter().any(|&existing| existing == idx) {
                     destroyed_indices.push(idx);
                 }
                 if results.scored_retriggers > 0 {
@@ -492,16 +494,12 @@ impl RunState {
         let mut destroyed_now = false;
         let mut lucky_triggers = 0i64;
         match card.enhancement {
-            Some(Enhancement::Bonus) => self.apply_rule_effect(
-                score,
-                crate::RuleEffect::AddChips(30),
-                "enhancement:bonus",
-            ),
-            Some(Enhancement::Mult) => self.apply_rule_effect(
-                score,
-                crate::RuleEffect::AddMult(4.0),
-                "enhancement:mult",
-            ),
+            Some(Enhancement::Bonus) => {
+                self.apply_rule_effect(score, crate::RuleEffect::AddChips(30), "enhancement:bonus")
+            }
+            Some(Enhancement::Mult) => {
+                self.apply_rule_effect(score, crate::RuleEffect::AddMult(4.0), "enhancement:mult")
+            }
             Some(Enhancement::Glass) => {
                 self.apply_rule_effect(
                     score,
@@ -515,11 +513,9 @@ impl RunState {
                     }
                 }
             }
-            Some(Enhancement::Stone) => self.apply_rule_effect(
-                score,
-                crate::RuleEffect::AddChips(50),
-                "enhancement:stone",
-            ),
+            Some(Enhancement::Stone) => {
+                self.apply_rule_effect(score, crate::RuleEffect::AddChips(50), "enhancement:stone")
+            }
             Some(Enhancement::Lucky) => {
                 if self.roll(5) {
                     self.apply_rule_effect(
@@ -539,7 +535,12 @@ impl RunState {
         (destroyed_now, lucky_triggers)
     }
 
-    pub(super) fn apply_card_enhancement_held(&mut self, card: Card, score: &mut Score, _money: &mut i64) {
+    pub(super) fn apply_card_enhancement_held(
+        &mut self,
+        card: Card,
+        score: &mut Score,
+        _money: &mut i64,
+    ) {
         match card.enhancement {
             Some(Enhancement::Steel) => self.apply_rule_effect(
                 score,
@@ -573,11 +574,9 @@ impl RunState {
 
     pub(super) fn apply_card_edition_scored(&mut self, card: Card, score: &mut Score) {
         match card.edition {
-            Some(Edition::Foil) => self.apply_rule_effect(
-                score,
-                crate::RuleEffect::AddChips(50),
-                "edition:foil",
-            ),
+            Some(Edition::Foil) => {
+                self.apply_rule_effect(score, crate::RuleEffect::AddChips(50), "edition:foil")
+            }
             Some(Edition::Holographic) => self.apply_rule_effect(
                 score,
                 crate::RuleEffect::AddMult(10.0),
@@ -618,7 +617,9 @@ impl RunState {
                     .pick_consumable(crate::ConsumableKind::Tarot, &mut self.rng)
                     .map(|tarot| tarot.id.clone());
                 if let Some(id) = tarot_id {
-                    let _ = self.inventory.add_consumable(id, crate::ConsumableKind::Tarot);
+                    let _ = self
+                        .inventory
+                        .add_consumable(id, crate::ConsumableKind::Tarot);
                 }
             }
             if debuffed {
@@ -693,7 +694,9 @@ impl RunState {
             .planet_for_hand(hand_kind, &mut self.rng)
             .map(|planet| planet.id.clone());
         if let Some(id) = planet_id {
-            let _ = self.inventory.add_consumable(id, crate::ConsumableKind::Planet);
+            let _ = self
+                .inventory
+                .add_consumable(id, crate::ConsumableKind::Planet);
         }
     }
 
@@ -807,7 +810,13 @@ impl RunState {
             if !self.json_conditions_met(&block.conditions, crate::HandKind::HighCard, None) {
                 continue;
             }
-            self.apply_effect_ops(&block.effects, selected, &mut scratch_score, &mut money, events)?;
+            self.apply_effect_ops(
+                &block.effects,
+                selected,
+                &mut scratch_score,
+                &mut money,
+                events,
+            )?;
         }
         self.state.money = money;
         if matches!(
@@ -912,7 +921,8 @@ impl RunState {
                     self.mark_rules_dirty();
                 }
                 EffectOp::SetRandomJokerEdition { edition } => {
-                    let Some(pick) = random_joker_index(&mut self.rng, self.inventory.jokers.len()) else {
+                    let Some(pick) = random_joker_index(&mut self.rng, self.inventory.jokers.len())
+                    else {
                         continue;
                     };
                     if let Some(joker) = self.inventory.jokers.get_mut(pick) {
@@ -1176,7 +1186,11 @@ impl RunState {
         Ok(selected.to_vec())
     }
 
-    fn select_pair(&mut self, selected: &[usize], require: bool) -> Result<(usize, usize), RunError> {
+    fn select_pair(
+        &mut self,
+        selected: &[usize],
+        require: bool,
+    ) -> Result<(usize, usize), RunError> {
         if self.hand.len() < 2 {
             return Err(RunError::InvalidSelection);
         }
@@ -1361,7 +1375,10 @@ fn shift_rank(rank: Rank, delta: i8) -> Rank {
     RANKS[idx]
 }
 
-fn take_cards(hand: &mut Vec<crate::Card>, indices: &[usize]) -> Result<Vec<crate::Card>, RunError> {
+fn take_cards(
+    hand: &mut Vec<crate::Card>,
+    indices: &[usize],
+) -> Result<Vec<crate::Card>, RunError> {
     if indices.is_empty() {
         return Err(RunError::InvalidSelection);
     }

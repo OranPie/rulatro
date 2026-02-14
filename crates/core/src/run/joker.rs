@@ -1,6 +1,6 @@
+use super::helpers::*;
 use super::*;
 use crate::*;
-use super::helpers::*;
 use std::collections::HashMap;
 
 impl RunState {
@@ -114,7 +114,9 @@ impl RunState {
         let ctx = ctx
             .with_joker_vars(&joker.vars)
             .with_joker_index(source_index);
-        self.apply_joker_effects_for_joker(&mut joker, trigger, &ctx, card_mut, score, money, results);
+        self.apply_joker_effects_for_joker(
+            &mut joker, trigger, &ctx, card_mut, score, money, results,
+        );
         if !self.pending_joker_removals.contains(&source_index) {
             if let Some(slot) = self.inventory.jokers.get_mut(source_index) {
                 *slot = joker;
@@ -252,7 +254,9 @@ impl RunState {
         let norm = normalize(target);
         let (id, rarity) = match norm.as_str() {
             "common" => {
-                let def = self.content.pick_joker(crate::JokerRarity::Common, &mut self.rng)?;
+                let def = self
+                    .content
+                    .pick_joker(crate::JokerRarity::Common, &mut self.rng)?;
                 (def.id.clone(), crate::JokerRarity::Common)
             }
             "uncommon" => {
@@ -262,7 +266,9 @@ impl RunState {
                 (def.id.clone(), crate::JokerRarity::Uncommon)
             }
             "rare" => {
-                let def = self.content.pick_joker(crate::JokerRarity::Rare, &mut self.rng)?;
+                let def = self
+                    .content
+                    .pick_joker(crate::JokerRarity::Rare, &mut self.rng)?;
                 (def.id.clone(), crate::JokerRarity::Rare)
             }
             "legendary" => {
@@ -354,13 +360,15 @@ impl RunState {
         }
     }
 
-    pub(super) fn apply_joker_edition_before(&mut self, joker: &crate::JokerInstance, score: &mut Score) {
+    pub(super) fn apply_joker_edition_before(
+        &mut self,
+        joker: &crate::JokerInstance,
+        score: &mut Score,
+    ) {
         match joker.edition {
-            Some(Edition::Foil) => self.apply_rule_effect(
-                score,
-                crate::RuleEffect::AddChips(50),
-                "joker_edition:foil",
-            ),
+            Some(Edition::Foil) => {
+                self.apply_rule_effect(score, crate::RuleEffect::AddChips(50), "joker_edition:foil")
+            }
             Some(Edition::Holographic) => self.apply_rule_effect(
                 score,
                 crate::RuleEffect::AddMult(10.0),
@@ -370,7 +378,11 @@ impl RunState {
         }
     }
 
-    pub(super) fn apply_joker_edition_after(&mut self, joker: &crate::JokerInstance, score: &mut Score) {
+    pub(super) fn apply_joker_edition_after(
+        &mut self,
+        joker: &crate::JokerInstance,
+        score: &mut Score,
+    ) {
         match joker.edition {
             Some(Edition::Polychrome) => self.apply_rule_effect(
                 score,
@@ -410,13 +422,7 @@ impl RunState {
                 .with_joker_index(snap.index);
             let card_mut = card_ref.as_deref_mut();
             self.apply_joker_effects_for_joker(
-                &mut joker,
-                trigger,
-                &ctx,
-                card_mut,
-                score,
-                money,
-                results,
+                &mut joker, trigger, &ctx, card_mut, score, money, results,
             );
             if !self.pending_joker_removals.contains(&snap.index) {
                 if let Some(slot) = self.inventory.jokers.get_mut(snap.index) {
@@ -754,8 +760,8 @@ impl RunState {
                         if self.inventory.jokers.is_empty() {
                             break;
                         }
-                        let idx = (self.rng.next_u64() % self.inventory.jokers.len() as u64)
-                            as usize;
+                        let idx =
+                            (self.rng.next_u64() % self.inventory.jokers.len() as u64) as usize;
                         let mut copy = self.inventory.jokers[idx].clone();
                         if copy.edition == Some(Edition::Negative) {
                             copy.edition = None;
@@ -828,13 +834,7 @@ impl RunState {
                             if target != index {
                                 let card_mut = card_mut.as_deref_mut();
                                 self.apply_joker_copy_from(
-                                    target,
-                                    trigger,
-                                    ctx,
-                                    card_mut,
-                                    score,
-                                    money,
-                                    results,
+                                    target, trigger, ctx, card_mut, score, money, results,
                                 );
                             }
                         }
@@ -845,13 +845,7 @@ impl RunState {
                         if Some(target) != ctx.joker_index {
                             let card_mut = card_mut.as_deref_mut();
                             self.apply_joker_copy_from(
-                                target,
-                                trigger,
-                                ctx,
-                                card_mut,
-                                score,
-                                money,
-                                results,
+                                target, trigger, ctx, card_mut, score, money, results,
                             );
                         }
                     }
@@ -1168,7 +1162,6 @@ impl RunState {
             self.upgrade_hand_level(kind, amount);
         }
     }
-
 }
 
 fn parse_pack_target(target: &str) -> Option<(crate::PackKind, crate::PackSize)> {

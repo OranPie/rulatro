@@ -1,11 +1,15 @@
-use crate::joker_dsl::{load_bosses_dsl, load_jokers_dsl, load_tags_dsl};
+use crate::joker_dsl::{
+    load_bosses_dsl_with_locale, load_jokers_dsl_with_locale, load_tags_dsl_with_locale,
+};
 use crate::schema::{
-    AnteRule, BlindRule, BossDef, ConsumableDef, Content, ContentPack, EconomyRule, GameConfig,
-    HandRule, JokerDef, RankRule, ShopRule, TagDef,
+    AnteRule, BlindRule, BossDef, ConsumableDef, ConsumableKind, Content, ContentPack, EconomyRule,
+    EffectBlock, GameConfig, HandRule, JokerDef, RankRule, ShopRule, TagDef,
 };
 use anyhow::{bail, Context};
+use rulatro_core::HandKind;
 use rulatro_modding::{FileSystemModLoader, LoadedMod};
 use serde::de::DeserializeOwned;
+use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
@@ -35,8 +39,12 @@ pub fn load_game_config(dir: &Path) -> anyhow::Result<GameConfig> {
 }
 
 pub fn load_content(dir: &Path) -> anyhow::Result<Content> {
+    load_content_with_locale(dir, None)
+}
+
+pub fn load_content_with_locale(dir: &Path, locale: Option<&str>) -> anyhow::Result<Content> {
     let base = dir.join("content");
-    load_content_dir(&base, false)
+    load_content_dir(&base, false, locale)
 }
 
 #[derive(Debug)]
@@ -53,11 +61,16 @@ pub fn load_mods(dir: &Path) -> anyhow::Result<Vec<LoadedMod>> {
         .map_err(|err| anyhow::anyhow!(err.to_string()))
 }
 
-pub fn load_content_with_mods(
+pub fn load_content_with_mods(assets_dir: &Path, mods_dir: &Path) -> anyhow::Result<ModLoadReport> {
+    load_content_with_mods_locale(assets_dir, mods_dir, None)
+}
+
+pub fn load_content_with_mods_locale(
     assets_dir: &Path,
     mods_dir: &Path,
+    locale: Option<&str>,
 ) -> anyhow::Result<ModLoadReport> {
-    let mut content = load_content(assets_dir)?;
+    let mut content = load_content_with_locale(assets_dir, locale)?;
     let mods = load_mods(mods_dir)?;
     if mods.is_empty() {
         return Ok(ModLoadReport {
@@ -74,7 +87,7 @@ pub fn load_content_with_mods(
         let Some(content_spec) = item.manifest.content.as_ref() else {
             continue;
         };
-        let mod_content = load_content_dir(&item.root.join(&content_spec.root), true)
+        let mod_content = load_content_dir(&item.root.join(&content_spec.root), true, locale)
             .with_context(|| format!("load mod content {}", item.manifest.meta.id))?;
         merge_content(
             &mut content,
@@ -91,10 +104,16 @@ pub fn load_content_with_mods(
     })
 }
 
-fn load_content_dir(base: &Path, allow_missing: bool) -> anyhow::Result<Content> {
+fn load_content_dir(
+    base: &Path,
+    allow_missing: bool,
+    locale: Option<&str>,
+) -> anyhow::Result<Content> {
+    let locale = normalize_locale(locale);
     let jokers_path = base.join("jokers.dsl");
     let jokers = if jokers_path.exists() {
-        load_jokers_dsl(&jokers_path).with_context(|| format!("parse {}", jokers_path.display()))?
+        load_jokers_dsl_with_locale(&jokers_path, Some(&locale))
+            .with_context(|| format!("parse {}", jokers_path.display()))?
     } else if allow_missing {
         Vec::new()
     } else {
@@ -103,7 +122,8 @@ fn load_content_dir(base: &Path, allow_missing: bool) -> anyhow::Result<Content>
 
     let bosses_path = base.join("bosses.dsl");
     let bosses = if bosses_path.exists() {
-        load_bosses_dsl(&bosses_path).with_context(|| format!("parse {}", bosses_path.display()))?
+        load_bosses_dsl_with_locale(&bosses_path, Some(&locale))
+            .with_context(|| format!("parse {}", bosses_path.display()))?
     } else if allow_missing {
         Vec::new()
     } else {
@@ -112,17 +132,18 @@ fn load_content_dir(base: &Path, allow_missing: bool) -> anyhow::Result<Content>
 
     let tags_path = base.join("tags.dsl");
     let tags = if tags_path.exists() {
-        load_tags_dsl(&tags_path).with_context(|| format!("parse {}", tags_path.display()))?
+        load_tags_dsl_with_locale(&tags_path, Some(&locale))
+            .with_context(|| format!("parse {}", tags_path.display()))?
     } else if allow_missing {
         Vec::new()
     } else {
         bail!("missing {}", tags_path.display());
     };
 
-    let tarots: Vec<ConsumableDef> = load_json_optional(&base.join("tarots.json"), allow_missing)?;
-    let planets: Vec<ConsumableDef> = load_json_optional(&base.join("planets.json"), allow_missing)?;
-    let spectrals: Vec<ConsumableDef> =
-        load_json_optional(&base.join("spectrals.json"), allow_missing)?;
+    let tarots = load_consumables_optional(&base.join("tarots.json"), allow_missing, &locale)?;
+    let planets = load_consumables_optional(&base.join("planets.json"), allow_missing, &locale)?;
+    let spectrals =
+        load_consumables_optional(&base.join("spectrals.json"), allow_missing, &locale)?;
 
     Ok(Content {
         jokers,
@@ -134,10 +155,23 @@ fn load_content_dir(base: &Path, allow_missing: bool) -> anyhow::Result<Content>
     })
 }
 
-fn load_json_optional<T: DeserializeOwned>(
+#[derive(Debug, Clone, Deserialize)]
+struct RawConsumableDef {
+    id: String,
+    name: String,
+    kind: ConsumableKind,
+    #[serde(default)]
+    hand: Option<HandKind>,
+    effects: Vec<EffectBlock>,
+    #[serde(default, alias = "i18n", alias = "locales")]
+    names: HashMap<String, String>,
+}
+
+fn load_consumables_optional(
     path: &Path,
     allow_missing: bool,
-) -> anyhow::Result<Vec<T>> {
+    locale: &str,
+) -> anyhow::Result<Vec<ConsumableDef>> {
     if !path.exists() {
         if allow_missing {
             return Ok(Vec::new());
@@ -145,8 +179,44 @@ fn load_json_optional<T: DeserializeOwned>(
         bail!("missing {}", path.display());
     }
     let raw = fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
-    let value = serde_json::from_str(&raw).with_context(|| format!("parse {}", path.display()))?;
-    Ok(value)
+    let mut values: Vec<RawConsumableDef> =
+        serde_json::from_str(&raw).with_context(|| format!("parse {}", path.display()))?;
+    Ok(values
+        .drain(..)
+        .map(|item| ConsumableDef {
+            id: item.id,
+            name: localize_name(&item.name, &item.names, locale),
+            kind: item.kind,
+            hand: item.hand,
+            effects: item.effects,
+        })
+        .collect())
+}
+
+fn localize_name(base: &str, names: &HashMap<String, String>, locale: &str) -> String {
+    let locale = normalize_locale(Some(locale));
+    if locale == "en_US" {
+        return base.to_string();
+    }
+    for (key, value) in names {
+        if normalize_locale(Some(key)) == locale {
+            return value.clone();
+        }
+    }
+    base.to_string()
+}
+
+pub fn normalize_locale(locale: Option<&str>) -> String {
+    let raw = locale.unwrap_or("en_US").trim();
+    if raw.is_empty() {
+        return "en_US".to_string();
+    }
+    let lowered = raw.replace('-', "_").to_ascii_lowercase();
+    match lowered.as_str() {
+        "zh" | "zh_cn" | "zh_hans" | "zh_hans_cn" => "zh_CN".to_string(),
+        "en" | "en_us" => "en_US".to_string(),
+        _ => raw.replace('-', "_"),
+    }
 }
 
 fn load_json<T: DeserializeOwned>(path: impl AsRef<Path>) -> anyhow::Result<T> {

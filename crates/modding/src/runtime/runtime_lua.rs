@@ -1,6 +1,6 @@
 use crate::{LoadedMod, ModError};
-use mlua::{Function, Lua, RegistryKey, Value};
 use mlua::LuaSerdeExt;
+use mlua::{Function, Lua, RegistryKey, Value};
 use rulatro_core::{ActivationType, ModEffectBlock, ModHookContext, ModHookResult};
 use serde::Deserialize;
 use std::cell::RefCell;
@@ -44,7 +44,10 @@ impl LuaRuntime {
                     )));
                 };
                 let key = lua.create_registry_value(func)?;
-                let mod_id: String = lua.globals().get("__rulatro_mod_id").unwrap_or_else(|_| "unknown".to_string());
+                let mod_id: String = lua
+                    .globals()
+                    .get("__rulatro_mod_id")
+                    .unwrap_or_else(|_| "unknown".to_string());
                 hooks_ref
                     .borrow_mut()
                     .entry(trigger)

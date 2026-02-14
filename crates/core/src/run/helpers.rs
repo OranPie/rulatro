@@ -21,9 +21,7 @@ pub(super) fn values_equal(left: &EvalValue, right: &EvalValue, smeared: bool) -
         (EvalValue::Num(a), EvalValue::Num(b)) => a == b,
         (EvalValue::Str(a), EvalValue::Str(b)) => {
             if smeared {
-                if let (Some(left_suit), Some(right_suit)) =
-                    (suit_from_str(a), suit_from_str(b))
-                {
+                if let (Some(left_suit), Some(right_suit)) = (suit_from_str(a), suit_from_str(b)) {
                     if matches!(left_suit, crate::Suit::Wild)
                         || matches!(right_suit, crate::Suit::Wild)
                     {
@@ -31,9 +29,9 @@ pub(super) fn values_equal(left: &EvalValue, right: &EvalValue, smeared: bool) -
                     }
                     return smeared_suit_group(left_suit) == smeared_suit_group(right_suit);
                 }
-            } else if let (Some(left_suit), Some(right_suit)) = (suit_from_str(a), suit_from_str(b)) {
-                if matches!(left_suit, crate::Suit::Wild)
-                    || matches!(right_suit, crate::Suit::Wild)
+            } else if let (Some(left_suit), Some(right_suit)) = (suit_from_str(a), suit_from_str(b))
+            {
+                if matches!(left_suit, crate::Suit::Wild) || matches!(right_suit, crate::Suit::Wild)
                 {
                     return true;
                 }
@@ -210,7 +208,10 @@ pub(super) fn consumable_kind_name(kind: crate::ConsumableKind) -> &'static str 
 }
 
 pub(super) fn is_face(card: Card) -> bool {
-    matches!(card.rank, crate::Rank::Jack | crate::Rank::Queen | crate::Rank::King)
+    matches!(
+        card.rank,
+        crate::Rank::Jack | crate::Rank::Queen | crate::Rank::King
+    )
 }
 
 pub(super) fn is_odd(card: Card) -> bool {
@@ -268,12 +269,24 @@ pub(super) fn count_matching(cards: &[Card], target: &str, smeared: bool) -> usi
     let target_norm = normalize(target);
     match target_norm.as_str() {
         "any" | "all" => cards.len(),
-        "face" => cards.iter().filter(|card| !card.is_stone() && is_face(**card)).count(),
-        "odd" => cards.iter().filter(|card| !card.is_stone() && is_odd(**card)).count(),
-        "even" => cards.iter().filter(|card| !card.is_stone() && is_even(**card)).count(),
+        "face" => cards
+            .iter()
+            .filter(|card| !card.is_stone() && is_face(**card))
+            .count(),
+        "odd" => cards
+            .iter()
+            .filter(|card| !card.is_stone() && is_odd(**card))
+            .count(),
+        "even" => cards
+            .iter()
+            .filter(|card| !card.is_stone() && is_even(**card))
+            .count(),
         "wild" => cards.iter().filter(|card| card.is_wild()).count(),
         "stone" => cards.iter().filter(|card| card.is_stone()).count(),
-        "enhanced" => cards.iter().filter(|card| card.enhancement.is_some()).count(),
+        "enhanced" => cards
+            .iter()
+            .filter(|card| card.enhancement.is_some())
+            .count(),
         "black" => cards
             .iter()
             .filter(|card| !card.is_stone() && is_black(**card))
@@ -290,8 +303,7 @@ pub(super) fn count_matching(cards: &[Card], target: &str, smeared: bool) -> usi
                         .iter()
                         .filter(|card| {
                             !card.is_stone()
-                                && (card.is_wild()
-                                    || smeared_suit_group(card.suit) == target_group)
+                                && (card.is_wild() || smeared_suit_group(card.suit) == target_group)
                         })
                         .count();
                 }
@@ -313,7 +325,10 @@ pub(super) fn count_matching(cards: &[Card], target: &str, smeared: bool) -> usi
                     .count();
             }
             if let Some(kind) = edition_from_str(&target_norm) {
-                return cards.iter().filter(|card| card.edition == Some(kind)).count();
+                return cards
+                    .iter()
+                    .filter(|card| card.edition == Some(kind))
+                    .count();
             }
             if let Some(kind) = seal_from_str(&target_norm) {
                 return cards.iter().filter(|card| card.seal == Some(kind)).count();
@@ -421,7 +436,10 @@ pub(super) fn hand_contains_kind(hand: crate::HandKind, target: crate::HandKind)
             Trips | FullHouse | Quads | FiveOfAKind | FlushHouse | FlushFive
         ),
         Straight => matches!(hand, Straight | StraightFlush | RoyalFlush),
-        Flush => matches!(hand, Flush | StraightFlush | RoyalFlush | FlushHouse | FlushFive),
+        Flush => matches!(
+            hand,
+            Flush | StraightFlush | RoyalFlush | FlushHouse | FlushFive
+        ),
         FullHouse => matches!(hand, FullHouse | FlushHouse),
         Quads => matches!(hand, Quads | FiveOfAKind | FlushFive),
         StraightFlush => matches!(hand, StraightFlush | RoyalFlush),

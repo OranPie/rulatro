@@ -10,32 +10,76 @@
     <header class="topbar">
       <div>
         <h1>Rulatro</h1>
-        <p class="subtitle">Web frontend (API connected)</p>
+        <p class="subtitle" data-i18n="subtitle">Web frontend (API connected)</p>
       </div>
-      <div class="status" id="status">
-        <div>Ante: <span data-field="ante">-</span></div>
-        <div>Blind: <span data-field="blind">-</span></div>
-        <div>Phase: <span data-field="phase">-</span></div>
-        <div>Money: <span data-field="money">-</span></div>
-        <div>Score: <span data-field="score">-</span> / <span data-field="target">-</span></div>
-        <div>Hands: <span data-field="hands_left">-</span></div>
-        <div>Discards: <span data-field="discards_left">-</span></div>
-        <div>Hand size: <span data-field="hand_size">-</span> / <span data-field="hand_size_base">-</span></div>
-        <div>Deck: <span data-field="deck_draw">-</span> / <span data-field="deck_discard">-</span></div>
-        <div>Skipped: <span data-field="blinds_skipped">-</span></div>
+      <div class="status-wrap">
+        <div class="status" id="status">
+          <div>Ante: <span data-field="ante">-</span></div>
+          <div>Blind: <span data-field="blind">-</span></div>
+          <div>Phase: <span data-field="phase">-</span></div>
+          <div>Money: <span data-field="money">-</span></div>
+          <div>Score: <span data-field="score">-</span> / <span data-field="target">-</span></div>
+          <div>Hands: <span data-field="hands_left">-</span></div>
+          <div>Discards: <span data-field="discards_left">-</span></div>
+          <div>Hand size: <span data-field="hand_size">-</span> / <span data-field="hand_size_base">-</span></div>
+          <div>Deck: <span data-field="deck_draw">-</span> / <span data-field="deck_discard">-</span></div>
+          <div>Skipped: <span data-field="blinds_skipped">-</span></div>
+        </div>
+        <div class="status-hint" id="status-hint">Next: Start blind.</div>
       </div>
     </header>
 
     <main class="layout">
-      <section class="panel">
+      <section class="panel span-12">
         <div class="panel-header">
-          <h2>Hand</h2>
+          <h2 data-i18n="controls_title">Controls</h2>
+        </div>
+        <div class="control-groups">
+          <div class="control-group">
+            <h3 data-i18n="blind_group">Blind</h3>
+            <div class="toolbar">
+              <button data-action="start" data-i18n="start_btn">Start Blind</button>
+              <button data-action="deal" data-i18n="deal_btn">Deal</button>
+              <button data-action="play" data-i18n="play_btn">Play Selected</button>
+              <button data-action="discard" data-i18n="discard_btn">Discard Selected</button>
+              <button data-action="clear_hand" data-i18n="clear_hand_btn">Clear Hand Selection</button>
+              <button data-action="skip_blind" data-i18n="skip_blind_btn">Skip Blind</button>
+              <button data-action="next_blind" data-i18n="next_blind_btn">Next Blind</button>
+            </div>
+          </div>
+          <div class="control-group">
+            <h3 data-i18n="shop_group">Shop &amp; Pack</h3>
+            <div class="toolbar">
+              <button data-action="enter_shop" data-i18n="enter_shop_btn">Enter Shop</button>
+              <button data-action="reroll" data-i18n="reroll_btn">Reroll</button>
+              <button data-action="buy_selected" data-i18n="buy_selected_btn">Buy Selected</button>
+              <button data-action="leave_shop" data-i18n="leave_shop_btn">Leave Shop</button>
+              <button data-action="toggle_quick_buy">Quick Buy: On</button>
+              <button data-action="pick_pack" data-i18n="pick_pack_btn">Pick Pack Selection</button>
+              <button data-action="skip_pack" data-i18n="skip_pack_btn">Skip Pack</button>
+              <button data-action="clear_pack" data-i18n="clear_pack_btn">Clear Pack Selection</button>
+            </div>
+          </div>
+          <div class="control-group">
+            <h3 data-i18n="system_group">Inventory &amp; System</h3>
+            <div class="toolbar">
+              <button data-action="use_consumable" data-i18n="use_consumable_btn">Use Consumable</button>
+              <button data-action="sell_joker" data-i18n="sell_joker_btn">Sell Joker</button>
+              <button data-action="undo_pending" data-i18n="undo_pending_btn">Undo Pending</button>
+              <button data-action="save_local" data-i18n="save_local_btn">Save Local</button>
+              <button data-action="load_local" data-i18n="load_local_btn">Load Local</button>
+              <button data-action="clear_local" data-i18n="clear_local_btn">Clear Local Save</button>
+              <button data-action="clear_log" data-i18n="clear_log_btn">Clear Log</button>
+              <button data-action="reset" data-i18n="reset_btn">Reset</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel span-7">
+        <div class="panel-header">
+          <h2 data-i18n="hand_title">Hand</h2>
           <div class="toolbar">
-            <button data-action="start">Start Blind</button>
-            <button data-action="deal">Deal</button>
-            <button data-action="play">Play Selected</button>
-            <button data-action="discard">Discard Selected</button>
-            <button data-action="clear_hand">Clear Selection</button>
             <label class="inline">
               Sort:
               <select id="sort-key">
@@ -51,23 +95,16 @@
         <div class="card-grid" id="hand"></div>
       </section>
 
-      <section class="panel">
+      <section class="panel span-5">
         <div class="panel-header">
-          <h2>Scoring</h2>
+          <h2 data-i18n="scoring_title">Scoring</h2>
         </div>
         <div class="score-panel" id="score-breakdown"></div>
       </section>
 
-      <section class="panel">
+      <section class="panel span-8">
         <div class="panel-header">
-          <h2>Shop</h2>
-          <div class="toolbar">
-            <button data-action="enter_shop">Enter Shop</button>
-            <button data-action="reroll">Reroll</button>
-            <button data-action="buy_selected">Buy Selected</button>
-            <button data-action="leave_shop">Leave Shop</button>
-            <button data-action="toggle_quick_buy">Quick Buy: On</button>
-          </div>
+          <h2 data-i18n="shop_title">Shop</h2>
         </div>
         <div class="panel-summary" id="shop-summary"></div>
         <div class="shop">
@@ -86,13 +123,9 @@
         </div>
       </section>
 
-      <section class="panel">
+      <section class="panel span-4">
         <div class="panel-header">
-          <h2>Inventory</h2>
-          <div class="toolbar">
-            <button data-action="use_consumable">Use Consumable</button>
-            <button data-action="sell_joker">Sell Joker</button>
-          </div>
+          <h2 data-i18n="inventory_title">Inventory</h2>
         </div>
         <div class="panel-summary" id="inv-summary"></div>
         <div class="inventory">
@@ -107,38 +140,36 @@
         </div>
       </section>
 
-      <section class="panel">
+      <section class="panel span-4">
         <div class="panel-header">
-          <h2>Pack</h2>
-          <div class="toolbar">
-            <button data-action="pick_pack">Pick Selected</button>
-            <button data-action="skip_pack">Skip Pack</button>
-            <button data-action="clear_pack">Clear Selection</button>
-          </div>
+          <h2 data-i18n="pack_title">Pack</h2>
         </div>
         <div class="panel-summary" id="pack-summary"></div>
         <div class="pack-options" id="pack-options"></div>
       </section>
 
-      <section class="panel">
+      <section class="panel span-4">
         <div class="panel-header">
-          <h2>Actions</h2>
-          <div class="toolbar">
-            <button data-action="next_blind">Next Blind</button>
-            <button data-action="skip_blind">Skip Blind</button>
-            <button data-action="reset">Reset</button>
-          </div>
+          <h2 data-i18n="run_data_title">Run Data</h2>
         </div>
         <div class="levels" id="levels"></div>
         <div class="tags" id="tags"></div>
       </section>
 
-      <section class="panel">
+      <section class="panel span-4">
         <div class="panel-header">
-          <h2>Reference</h2>
+          <h2 data-i18n="log_title">Log</h2>
+        </div>
+        <div class="panel-summary" id="log-summary"></div>
+        <div class="log" id="log"></div>
+      </section>
+
+      <section class="panel span-8">
+        <div class="panel-header">
+          <h2 data-i18n="reference_title">Reference</h2>
         </div>
         <div class="reference">
-          <details open>
+          <details>
             <summary>Enhancements / Seals / Editions</summary>
             <div>
               <strong>Enhancements:</strong>
@@ -178,17 +209,6 @@
             </div>
           </details>
         </div>
-      </section>
-
-      <section class="panel">
-        <div class="panel-header">
-          <h2>Log</h2>
-          <div class="toolbar">
-            <button data-action="clear_log">Clear Log</button>
-          </div>
-        </div>
-        <div class="panel-summary" id="log-summary"></div>
-        <div class="log" id="log"></div>
       </section>
     </main>
     <div class="toast-area" id="toast-area"></div>

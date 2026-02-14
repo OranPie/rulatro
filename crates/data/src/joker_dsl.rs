@@ -1,22 +1,32 @@
 use anyhow::{anyhow, bail, Context, Result};
 use rulatro_core::{
-    Action, ActionOp, ActivationType, BinaryOp, BossDef, Expr, JokerDef, JokerEffect,
-    JokerRarity, TagDef, UnaryOp,
+    Action, ActionOp, ActivationType, BinaryOp, BossDef, Expr, JokerDef, JokerEffect, JokerRarity,
+    TagDef, UnaryOp,
 };
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
+#[allow(dead_code)]
 pub fn load_jokers_dsl(path: &Path) -> Result<Vec<JokerDef>> {
-    let raw = fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
-    let expanded = expand_templates(&raw)?;
-    parse_jokers(&expanded)
+    load_jokers_dsl_with_locale(path, None)
 }
 
-pub fn load_bosses_dsl(path: &Path) -> Result<Vec<BossDef>> {
+pub fn load_jokers_dsl_with_locale(path: &Path, locale: Option<&str>) -> Result<Vec<JokerDef>> {
     let raw = fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
     let expanded = expand_templates(&raw)?;
-    parse_named_defs(&expanded, "boss").map(|defs| {
+    parse_jokers(&expanded, locale)
+}
+
+#[allow(dead_code)]
+pub fn load_bosses_dsl(path: &Path) -> Result<Vec<BossDef>> {
+    load_bosses_dsl_with_locale(path, None)
+}
+
+pub fn load_bosses_dsl_with_locale(path: &Path, locale: Option<&str>) -> Result<Vec<BossDef>> {
+    let raw = fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
+    let expanded = expand_templates(&raw)?;
+    parse_named_defs(&expanded, "boss", locale).map(|defs| {
         defs.into_iter()
             .map(|def| BossDef {
                 id: def.id,
@@ -27,10 +37,15 @@ pub fn load_bosses_dsl(path: &Path) -> Result<Vec<BossDef>> {
     })
 }
 
+#[allow(dead_code)]
 pub fn load_tags_dsl(path: &Path) -> Result<Vec<TagDef>> {
+    load_tags_dsl_with_locale(path, None)
+}
+
+pub fn load_tags_dsl_with_locale(path: &Path, locale: Option<&str>) -> Result<Vec<TagDef>> {
     let raw = fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
     let expanded = expand_templates(&raw)?;
-    parse_named_defs(&expanded, "tag").map(|defs| {
+    parse_named_defs(&expanded, "tag", locale).map(|defs| {
         defs.into_iter()
             .map(|def| TagDef {
                 id: def.id,
@@ -134,10 +149,14 @@ fn parse_template_header(line: &str) -> Result<(String, Vec<String>, String)> {
         .strip_prefix("template")
         .ok_or_else(|| anyhow!("missing template keyword"))?
         .trim();
-    let name_end = rest.find('(').ok_or_else(|| anyhow!("template missing '('"))?;
+    let name_end = rest
+        .find('(')
+        .ok_or_else(|| anyhow!("template missing '('"))?;
     let name = rest[..name_end].trim().to_string();
     let rest = &rest[name_end + 1..];
-    let params_end = rest.find(')').ok_or_else(|| anyhow!("template missing ')'"))?;
+    let params_end = rest
+        .find(')')
+        .ok_or_else(|| anyhow!("template missing ')'"))?;
     let params_str = rest[..params_end].trim();
     let params = split_args(params_str)
         .into_iter()
@@ -165,19 +184,19 @@ fn parse_use(line: &str) -> Result<(String, Vec<String>)> {
     Ok((name, split_args(args_str)))
 }
 
-fn parse_jokers(src: &str) -> Result<Vec<JokerDef>> {
+fn parse_jokers(src: &str, locale: Option<&str>) -> Result<Vec<JokerDef>> {
     let blocks = parse_blocks(src, "joker")?;
     let mut jokers = Vec::new();
     for block in blocks {
         if block.tokens.len() < 4 {
             bail!("joker header missing id/name/rarity");
         }
-        let id = token_to_string(block.tokens.get(1))
-            .ok_or_else(|| anyhow!("joker id missing"))?;
-        let name = token_to_string(block.tokens.get(2))
-            .ok_or_else(|| anyhow!("joker name missing"))?;
-        let rarity_str = token_to_string(block.tokens.get(3))
-            .ok_or_else(|| anyhow!("joker rarity missing"))?;
+        let id = token_to_string(block.tokens.get(1)).ok_or_else(|| anyhow!("joker id missing"))?;
+        let name =
+            token_to_string(block.tokens.get(2)).ok_or_else(|| anyhow!("joker name missing"))?;
+        let name = resolve_localized_name(name, &block.body, locale)?;
+        let rarity_str =
+            token_to_string(block.tokens.get(3)).ok_or_else(|| anyhow!("joker rarity missing"))?;
         let rarity = parse_rarity(&rarity_str)?;
         let effects = parse_effects(&block.body)?;
         jokers.push(JokerDef {
@@ -190,7 +209,7 @@ fn parse_jokers(src: &str) -> Result<Vec<JokerDef>> {
     Ok(jokers)
 }
 
-fn parse_named_defs(src: &str, keyword: &str) -> Result<Vec<NamedDef>> {
+fn parse_named_defs(src: &str, keyword: &str, locale: Option<&str>) -> Result<Vec<NamedDef>> {
     let blocks = parse_blocks(src, keyword)?;
     let mut defs = Vec::new();
     for block in blocks {
@@ -201,10 +220,74 @@ fn parse_named_defs(src: &str, keyword: &str) -> Result<Vec<NamedDef>> {
             .ok_or_else(|| anyhow!("{} id missing", keyword))?;
         let name = token_to_string(block.tokens.get(2))
             .ok_or_else(|| anyhow!("{} name missing", keyword))?;
+        let name = resolve_localized_name(name, &block.body, locale)?;
         let effects = parse_effects(&block.body)?;
         defs.push(NamedDef { id, name, effects });
     }
     Ok(defs)
+}
+
+fn resolve_localized_name(base_name: String, body: &str, locale: Option<&str>) -> Result<String> {
+    let Some(locale) = locale else {
+        return Ok(base_name);
+    };
+    let locale = normalize_locale_key(locale);
+    if locale == "en_US" {
+        return Ok(base_name);
+    }
+    let overrides = parse_name_overrides(body)?;
+    Ok(overrides.get(&locale).cloned().unwrap_or(base_name))
+}
+
+fn parse_name_overrides(body: &str) -> Result<HashMap<String, String>> {
+    let mut map = HashMap::new();
+    for raw_line in body.lines() {
+        let clean = strip_comments(raw_line);
+        let line = clean.trim();
+        if line.is_empty() {
+            continue;
+        }
+        if line.starts_with("on ") {
+            continue;
+        }
+        if line.starts_with("i18n ") {
+            let tokens = tokenize_simple(line)?;
+            if tokens.len() < 3 {
+                bail!(
+                    "invalid i18n line '{}': expected i18n <locale> \"<name>\"",
+                    line
+                );
+            }
+            let locale =
+                token_to_string(tokens.get(1)).ok_or_else(|| anyhow!("i18n locale missing"))?;
+            let value =
+                token_to_string(tokens.get(2)).ok_or_else(|| anyhow!("i18n name missing"))?;
+            map.insert(normalize_locale_key(&locale), value);
+            continue;
+        }
+        if let Some((prefix, value_part)) = line.split_once(char::is_whitespace) {
+            if let Some(locale) = prefix.strip_prefix("name.") {
+                let value_tokens = tokenize_simple(value_part.trim())?;
+                let value = token_to_string(value_tokens.get(0))
+                    .ok_or_else(|| anyhow!("localized name missing"))?;
+                map.insert(normalize_locale_key(locale), value);
+            }
+        }
+    }
+    Ok(map)
+}
+
+fn normalize_locale_key(input: &str) -> String {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return "en_US".to_string();
+    }
+    let lowered = trimmed.replace('-', "_").to_ascii_lowercase();
+    match lowered.as_str() {
+        "zh" | "zh_cn" | "zh_hans" | "zh_hans_cn" => "zh_CN".to_string(),
+        "en" | "en_us" => "en_US".to_string(),
+        _ => trimmed.replace('-', "_"),
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -334,8 +417,8 @@ fn parse_actions(input: &str) -> Result<Vec<Action>> {
         }
         let mut iter = piece.splitn(2, char::is_whitespace);
         let op_str = iter.next().unwrap_or_default();
-        let op = ActionOp::from_keyword(op_str)
-            .ok_or_else(|| anyhow!("unknown action '{}'", op_str))?;
+        let op =
+            ActionOp::from_keyword(op_str).ok_or_else(|| anyhow!("unknown action '{}'", op_str))?;
         let expr_str = iter.next().unwrap_or("1").trim();
         if op.requires_target() {
             let mut arg_iter = expr_str.splitn(2, char::is_whitespace);
@@ -393,12 +476,16 @@ fn parse_trigger(input: &str) -> Result<ActivationType> {
         "card_added" | "cardadded" | "deck_added" | "deckadded" => Ok(ActivationType::OnCardAdded),
         "round_end" | "roundend" => Ok(ActivationType::OnRoundEnd),
         "hand_end" | "handend" | "hand_scored" | "handscored" => Ok(ActivationType::OnHandEnd),
-        "blind_start" | "blindstart" | "blind_selected" | "blindselect" => Ok(ActivationType::OnBlindStart),
+        "blind_start" | "blindstart" | "blind_selected" | "blindselect" => {
+            Ok(ActivationType::OnBlindStart)
+        }
         "blind_failed" | "blindfail" | "blind_fail" => Ok(ActivationType::OnBlindFailed),
         "shop_enter" | "shopenter" | "shop_start" | "shopstart" => Ok(ActivationType::OnShopEnter),
         "shop_reroll" | "shopreroll" => Ok(ActivationType::OnShopReroll),
         "shop_exit" | "shopexit" | "shop_end" | "shopend" => Ok(ActivationType::OnShopExit),
-        "pack_opened" | "packopen" | "pack_open" | "booster_opened" => Ok(ActivationType::OnPackOpened),
+        "pack_opened" | "packopen" | "pack_open" | "booster_opened" => {
+            Ok(ActivationType::OnPackOpened)
+        }
         "pack_skipped" | "pack_skip" | "booster_skipped" => Ok(ActivationType::OnPackSkipped),
         "use" => Ok(ActivationType::OnUse),
         "sell" | "sold" => Ok(ActivationType::OnSell),

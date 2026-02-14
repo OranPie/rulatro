@@ -239,5 +239,4 @@ impl RunState {
         let capped = steps.min(cap_steps);
         capped * economy.interest_per
     }
-
 }

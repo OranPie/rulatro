@@ -71,7 +71,10 @@ impl FileSystemModLoader {
                 return Err(ModError::DuplicateMod(item.manifest.meta.id.clone()));
             }
         }
-        let ids: HashSet<String> = mods.iter().map(|item| item.manifest.meta.id.clone()).collect();
+        let ids: HashSet<String> = mods
+            .iter()
+            .map(|item| item.manifest.meta.id.clone())
+            .collect();
         for item in &mods {
             for dep in &item.manifest.dependencies {
                 if !ids.contains(&dep.id) {
@@ -88,8 +91,8 @@ impl FileSystemModLoader {
 
 fn load_manifest(path: &Path) -> Result<ModManifest, ModError> {
     let raw = fs::read_to_string(path)?;
-    let manifest: ModManifest = serde_json::from_str(&raw)
-        .map_err(|err| ModError::InvalidManifest(err.to_string()))?;
+    let manifest: ModManifest =
+        serde_json::from_str(&raw).map_err(|err| ModError::InvalidManifest(err.to_string()))?;
     Ok(manifest)
 }
 
