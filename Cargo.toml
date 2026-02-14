@@ -4,6 +4,7 @@ members = [
   "crates/data",
   "crates/modding",
   "crates/cli",
+  "crates/cui",
   "crates/web",
 ]
 resolver = "2"

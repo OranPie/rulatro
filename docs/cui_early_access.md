@@ -11,6 +11,36 @@ From repo root:
 cargo run -p rulatro-cli
 ```
 
+Improved interactive CUI package (panel layout + keyboard actions):
+
+```
+cargo run -p rulatro-cui
+```
+
+Launch the CUI through the CLI entrypoint:
+
+```
+cargo run -p rulatro-cli -- --cui
+```
+
+With locale and seed:
+
+```
+cargo run -p rulatro-cui -- --lang zh_CN --seed 12345
+```
+
+Menu-driven CUI mode (numbered actions, no command memorization):
+
+```
+cargo run -p rulatro-cli -- --menu
+```
+
+Run in Simplified Chinese UI/content names:
+
+```
+cargo run -p rulatro-cli -- --lang zh_CN
+```
+
 For an automated demo (no input):
 
 ```
@@ -29,6 +59,8 @@ cargo run -p rulatro-cli -- --auto
 ## Commands
 
 - `help` — show command list
+- `save [path]` — save run progression to local JSON (default path from `$RULATRO_SAVE` or `~/.rulatro_cli_state.json`)
+- `load [path]` — load local JSON and replay actions
 - `state` — print run state
 - `hand` — show current hand with indices
 - `deck` — draw/discard sizes
@@ -56,5 +88,20 @@ cargo run -p rulatro-cli -- --auto
 ## Notes
 
 - The CUI uses current content/config and the hook system, so any DSL changes are reflected.
+- `rulatro-cui` uses a panel interface with focus switching (`Tab`), selection (`Space`), and context action (`Enter`).
+- Shortcut highlights: `d` deal, `p` play, `x` discard, `s` shop, `b` buy, `r` reroll, `u` use consumable, `v` sell joker, `n` next blind.
+- `rulatro-cui` quick persistence: `Shift+S` / `Ctrl+S` save and `Shift+L` / `Ctrl+L` load open a path prompt (empty input uses `$RULATRO_SAVE` or `~/.rulatro_cli_state.json`).
+- Locale can be set via `--lang zh_CN` (or `RULATRO_LANG=zh_CN`).
+- Interactive input supports command history (`↑`/`↓`) and completion (`Tab` for commands, plus `buy`/`peek` subcommands).
+- `--menu` enables a guided CUI menu that prints context-aware numbered actions and still accepts direct commands.
+- In `zh_CN`, command feedback/events/status tables are localized for daily play (commands/DSL keywords remain English by design).
+- Save file schema uses action-log replay (deterministic seed), so it remains robust across minor internal state changes.
+- Save file includes run seed; `load` restores the same seed before replaying actions.
+- Save file includes content signature (assets/mods fingerprint); `load` verifies signature before replay.
+- DSL name localization is supported in `jokers.dsl`, `bosses.dsl`, and `tags.dsl`:
+  - `i18n zh_CN "名称"`
+  - `name.zh_CN "名称"`
+- JSON consumables (`tarots.json`, `planets.json`, `spectrals.json`) support:
+  - `"names": { "zh_CN": "名称" }`
 - Some actions require a specific phase; the CLI prints errors when used at the wrong time.
 - The output includes events to help validate gameplay flow.

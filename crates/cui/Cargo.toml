@@ -1,12 +1,13 @@
 [package]
-name = "rulatro-cli"
+name = "rulatro-cui"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-libc = "0.2"
+anyhow = "1"
+crossterm = "0.29"
+ratatui = "0.29"
 rulatro-core = { path = "../core" }
-rulatro-cui = { path = "../cui" }
 rulatro-data = { path = "../data" }
 rulatro-modding = { path = "../modding" }
 serde = { version = "1", features = ["derive"] }
