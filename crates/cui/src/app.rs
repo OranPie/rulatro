@@ -4,8 +4,8 @@ use crate::persistence::{
 use anyhow::{Context, Result};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use rulatro_core::{
-    BlindKind, BlindOutcome, Card, ConsumableKind, Event, EventBus, PackOpen, PackOption, Phase,
-    RunError, RunState, ShopOfferRef, ShopPurchase,
+    BlindKind, BlindOutcome, Card, ConsumableKind, Edition, Enhancement, Event, EventBus, PackOpen,
+    PackOption, Phase, RunError, RunState, ScoreBreakdown, Seal, ShopOfferRef, ShopPurchase,
 };
 use rulatro_data::{load_content_with_mods_locale, load_game_config, normalize_locale};
 use rulatro_modding::ModManager;
@@ -118,7 +118,11 @@ fn build_run_with_seed(locale: UiLocale, seed: u64) -> Result<(RunState, String,
         compute_content_signature(locale.code()).unwrap_or_else(|_| String::new());
     let mut startup_notes = Vec::new();
     if !modded.mods.is_empty() {
-        startup_notes.push(format!("mods loaded: {}", modded.mods.len()));
+        startup_notes.push(format!(
+            "{}: {}",
+            locale.text("mods loaded", "已加载模组"),
+            modded.mods.len()
+        ));
         for item in &modded.mods {
             startup_notes.push(format!(
                 "  - {} {}",
@@ -127,7 +131,7 @@ fn build_run_with_seed(locale: UiLocale, seed: u64) -> Result<(RunState, String,
         }
     }
     for warning in &modded.warnings {
-        startup_notes.push(format!("warning: {warning}"));
+        startup_notes.push(format!("{}: {warning}", locale.text("warning", "警告")));
     }
     Ok((run, content_signature, startup_notes))
 }
@@ -152,7 +156,7 @@ impl App {
             selected_hand: BTreeSet::new(),
             selected_pack: BTreeSet::new(),
             event_log: VecDeque::new(),
-            status_line: locale.text("ready", "ready").to_string(),
+            status_line: locale.text("ready", "已就绪").to_string(),
             show_help: false,
             path_prompt_mode: None,
             path_prompt_input: String::new(),
@@ -177,16 +181,32 @@ impl App {
 
     pub fn focus_label(&self, pane: FocusPane) -> &'static str {
         match pane {
-            FocusPane::Hand => self.locale.text("Hand", "Hand"),
+            FocusPane::Hand => self.locale.text("Hand", "手牌"),
             FocusPane::Shop => {
                 if self.open_pack.is_some() {
-                    self.locale.text("Pack", "Pack")
+                    self.locale.text("Pack", "卡包")
                 } else {
-                    self.locale.text("Shop", "Shop")
+                    self.locale.text("Shop", "商店")
                 }
             }
-            FocusPane::Inventory => self.locale.text("Inventory", "Inventory"),
-            FocusPane::Events => self.locale.text("Events", "Events"),
+            FocusPane::Inventory => self.locale.text("Inventory", "库存"),
+            FocusPane::Events => self.locale.text("Events", "事件"),
+        }
+    }
+
+    pub fn phase_label(&self, phase: Phase) -> &'static str {
+        phase_label(self.locale, phase)
+    }
+
+    pub fn blind_label(&self, blind: BlindKind) -> &'static str {
+        blind_label(self.locale, blind)
+    }
+
+    pub fn blind_outcome_label(&self) -> &'static str {
+        match self.run.blind_outcome() {
+            Some(BlindOutcome::Cleared) => self.locale.text("Cleared", "已通过"),
+            Some(BlindOutcome::Failed) => self.locale.text("Failed", "失败"),
+            None => self.locale.text("In Progress", "进行中"),
         }
     }
 
@@ -257,7 +277,7 @@ impl App {
         if self.open_pack.is_some() {
             return self
                 .locale
-                .text("select pack options", "select pack options")
+                .text("select pack options", "选择卡包选项")
                 .to_string();
         }
         if let Some(outcome) = self.run.blind_outcome() {
@@ -265,29 +285,29 @@ impl App {
                 BlindOutcome::Cleared => {
                     if self.run.state.phase == Phase::Shop {
                         self.locale
-                            .text("buy/reroll/leave", "buy/reroll/leave")
+                            .text("buy/reroll/leave", "购买/刷新/离开")
                             .to_string()
                     } else {
                         self.locale
-                            .text("enter shop or next", "enter shop or next")
+                            .text("enter shop or next", "进商店或下一盲注")
                             .to_string()
                     }
                 }
                 BlindOutcome::Failed => self
                     .locale
-                    .text("start next blind", "start next blind")
+                    .text("start next blind", "开始下一盲注")
                     .to_string(),
             };
         }
         match self.run.state.phase {
-            Phase::Deal => self.locale.text("deal", "deal").to_string(),
-            Phase::Play => self.locale.text("play/discard", "play/discard").to_string(),
+            Phase::Deal => self.locale.text("deal", "发牌").to_string(),
+            Phase::Play => self.locale.text("play/discard", "出牌/弃牌").to_string(),
             Phase::Shop => self
                 .locale
-                .text("buy/reroll/leave", "buy/reroll/leave")
+                .text("buy/reroll/leave", "购买/刷新/离开")
                 .to_string(),
             Phase::Setup | Phase::Score | Phase::Cleanup => {
-                self.locale.text("next blind", "next blind").to_string()
+                self.locale.text("next blind", "下一盲注").to_string()
             }
         }
     }
@@ -309,17 +329,51 @@ impl App {
             return rows;
         };
         for (idx, card) in shop.cards.iter().enumerate() {
+            let item_name = match card.kind {
+                rulatro_core::ShopCardKind::Joker => self.find_joker_name(&card.item_id),
+                rulatro_core::ShopCardKind::Tarot => {
+                    self.find_consumable_name(ConsumableKind::Tarot, &card.item_id)
+                }
+                rulatro_core::ShopCardKind::Planet => {
+                    self.find_consumable_name(ConsumableKind::Planet, &card.item_id)
+                }
+            };
+            let rarity = card
+                .rarity
+                .map(|value| format!("{value:?}"))
+                .unwrap_or_else(|| "-".to_string());
+            let edition = card
+                .edition
+                .map(edition_short)
+                .unwrap_or_else(|| "-".to_string());
             rows.push(ShopRow {
                 offer: ShopOfferRef::Card(idx),
-                label: format!("C{idx} {:?} {} ${}", card.kind, card.item_id, card.price),
+                label: format!(
+                    "C{idx} {} {} ({}) {} ${} {} {} {} {}",
+                    shop_card_kind_label(self.locale, card.kind),
+                    card.item_id,
+                    item_name,
+                    self.locale.text("price", "价格"),
+                    card.price,
+                    self.locale.text("rarity", "稀有度"),
+                    rarity,
+                    self.locale.text("edition", "版本"),
+                    edition
+                ),
             });
         }
         for (idx, pack) in shop.packs.iter().enumerate() {
             rows.push(ShopRow {
                 offer: ShopOfferRef::Pack(idx),
                 label: format!(
-                    "P{idx} {:?}/{:?} opt:{} pick:{} ${}",
-                    pack.kind, pack.size, pack.options, pack.picks, pack.price
+                    "P{idx} {:?}/{:?} {}:{} {}:{} ${}",
+                    pack.kind,
+                    pack.size,
+                    self.locale.text("options", "选项"),
+                    pack.options,
+                    self.locale.text("pick", "可选"),
+                    pack.picks,
+                    pack.price
                 ),
             });
         }
@@ -328,7 +382,7 @@ impl App {
                 offer: ShopOfferRef::Voucher(idx),
                 label: format!(
                     "V{idx} {} ${}",
-                    self.locale.text("voucher", "voucher"),
+                    self.locale.text("voucher", "优惠券"),
                     self.run.config.shop.prices.voucher
                 ),
             });
@@ -339,19 +393,38 @@ impl App {
     pub fn inventory_rows(&self) -> Vec<InventoryRow> {
         let mut rows = Vec::new();
         for (idx, joker) in self.run.inventory.jokers.iter().enumerate() {
+            let edition = joker
+                .edition
+                .map(edition_short)
+                .unwrap_or_else(|| "-".to_string());
             rows.push(InventoryRow {
                 kind: InventoryRowKind::Joker(idx),
-                label: format!("J{idx} {} ({})", joker.id, self.find_joker_name(&joker.id)),
+                label: format!(
+                    "J{idx} {} ({}) {} {:?} {} {}",
+                    joker.id,
+                    self.find_joker_name(&joker.id),
+                    self.locale.text("rarity", "稀有度"),
+                    joker.rarity,
+                    self.locale.text("edition", "版本"),
+                    edition
+                ),
             });
         }
         for (idx, item) in self.run.inventory.consumables.iter().enumerate() {
+            let edition = item
+                .edition
+                .map(edition_short)
+                .unwrap_or_else(|| "-".to_string());
             rows.push(InventoryRow {
                 kind: InventoryRowKind::Consumable(idx),
                 label: format!(
-                    "C{idx} {} ({}) {:?}",
+                    "C{idx} {} ({}) {} {} {} {}",
                     item.id,
                     self.find_consumable_name(item.kind, &item.id),
-                    item.kind
+                    self.locale.text("type", "类型"),
+                    consumable_kind_label(self.locale, item.kind),
+                    self.locale.text("edition", "版本"),
+                    edition
                 ),
             });
         }
@@ -418,7 +491,7 @@ impl App {
             KeyCode::Esc => {
                 self.path_prompt_mode = None;
                 self.path_prompt_input.clear();
-                self.push_status("path prompt cancelled");
+                self.push_status(self.locale.text("path prompt cancelled", "已取消路径输入"));
             }
             KeyCode::Enter => {
                 let resolved =
@@ -426,7 +499,7 @@ impl App {
                 self.path_prompt_mode = None;
                 self.path_prompt_input.clear();
                 let Ok(path) = resolved else {
-                    self.push_status("save path unavailable");
+                    self.push_status(self.locale.text("save path unavailable", "保存路径不可用"));
                     return true;
                 };
                 match mode {
@@ -458,11 +531,16 @@ impl App {
             &path,
         ) {
             Ok(_) => self.push_status(format!(
-                "saved {} actions to {}",
+                "{} {} {} {}",
+                self.locale.text("saved", "已保存"),
                 self.recorded_actions.len(),
+                self.locale.text("actions to", "条动作到"),
                 path.display()
             )),
-            Err(err) => self.push_status(format!("save failed: {err}")),
+            Err(err) => self.push_status(format!(
+                "{}: {err}",
+                self.locale.text("save failed", "保存失败")
+            )),
         }
     }
 
@@ -470,7 +548,10 @@ impl App {
         let saved = match load_state_file(&path) {
             Ok(saved) => saved,
             Err(err) => {
-                self.push_status(format!("load failed: {err}"));
+                self.push_status(format!(
+                    "{}: {err}",
+                    self.locale.text("load failed", "读取失败")
+                ));
                 return;
             }
         };
@@ -478,20 +559,32 @@ impl App {
             match build_run_with_seed(self.locale, saved.seed) {
                 Ok(bundle) => bundle,
                 Err(err) => {
-                    self.push_status(format!("load failed: {err}"));
+                    self.push_status(format!(
+                        "{}: {err}",
+                        self.locale.text("load failed", "读取失败")
+                    ));
                     return;
                 }
             };
         if !saved.content_signature.is_empty() && saved.content_signature != restored_signature {
             self.push_status(format!(
-                "load failed: content signature mismatch (saved={} current={})",
-                saved.content_signature, restored_signature
+                "{}: {} ({}={} {}={})",
+                self.locale.text("load failed", "读取失败"),
+                self.locale
+                    .text("content signature mismatch", "内容签名不一致"),
+                self.locale.text("saved", "存档"),
+                saved.content_signature,
+                self.locale.text("current", "当前"),
+                restored_signature
             ));
             return;
         }
         let mut restored_events = EventBus::default();
         if let Err(err) = restored_run.start_blind(1, BlindKind::Small, &mut restored_events) {
-            self.push_status(format!("load failed: {err}"));
+            self.push_status(format!(
+                "{}: {err}",
+                self.locale.text("load failed", "读取失败")
+            ));
             return;
         }
         let mut restored_open_pack: Option<PackOpen> = None;
@@ -502,7 +595,10 @@ impl App {
                 &mut restored_open_pack,
                 action,
             ) {
-                self.push_status(format!("load failed: {err}"));
+                self.push_status(format!(
+                    "{}: {err}",
+                    self.locale.text("load failed", "读取失败")
+                ));
                 return;
             }
         }
@@ -515,8 +611,10 @@ impl App {
         self.clear_selection();
         self.normalize_cursors();
         self.push_status(format!(
-            "loaded {} actions from {}",
+            "{} {} {} {}",
+            self.locale.text("loaded", "已读取"),
             self.recorded_actions.len(),
+            self.locale.text("actions from", "条动作自"),
             path.display()
         ));
         self.flush_events();
@@ -578,7 +676,7 @@ impl App {
     pub fn deal(&mut self) {
         match self.run.prepare_hand(&mut self.events) {
             Ok(_) => {
-                self.push_status(self.locale.text("dealt hand", "dealt hand"));
+                self.push_status(self.locale.text("dealt hand", "已发牌"));
                 self.record_action("deal", Vec::new(), None);
             }
             Err(err) => self.push_error(err),
@@ -590,17 +688,20 @@ impl App {
     pub fn play_selected(&mut self) {
         let indices = self.selected_hand_indices();
         if indices.is_empty() {
-            self.push_status(self.locale.text("no card selected", "no card selected"));
+            self.push_status(self.locale.text("no card selected", "未选择卡牌"));
             return;
         }
         match self.run.play_hand(&indices, &mut self.events) {
             Ok(breakdown) => {
                 self.push_status(format!(
-                    "{} {:?} = {}",
-                    self.locale.text("played", "played"),
+                    "{} {}: {:?}={} {}",
+                    self.locale.text("played", "已出牌"),
+                    self.locale.text("result", "结果"),
                     breakdown.hand,
-                    breakdown.total.total()
+                    breakdown.total.total(),
+                    self.locale.text("points", "分")
                 ));
+                self.push_breakdown_lines(&breakdown);
                 self.record_action("play", indices, None);
                 self.selected_hand.clear();
             }
@@ -613,13 +714,13 @@ impl App {
     pub fn discard_selected(&mut self) {
         let indices = self.selected_hand_indices();
         if indices.is_empty() {
-            self.push_status(self.locale.text("no card selected", "no card selected"));
+            self.push_status(self.locale.text("no card selected", "未选择卡牌"));
             return;
         }
         let result = self.run.discard(&indices, &mut self.events);
         match result {
             Ok(_) => {
-                self.push_status(self.locale.text("discarded", "discarded"));
+                self.push_status(self.locale.text("discarded", "已弃牌"));
                 self.record_action("discard", indices, None);
             }
             Err(err) => self.push_error(err),
@@ -634,7 +735,7 @@ impl App {
         let result = self.run.skip_blind(&mut self.events);
         match result {
             Ok(_) => {
-                self.push_status(self.locale.text("blind skipped", "blind skipped"));
+                self.push_status(self.locale.text("blind skipped", "已跳过盲注"));
                 self.record_action("skip_blind", Vec::new(), None);
             }
             Err(err) => self.push_error(err),
@@ -649,7 +750,7 @@ impl App {
         let result = self.run.start_next_blind(&mut self.events);
         match result {
             Ok(_) => {
-                self.push_status(self.locale.text("started next blind", "started next blind"));
+                self.push_status(self.locale.text("started next blind", "已开始下一盲注"));
                 self.record_action("next_blind", Vec::new(), None);
             }
             Err(err) => self.push_error(err),
@@ -663,7 +764,7 @@ impl App {
         if self.run.state.phase == Phase::Shop {
             self.run.leave_shop();
             self.open_pack = None;
-            self.push_status(self.locale.text("left shop", "left shop"));
+            self.push_status(self.locale.text("left shop", "已离开商店"));
             self.record_action("leave_shop", Vec::new(), None);
             self.flush_events();
             self.normalize_cursors();
@@ -672,7 +773,7 @@ impl App {
         let result = self.run.enter_shop(&mut self.events);
         match result {
             Ok(_) => {
-                self.push_status(self.locale.text("entered shop", "entered shop"));
+                self.push_status(self.locale.text("entered shop", "已进入商店"));
                 self.record_action("enter_shop", Vec::new(), None);
             }
             Err(err) => self.push_error(err),
@@ -686,7 +787,7 @@ impl App {
         let result = self.run.reroll_shop(&mut self.events);
         match result {
             Ok(_) => {
-                self.push_status(self.locale.text("shop rerolled", "shop rerolled"));
+                self.push_status(self.locale.text("shop rerolled", "商店已刷新"));
                 self.record_action("reroll", Vec::new(), None);
             }
             Err(err) => self.push_error(err),
@@ -697,17 +798,14 @@ impl App {
 
     pub fn buy_selected_offer(&mut self) {
         if self.open_pack.is_some() {
-            self.push_status(self.locale.text(
-                "pack is open, pick/skip first",
-                "pack is open, pick/skip first",
-            ));
+            self.push_status(
+                self.locale
+                    .text("pack is open, pick/skip first", "卡包已打开，请先选择/跳过"),
+            );
             return;
         }
         let Some(offer) = self.current_shop_offer() else {
-            self.push_status(
-                self.locale
-                    .text("no shop offer selected", "no shop offer selected"),
-            );
+            self.push_status(self.locale.text("no shop offer selected", "未选择商店商品"));
             return;
         };
         let action_target = offer_index(offer);
@@ -721,7 +819,7 @@ impl App {
                                 self.open_pack = Some(open);
                                 self.focus = FocusPane::Shop;
                                 self.selected_pack.clear();
-                                self.push_status(self.locale.text("pack opened", "pack opened"));
+                                self.push_status(self.locale.text("pack opened", "已打开卡包"));
                                 Ok(())
                             }
                             Err(err) => Err(err),
@@ -732,9 +830,7 @@ impl App {
                 match result {
                     Ok(_) => {
                         if !matches!(purchase, ShopPurchase::Pack(_)) {
-                            self.push_status(
-                                self.locale.text("purchase complete", "purchase complete"),
-                            );
+                            self.push_status(self.locale.text("purchase complete", "购买完成"));
                         }
                         self.record_action(
                             action_name,
@@ -753,14 +849,14 @@ impl App {
 
     pub fn pick_pack_selected(&mut self) {
         let Some(open) = self.open_pack.clone() else {
-            self.push_status(self.locale.text("no open pack", "no open pack"));
+            self.push_status(self.locale.text("no open pack", "当前没有打开的卡包"));
             return;
         };
         let picks = self.selected_pack_indices();
         if picks.is_empty() {
             self.push_status(
                 self.locale
-                    .text("no pack option selected", "no pack option selected"),
+                    .text("no pack option selected", "未选择卡包选项"),
             );
             return;
         }
@@ -771,7 +867,7 @@ impl App {
             Ok(_) => {
                 self.open_pack = None;
                 self.selected_pack.clear();
-                self.push_status(self.locale.text("pack applied", "pack applied"));
+                self.push_status(self.locale.text("pack applied", "卡包效果已应用"));
                 self.record_action("pick_pack", picks, None);
             }
             Err(err) => self.push_error(err),
@@ -782,14 +878,14 @@ impl App {
 
     pub fn skip_pack(&mut self) {
         let Some(open) = self.open_pack.clone() else {
-            self.push_status(self.locale.text("no open pack", "no open pack"));
+            self.push_status(self.locale.text("no open pack", "当前没有打开的卡包"));
             return;
         };
         match self.run.skip_pack(&open, &mut self.events) {
             Ok(_) => {
                 self.open_pack = None;
                 self.selected_pack.clear();
-                self.push_status(self.locale.text("pack skipped", "pack skipped"));
+                self.push_status(self.locale.text("pack skipped", "已跳过卡包"));
                 self.record_action("skip_pack", Vec::new(), None);
             }
             Err(err) => self.push_error(err),
@@ -800,20 +896,20 @@ impl App {
 
     pub fn use_selected_consumable(&mut self) {
         let Some(kind) = self.current_inventory_kind() else {
-            self.push_status(self.locale.text("inventory is empty", "inventory is empty"));
+            self.push_status(self.locale.text("inventory is empty", "库存为空"));
             return;
         };
         let InventoryRowKind::Consumable(index) = kind else {
             self.push_status(
                 self.locale
-                    .text("focus a consumable first", "focus a consumable first"),
+                    .text("focus a consumable first", "请先选中消耗牌"),
             );
             return;
         };
         let selected = self.explicit_selected_hand_indices();
         match self.run.use_consumable(index, &selected, &mut self.events) {
             Ok(_) => {
-                self.push_status(self.locale.text("consumable used", "consumable used"));
+                self.push_status(self.locale.text("consumable used", "已使用消耗牌"));
                 self.record_action("use_consumable", selected, Some(index.to_string()));
             }
             Err(err) => self.push_error(err),
@@ -824,19 +920,16 @@ impl App {
 
     pub fn sell_selected_joker(&mut self) {
         let Some(kind) = self.current_inventory_kind() else {
-            self.push_status(self.locale.text("inventory is empty", "inventory is empty"));
+            self.push_status(self.locale.text("inventory is empty", "库存为空"));
             return;
         };
         let InventoryRowKind::Joker(index) = kind else {
-            self.push_status(
-                self.locale
-                    .text("focus a joker first", "focus a joker first"),
-            );
+            self.push_status(self.locale.text("focus a joker first", "请先选中小丑"));
             return;
         };
         match self.run.sell_joker(index, &mut self.events) {
             Ok(_) => {
-                self.push_status(self.locale.text("joker sold", "joker sold"));
+                self.push_status(self.locale.text("joker sold", "已出售小丑"));
                 self.record_action("sell_joker", Vec::new(), Some(index.to_string()));
             }
             Err(err) => self.push_error(err),
@@ -867,7 +960,15 @@ impl App {
         } else {
             " "
         };
-        format!("{marker} {index:>2}: {}", format_card(card))
+        let value = card_value(card, &self.run.tables);
+        let detail = card_detail(card);
+        format!(
+            "{marker} {index:>2}: {:<16} {}:{:<4} {}",
+            format_card(card),
+            self.locale.text("val", "值"),
+            value,
+            detail
+        )
     }
 
     pub fn pack_option_label(&self, index: usize, option: &PackOption) -> String {
@@ -877,13 +978,21 @@ impl App {
             " "
         };
         let body = match option {
-            PackOption::Joker(id) => format!("Joker {id} ({})", self.find_joker_name(id)),
-            PackOption::Consumable(kind, id) => format!(
-                "Consumable {id} ({}) {:?}",
-                self.find_consumable_name(*kind, id),
-                kind
+            PackOption::Joker(id) => format!(
+                "{} {id} ({})",
+                self.locale.text("Joker", "小丑"),
+                self.find_joker_name(id)
             ),
-            PackOption::PlayingCard(card) => format!("Card {}", format_card(card)),
+            PackOption::Consumable(kind, id) => format!(
+                "{} {id} ({}) {} {}",
+                self.locale.text("Consumable", "消耗牌"),
+                self.find_consumable_name(*kind, id),
+                self.locale.text("type", "类型"),
+                consumable_kind_label(self.locale, *kind)
+            ),
+            PackOption::PlayingCard(card) => {
+                format!("{} {}", self.locale.text("Card", "卡牌"), format_card(card))
+            }
         };
         format!("{marker} {index:>2}: {body}")
     }
@@ -893,7 +1002,39 @@ impl App {
     }
 
     pub fn push_error(&mut self, err: RunError) {
-        self.status_line = format!("{}: {err}", self.locale.text("error", "error"));
+        self.status_line = format!("{}: {err}", self.locale.text("error", "错误"));
+    }
+
+    fn push_breakdown_lines(&mut self, breakdown: &ScoreBreakdown) {
+        self.push_event_line(format!(
+            "{}: {:?}",
+            self.locale.text("score hand", "计分牌型"),
+            breakdown.hand
+        ));
+        self.push_event_line(format!(
+            "{}: {:?}",
+            self.locale.text("scoring indices", "计分索引"),
+            breakdown.scoring_indices
+        ));
+        self.push_event_line(format!(
+            "{}: {} {} + {} {} = {}",
+            self.locale.text("chips", "筹码"),
+            self.locale.text("base", "基础"),
+            breakdown.base.chips,
+            self.locale.text("rank", "牌面"),
+            breakdown.rank_chips,
+            breakdown.total.chips
+        ));
+        self.push_event_line(format!(
+            "{}: {:.2}",
+            self.locale.text("mult", "倍率"),
+            breakdown.total.mult
+        ));
+        self.push_event_line(format!(
+            "{}: {}",
+            self.locale.text("total score", "总分"),
+            breakdown.total.total()
+        ));
     }
 
     fn flush_events(&mut self) {
@@ -1085,7 +1226,7 @@ fn selected_or_cursor(selected: &BTreeSet<usize>, cursor: usize, len: usize) -> 
     out
 }
 
-fn format_event(_locale: UiLocale, event: &Event) -> String {
+fn format_event(locale: UiLocale, event: &Event) -> String {
     match event {
         Event::BlindStarted {
             ante,
@@ -1093,54 +1234,187 @@ fn format_event(_locale: UiLocale, event: &Event) -> String {
             target,
             hands,
             discards,
-        } => format!("blind started A{ante} {blind:?} target {target} H{hands}/D{discards}"),
+        } => format!(
+            "{} A{ante} {} {} {target} H{hands}/D{discards}",
+            locale.text("blind started", "盲注开始"),
+            blind_label(locale, *blind),
+            locale.text("target", "目标")
+        ),
         Event::BlindSkipped { ante, blind, tag } => {
             format!(
-                "blind skipped A{ante} {blind:?} tag {}",
-                tag.as_deref().unwrap_or("-")
+                "{} A{ante} {} {} {}",
+                locale.text("blind skipped", "盲注已跳过"),
+                blind_label(locale, *blind),
+                locale.text("tag", "标签"),
+                tag.as_deref().unwrap_or(locale.text("-", "无"))
             )
         }
-        Event::HandDealt { count } => format!("dealt {count}"),
+        Event::HandDealt { count } => format!("{} {count}", locale.text("dealt", "已发牌")),
         Event::HandScored {
             hand,
             chips,
             mult,
             total,
-        } => format!("scored {hand:?}: {chips} x{mult:.2} = {total}"),
+        } => format!(
+            "{} {hand:?}: {chips} x{mult:.2} = {total}",
+            locale.text("scored", "计分")
+        ),
         Event::ShopEntered {
             offers,
             reroll_cost,
             reentered,
         } => format!(
-            "shop entered offers {offers} reroll {reroll_cost}{}",
-            if *reentered { " reentered" } else { "" }
+            "{} {} {offers} {} {reroll_cost}{}",
+            locale.text("shop entered", "进入商店"),
+            locale.text("offers", "商品数"),
+            locale.text("reroll", "刷新价"),
+            if *reentered {
+                locale.text(" reentered", "（重复进入）")
+            } else {
+                ""
+            }
         ),
         Event::ShopRerolled {
             offers,
             reroll_cost,
             cost,
             money,
-        } => format!("shop rerolled offers {offers} cost {cost} next {reroll_cost} money {money}"),
-        Event::ShopBought { offer, cost, money } => {
-            format!("shop bought {offer:?} cost {cost} money {money}")
-        }
+        } => format!(
+            "{} {} {offers} {} {cost} {} {reroll_cost} {} {money}",
+            locale.text("shop rerolled", "商店刷新"),
+            locale.text("offers", "商品数"),
+            locale.text("cost", "花费"),
+            locale.text("next", "下次"),
+            locale.text("money", "金钱")
+        ),
+        Event::ShopBought { offer, cost, money } => format!(
+            "{} {} {} {cost} {} {money}",
+            locale.text("shop bought", "商店购买"),
+            shop_offer_label(locale, *offer),
+            locale.text("cost", "花费"),
+            locale.text("money", "金钱")
+        ),
         Event::PackOpened {
             kind,
             options,
             picks,
-        } => format!("pack {kind:?} options {options} picks {picks}"),
-        Event::PackChosen { picks } => format!("pack chosen {picks}"),
+        } => format!(
+            "{} {kind:?} {} {options} {} {picks}",
+            locale.text("pack opened", "卡包打开"),
+            locale.text("options", "选项"),
+            locale.text("pick", "可选")
+        ),
+        Event::PackChosen { picks } => {
+            format!("{} {picks}", locale.text("pack chosen", "卡包已选择"))
+        }
         Event::JokerSold {
             id,
             sell_value,
             money,
-        } => format!("joker sold {id} value {sell_value} money {money}"),
+        } => format!(
+            "{} {id} {} {sell_value} {} {money}",
+            locale.text("joker sold", "出售小丑"),
+            locale.text("value", "价值"),
+            locale.text("money", "金钱")
+        ),
         Event::BlindCleared {
             score,
             reward,
             money,
-        } => format!("blind cleared score {score} reward {reward} money {money}"),
-        Event::BlindFailed { score } => format!("blind failed score {score}"),
+        } => format!(
+            "{} {} {score} {} {reward} {} {money}",
+            locale.text("blind cleared", "盲注通过"),
+            locale.text("score", "分数"),
+            locale.text("reward", "奖励"),
+            locale.text("money", "金钱")
+        ),
+        Event::BlindFailed { score } => format!(
+            "{} {} {score}",
+            locale.text("blind failed", "盲注失败"),
+            locale.text("score", "分数")
+        ),
+    }
+}
+
+pub(crate) fn phase_label(locale: UiLocale, phase: Phase) -> &'static str {
+    if matches!(locale, UiLocale::ZhCn) {
+        match phase {
+            Phase::Setup => "准备",
+            Phase::Deal => "发牌",
+            Phase::Play => "出牌",
+            Phase::Score => "计分",
+            Phase::Cleanup => "清理",
+            Phase::Shop => "商店",
+        }
+    } else {
+        match phase {
+            Phase::Setup => "Setup",
+            Phase::Deal => "Deal",
+            Phase::Play => "Play",
+            Phase::Score => "Score",
+            Phase::Cleanup => "Cleanup",
+            Phase::Shop => "Shop",
+        }
+    }
+}
+
+pub(crate) fn blind_label(locale: UiLocale, blind: BlindKind) -> &'static str {
+    if matches!(locale, UiLocale::ZhCn) {
+        match blind {
+            BlindKind::Small => "小盲",
+            BlindKind::Big => "大盲",
+            BlindKind::Boss => "Boss",
+        }
+    } else {
+        match blind {
+            BlindKind::Small => "Small",
+            BlindKind::Big => "Big",
+            BlindKind::Boss => "Boss",
+        }
+    }
+}
+
+fn consumable_kind_label(locale: UiLocale, kind: ConsumableKind) -> &'static str {
+    if matches!(locale, UiLocale::ZhCn) {
+        match kind {
+            ConsumableKind::Tarot => "塔罗",
+            ConsumableKind::Planet => "星球",
+            ConsumableKind::Spectral => "幻灵",
+        }
+    } else {
+        match kind {
+            ConsumableKind::Tarot => "Tarot",
+            ConsumableKind::Planet => "Planet",
+            ConsumableKind::Spectral => "Spectral",
+        }
+    }
+}
+
+fn shop_card_kind_label(locale: UiLocale, kind: rulatro_core::ShopCardKind) -> &'static str {
+    if matches!(locale, UiLocale::ZhCn) {
+        match kind {
+            rulatro_core::ShopCardKind::Joker => "小丑",
+            rulatro_core::ShopCardKind::Tarot => "塔罗",
+            rulatro_core::ShopCardKind::Planet => "星球",
+        }
+    } else {
+        match kind {
+            rulatro_core::ShopCardKind::Joker => "Joker",
+            rulatro_core::ShopCardKind::Tarot => "Tarot",
+            rulatro_core::ShopCardKind::Planet => "Planet",
+        }
+    }
+}
+
+fn shop_offer_label(locale: UiLocale, offer: rulatro_core::ShopOfferKind) -> String {
+    match offer {
+        rulatro_core::ShopOfferKind::Card(kind) => {
+            format!("{} {:?}", locale.text("card", "卡牌"), kind)
+        }
+        rulatro_core::ShopOfferKind::Pack(kind, size) => {
+            format!("{} {:?}/{:?}", locale.text("pack", "卡包"), kind, size)
+        }
+        rulatro_core::ShopOfferKind::Voucher => locale.text("voucher", "优惠券").to_string(),
     }
 }
 
@@ -1151,13 +1425,13 @@ pub fn format_card(card: &Card) -> String {
     let mut out = format!("{}{}", rank_short(card.rank), suit_short(card.suit));
     let mut tags = Vec::new();
     if let Some(enhancement) = card.enhancement {
-        tags.push(format!("{enhancement:?}"));
+        tags.push(enhancement_short(enhancement).to_string());
     }
     if let Some(edition) = card.edition {
-        tags.push(format!("{edition:?}"));
+        tags.push(edition_short(edition).to_string());
     }
     if let Some(seal) = card.seal {
-        tags.push(format!("{seal:?}"));
+        tags.push(seal_short(seal).to_string());
     }
     if card.bonus_chips != 0 {
         tags.push(format!("+{}", card.bonus_chips));
@@ -1168,6 +1442,65 @@ pub fn format_card(card: &Card) -> String {
         out.push(']');
     }
     out
+}
+
+fn card_value(card: &Card, tables: &rulatro_core::ScoreTables) -> i64 {
+    if card.is_stone() {
+        return 0;
+    }
+    tables.rank_chips(card.rank) + card.bonus_chips
+}
+
+fn card_detail(card: &Card) -> String {
+    if card.face_down {
+        return "face_down".to_string();
+    }
+    let mut tags = Vec::new();
+    tags.push(format!("{:?}{:?}", card.rank, card.suit));
+    if let Some(enhancement) = card.enhancement {
+        tags.push(format!("enh={}", enhancement_short(enhancement)));
+    }
+    if let Some(edition) = card.edition {
+        tags.push(format!("ed={}", edition_short(edition)));
+    }
+    if let Some(seal) = card.seal {
+        tags.push(format!("seal={}", seal_short(seal)));
+    }
+    if card.bonus_chips != 0 {
+        tags.push(format!("bonus={}", card.bonus_chips));
+    }
+    tags.join(" ")
+}
+
+fn enhancement_short(kind: Enhancement) -> &'static str {
+    match kind {
+        Enhancement::Bonus => "Bonus",
+        Enhancement::Mult => "Mult",
+        Enhancement::Wild => "Wild",
+        Enhancement::Glass => "Glass",
+        Enhancement::Steel => "Steel",
+        Enhancement::Stone => "Stone",
+        Enhancement::Lucky => "Lucky",
+        Enhancement::Gold => "Gold",
+    }
+}
+
+fn edition_short(kind: Edition) -> String {
+    match kind {
+        Edition::Foil => "Foil".to_string(),
+        Edition::Holographic => "Holo".to_string(),
+        Edition::Polychrome => "Poly".to_string(),
+        Edition::Negative => "Neg".to_string(),
+    }
+}
+
+fn seal_short(kind: Seal) -> &'static str {
+    match kind {
+        Seal::Red => "R",
+        Seal::Blue => "B",
+        Seal::Gold => "G",
+        Seal::Purple => "P",
+    }
 }
 
 fn rank_short(rank: rulatro_core::Rank) -> &'static str {

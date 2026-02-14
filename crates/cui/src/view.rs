@@ -8,9 +8,9 @@ pub fn draw(frame: &mut Frame, app: &App) {
     let root = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(4),
-            Constraint::Min(14),
-            Constraint::Length(10),
+            Constraint::Length(5),
+            Constraint::Min(12),
+            Constraint::Length(12),
         ])
         .split(frame.area());
 
@@ -23,7 +23,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
 
     let left = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(7), Constraint::Min(6)])
+        .constraints([Constraint::Length(10), Constraint::Min(4)])
         .split(middle[0]);
 
     let right = Layout::default()
@@ -38,7 +38,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
     draw_events(frame, root[2], app);
 
     if app.show_help {
-        draw_help_popup(frame);
+        draw_help_popup(frame, app);
     }
     if app.path_prompt_mode.is_some() {
         draw_path_prompt(frame, app);
@@ -47,62 +47,109 @@ pub fn draw(frame: &mut Frame, app: &App) {
 
 fn draw_header(frame: &mut Frame, area: Rect, app: &App) {
     let title = format!(
-        "Rulatro CUI | Focus: {} | Hint: {}",
+        "{} | {}: {} | {}: {}",
+        app.locale.text("Rulatro CUI", "Rulatro CUI"),
+        app.locale.text("Focus", "焦点"),
         app.focus_label(app.focus),
+        app.locale.text("Hint", "提示"),
         app.next_hint()
     );
     let summary = format!(
-        "A{} {:?} {:?}  ${}  Score {}/{}  H {}/{}  D {}/{}  Skip {}",
+        "A{} {} {}  ${}  {} {}/{}  H {}/{}  D {}/{}  {} {}",
         app.run.state.ante,
-        app.run.state.blind,
-        app.run.state.phase,
+        app.blind_label(app.run.state.blind),
+        app.phase_label(app.run.state.phase),
         app.run.state.money,
+        app.locale.text("Score", "分数"),
         app.run.state.blind_score,
         app.run.state.target,
         app.run.state.hands_left,
         app.run.state.hands_max,
         app.run.state.discards_left,
         app.run.state.discards_max,
+        app.locale.text("Skip", "跳过"),
         app.run.state.blinds_skipped
+    );
+    let extra = format!(
+        "{} {} | {} {} | {} {}",
+        app.locale.text("Seed", "种子"),
+        app.seed,
+        app.locale.text("Lang", "语言"),
+        app.locale.code(),
+        app.locale.text("Outcome", "结果"),
+        app.blind_outcome_label()
     );
     let lines = vec![
         Line::from(title.bold()),
         Line::from(summary),
-        Line::from(format!("Status: {}", app.status_line)),
+        Line::from(extra),
+        Line::from(format!(
+            "{}: {}",
+            app.locale.text("Status", "状态"),
+            app.status_line
+        )),
     ];
-    let block = Block::default().borders(Borders::ALL).title("Overview");
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(app.locale.text("Overview", "概览"));
     let paragraph = Paragraph::new(lines).wrap(Wrap { trim: true }).block(block);
     frame.render_widget(paragraph, area);
 }
 
 fn draw_state(frame: &mut Frame, area: Rect, app: &App) {
-    let blind_outcome = app
-        .run
-        .blind_outcome()
-        .map(|value| format!("{value:?}"))
-        .unwrap_or_else(|| "-".to_string());
+    let content_sig_short: String = app.content_signature.chars().take(8).collect();
     let lines = vec![
-        Line::from(format!("Deck draw: {}", app.run.deck.draw.len())),
-        Line::from(format!("Deck discard: {}", app.run.deck.discard.len())),
         Line::from(format!(
-            "Jokers: {}/{}",
+            "{}: {}",
+            app.locale.text("Deck draw", "抽牌堆"),
+            app.run.deck.draw.len()
+        )),
+        Line::from(format!(
+            "{}: {}",
+            app.locale.text("Deck discard", "弃牌堆"),
+            app.run.deck.discard.len()
+        )),
+        Line::from(format!(
+            "{}: {}/{}",
+            app.locale.text("Jokers", "小丑"),
             app.run.inventory.jokers.len(),
             app.run.inventory.joker_capacity()
         )),
         Line::from(format!(
-            "Consumables: {}/{}",
+            "{}: {}/{}",
+            app.locale.text("Consumables", "消耗牌"),
             app.run.inventory.consumable_count(),
             app.run.inventory.consumable_slots
         )),
-        Line::from(format!("Outcome: {blind_outcome}")),
+        Line::from(format!(
+            "{}: {}",
+            app.locale.text("Tags", "标签"),
+            app.run.state.tags.len()
+        )),
+        Line::from(format!(
+            "{}: {}",
+            app.locale.text("Content Sig", "内容签名"),
+            if content_sig_short.is_empty() {
+                "-".to_string()
+            } else {
+                content_sig_short
+            }
+        )),
+        Line::from(format!(
+            "{}: {}",
+            app.locale.text("Outcome", "结果"),
+            app.blind_outcome_label()
+        )),
     ];
-    let block = Block::default().borders(Borders::ALL).title("Run");
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(app.locale.text("Run", "对局"));
     frame.render_widget(Paragraph::new(lines).block(block), area);
 }
 
 fn draw_hand(frame: &mut Frame, area: Rect, app: &App) {
     let items: Vec<ListItem<'_>> = if app.run.hand.is_empty() {
-        vec![ListItem::new("empty")]
+        vec![ListItem::new(app.locale.text("empty", "空"))]
     } else {
         app.run
             .hand
@@ -111,7 +158,10 @@ fn draw_hand(frame: &mut Frame, area: Rect, app: &App) {
             .map(|(idx, card)| ListItem::new(app.card_label(idx, card)))
             .collect()
     };
-    let block = pane_block("Hand", app.focus == FocusPane::Hand);
+    let block = pane_block(
+        app.locale.text("Hand", "手牌"),
+        app.focus == FocusPane::Hand,
+    );
     let list = List::new(items)
         .block(block)
         .highlight_style(
@@ -131,7 +181,9 @@ fn draw_hand(frame: &mut Frame, area: Rect, app: &App) {
 fn draw_shop_or_pack(frame: &mut Frame, area: Rect, app: &App) {
     if let Some(open) = app.open_pack.as_ref() {
         let items: Vec<ListItem<'_>> = if open.options.is_empty() {
-            vec![ListItem::new("empty pack options")]
+            vec![ListItem::new(
+                app.locale.text("empty pack options", "卡包选项为空"),
+            )]
         } else {
             open.options
                 .iter()
@@ -140,8 +192,12 @@ fn draw_shop_or_pack(frame: &mut Frame, area: Rect, app: &App) {
                 .collect()
         };
         let pack_title = format!(
-            "Pack {:?}/{:?} picks {}",
-            open.offer.kind, open.offer.size, open.offer.picks
+            "{} {:?}/{:?} {} {}",
+            app.locale.text("Pack", "卡包"),
+            open.offer.kind,
+            open.offer.size,
+            app.locale.text("picks", "可选"),
+            open.offer.picks
         );
         let block = pane_block(pack_title.as_str(), app.focus == FocusPane::Shop);
         let list = List::new(items)
@@ -163,11 +219,14 @@ fn draw_shop_or_pack(frame: &mut Frame, area: Rect, app: &App) {
 
     let rows = app.shop_rows();
     if rows.is_empty() {
-        let block = pane_block("Shop", app.focus == FocusPane::Shop);
+        let block = pane_block(
+            app.locale.text("Shop", "商店"),
+            app.focus == FocusPane::Shop,
+        );
         let text = if app.run.state.phase == rulatro_core::Phase::Shop {
-            "no shop offers"
+            app.locale.text("no shop offers", "商店无商品")
         } else {
-            "shop unavailable"
+            app.locale.text("shop unavailable", "商店不可用")
         };
         frame.render_widget(
             Paragraph::new(text)
@@ -183,7 +242,9 @@ fn draw_shop_or_pack(frame: &mut Frame, area: Rect, app: &App) {
         .map(|row| ListItem::new(row.label.clone()))
         .collect();
     let shop_title = format!(
-        "Shop reroll ${}",
+        "{} {} ${}",
+        app.locale.text("Shop", "商店"),
+        app.locale.text("reroll", "刷新"),
         app.run
             .shop
             .as_ref()
@@ -208,13 +269,16 @@ fn draw_shop_or_pack(frame: &mut Frame, area: Rect, app: &App) {
 fn draw_inventory(frame: &mut Frame, area: Rect, app: &App) {
     let rows = app.inventory_rows();
     let items: Vec<ListItem<'_>> = if rows.is_empty() {
-        vec![ListItem::new("empty")]
+        vec![ListItem::new(app.locale.text("empty", "空"))]
     } else {
         rows.iter()
             .map(|row| ListItem::new(row.label.clone()))
             .collect()
     };
-    let block = pane_block("Inventory", app.focus == FocusPane::Inventory);
+    let block = pane_block(
+        app.locale.text("Inventory", "库存"),
+        app.focus == FocusPane::Inventory,
+    );
     let list = List::new(items)
         .block(block)
         .highlight_style(
@@ -240,24 +304,48 @@ fn draw_events(frame: &mut Frame, area: Rect, app: &App) {
         .skip(start)
         .map(|line| Line::from(line.clone()))
         .collect();
-    let block = pane_block("Events", app.focus == FocusPane::Events);
+    let block = pane_block(
+        app.locale.text("Events", "事件"),
+        app.focus == FocusPane::Events,
+    );
     frame.render_widget(Paragraph::new(lines).block(block), area);
 }
 
-fn draw_help_popup(frame: &mut Frame) {
+fn draw_help_popup(frame: &mut Frame, app: &App) {
     let area = centered_rect(70, 70, frame.area());
     frame.render_widget(Clear, area);
     let lines = vec![
-        Line::from("q quit | ? help | tab focus | arrows/jk move"),
-        Line::from("space toggle select | enter context action"),
-        Line::from("d deal | p play | x discard | Shift+k skip blind"),
-        Line::from("s enter/leave shop | b buy | r reroll"),
-        Line::from("c pick pack | z skip pack"),
-        Line::from("u use consumable | v sell joker | n next blind"),
-        Line::from("Shift+S/Ctrl+S save | Shift+L/Ctrl+L load"),
+        Line::from(app.locale.text(
+            "q quit | ? help | tab focus | arrows/jk move",
+            "q 退出 | ? 帮助 | tab 切焦点 | 方向键/jk 移动",
+        )),
+        Line::from(app.locale.text(
+            "space toggle select | enter context action",
+            "空格 选中/取消 | 回车 执行上下文动作",
+        )),
+        Line::from(app.locale.text(
+            "d deal | p play | x discard | Shift+k skip blind",
+            "d 发牌 | p 出牌 | x 弃牌 | Shift+k 跳过盲注",
+        )),
+        Line::from(app.locale.text(
+            "s enter/leave shop | b buy | r reroll",
+            "s 进/离商店 | b 购买 | r 刷新",
+        )),
+        Line::from(
+            app.locale
+                .text("c pick pack | z skip pack", "c 选卡包 | z 跳过卡包"),
+        ),
+        Line::from(app.locale.text(
+            "u use consumable | v sell joker | n next blind",
+            "u 使用消耗牌 | v 卖小丑 | n 下一盲注",
+        )),
+        Line::from(app.locale.text(
+            "Shift+S/Ctrl+S save | Shift+L/Ctrl+L load",
+            "Shift+S/Ctrl+S 保存 | Shift+L/Ctrl+L 读取",
+        )),
     ];
     let block = Block::default()
-        .title("Help")
+        .title(app.locale.text("Help", "帮助"))
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Cyan));
     frame.render_widget(
@@ -271,16 +359,23 @@ fn draw_path_prompt(frame: &mut Frame, app: &App) {
     frame.render_widget(Clear, area);
     let mode = app.path_prompt_mode.expect("checked above");
     let title = match mode {
-        PathPromptMode::Save => "Save Path",
-        PathPromptMode::Load => "Load Path",
+        PathPromptMode::Save => app.locale.text("Save Path", "保存路径"),
+        PathPromptMode::Load => app.locale.text("Load Path", "读取路径"),
     };
     let action_hint = match mode {
-        PathPromptMode::Save => "Enter=save  Esc=cancel",
-        PathPromptMode::Load => "Enter=load  Esc=cancel",
+        PathPromptMode::Save => app
+            .locale
+            .text("Enter=save  Esc=cancel", "回车=保存  Esc=取消"),
+        PathPromptMode::Load => app
+            .locale
+            .text("Enter=load  Esc=cancel", "回车=读取  Esc=取消"),
     };
     let lines = vec![
         Line::from(action_hint),
-        Line::from("Leave empty to use default path:"),
+        Line::from(
+            app.locale
+                .text("Leave empty to use default path:", "留空将使用默认路径："),
+        ),
         Line::from(format!("  {}", app.prompt_default_path_hint())),
         Line::from(""),
         Line::from(format!("> {}", app.path_prompt_input)),

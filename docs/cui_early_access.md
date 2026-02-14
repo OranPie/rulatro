@@ -92,6 +92,8 @@ cargo run -p rulatro-cli -- --auto
 - Shortcut highlights: `d` deal, `p` play, `x` discard, `s` shop, `b` buy, `r` reroll, `u` use consumable, `v` sell joker, `n` next blind.
 - `rulatro-cui` quick persistence: `Shift+S` / `Ctrl+S` save and `Shift+L` / `Ctrl+L` load open a path prompt (empty input uses `$RULATRO_SAVE` or `~/.rulatro_cli_state.json`).
 - Locale can be set via `--lang zh_CN` (or `RULATRO_LANG=zh_CN`).
+- `rulatro-cui` now shows richer detail in-pane (card value/detail, expanded shop/inventory rows, score breakdown lines in event log).
+- In `zh_CN`, CUI pane titles/help/status/event messages are localized for daily play.
 - Interactive input supports command history (`↑`/`↓`) and completion (`Tab` for commands, plus `buy`/`peek` subcommands).
 - `--menu` enables a guided CUI menu that prints context-aware numbered actions and still accepts direct commands.
 - In `zh_CN`, command feedback/events/status tables are localized for daily play (commands/DSL keywords remain English by design).
