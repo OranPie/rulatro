@@ -4,9 +4,9 @@ use crate::persistence::{
 use anyhow::{Context, Result};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use rulatro_core::{
-    voucher_by_id, BlindKind, BlindOutcome, Card, ConsumableKind, Edition, Enhancement, Event,
-    EventBus, PackOpen, PackOption, Phase, RuleEffect, RunError, RunState, ScoreBreakdown, Seal,
-    ShopOfferRef, ShopPurchase,
+    voucher_by_id, BlindKind, BlindOutcome, Card, ConsumableKind, Edition, EffectBlock, EffectOp,
+    Enhancement, Event, EventBus, PackOpen, PackOption, Phase, RankFilter, RuleEffect, RunError,
+    RunState, ScoreBreakdown, Seal, ShopOfferRef, ShopPurchase,
 };
 use rulatro_data::{load_content_with_mods_locale, load_game_config, normalize_locale};
 use rulatro_modding::ModManager;
@@ -496,10 +496,19 @@ impl App {
                 .edition
                 .map(edition_short)
                 .unwrap_or_else(|| "-".to_string());
+            let effect = match card.kind {
+                rulatro_core::ShopCardKind::Joker => String::new(),
+                rulatro_core::ShopCardKind::Tarot => {
+                    self.consumable_effect_summary(ConsumableKind::Tarot, &card.item_id, 2)
+                }
+                rulatro_core::ShopCardKind::Planet => {
+                    self.consumable_effect_summary(ConsumableKind::Planet, &card.item_id, 2)
+                }
+            };
             rows.push(ShopRow {
                 offer: ShopOfferRef::Card(idx),
                 label: format!(
-                    "C{idx} {} {} ({}) {} ${} {} {} {} {}",
+                    "C{idx} {} {} ({}) {} ${} {} {} {} {}{}",
                     shop_card_kind_label(self.locale, card.kind),
                     card.item_id,
                     item_name,
@@ -508,7 +517,12 @@ impl App {
                     self.locale.text("rarity", "稀有度"),
                     rarity,
                     self.locale.text("edition", "版本"),
-                    edition
+                    edition,
+                    if effect.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" {} {}", self.locale.text("effect", "效果"), effect)
+                    }
                 ),
             });
         }
@@ -576,16 +590,22 @@ impl App {
                 .edition
                 .map(edition_short)
                 .unwrap_or_else(|| "-".to_string());
+            let effect = self.consumable_effect_summary(item.kind, &item.id, 2);
             rows.push(InventoryRow {
                 kind: InventoryRowKind::Consumable(idx),
                 label: format!(
-                    "C{idx} {} ({}) {} {} {} {}",
+                    "C{idx} {} ({}) {} {} {} {}{}",
                     item.id,
                     self.find_consumable_name(item.kind, &item.id),
                     self.locale.text("type", "类型"),
                     consumable_kind_label(self.locale, item.kind),
                     self.locale.text("edition", "版本"),
-                    edition
+                    edition,
+                    if effect.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" {} {}", self.locale.text("effect", "效果"), effect)
+                    }
                 ),
             });
         }
@@ -1145,11 +1165,19 @@ impl App {
                 self.find_joker_name(id)
             ),
             PackOption::Consumable(kind, id) => format!(
-                "{} {id} ({}) {} {}",
+                "{} {id} ({}) {} {}{}",
                 self.locale.text("Consumable", "消耗牌"),
                 self.find_consumable_name(*kind, id),
                 self.locale.text("type", "类型"),
-                consumable_kind_label(self.locale, *kind)
+                consumable_kind_label(self.locale, *kind),
+                {
+                    let effect = self.consumable_effect_summary(*kind, id, 2);
+                    if effect.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" {} {}", self.locale.text("effect", "效果"), effect)
+                    }
+                }
             ),
             PackOption::PlayingCard(card) => {
                 format!("{} {}", self.locale.text("Card", "卡牌"), format_card(card))
@@ -1265,6 +1293,31 @@ impl App {
             .find(|card| card.id == id)
             .map(|card| card.name.clone())
             .unwrap_or_else(|| "-".to_string())
+    }
+
+    fn find_consumable_def(
+        &self,
+        kind: ConsumableKind,
+        id: &str,
+    ) -> Option<&rulatro_core::ConsumableDef> {
+        let list = match kind {
+            ConsumableKind::Tarot => &self.run.content.tarots,
+            ConsumableKind::Planet => &self.run.content.planets,
+            ConsumableKind::Spectral => &self.run.content.spectrals,
+        };
+        list.iter().find(|card| card.id == id)
+    }
+
+    fn consumable_effect_summary(
+        &self,
+        kind: ConsumableKind,
+        id: &str,
+        max_parts: usize,
+    ) -> String {
+        let Some(def) = self.find_consumable_def(kind, id) else {
+            return String::new();
+        };
+        summarize_effect_blocks(self.locale, &def.effects, def.hand, max_parts)
     }
 }
 
@@ -1609,6 +1662,270 @@ fn shop_offer_label(locale: UiLocale, offer: rulatro_core::ShopOfferKind) -> Str
             format!("{} {:?}/{:?}", locale.text("pack", "卡包"), kind, size)
         }
         rulatro_core::ShopOfferKind::Voucher => locale.text("voucher", "优惠券").to_string(),
+    }
+}
+
+fn summarize_effect_blocks(
+    locale: UiLocale,
+    blocks: &[EffectBlock],
+    hand_hint: Option<rulatro_core::HandKind>,
+    max_parts: usize,
+) -> String {
+    let mut parts = Vec::new();
+    for block in blocks {
+        for op in &block.effects {
+            parts.push(summarize_effect_op(locale, op));
+        }
+    }
+    if parts.is_empty() {
+        if let Some(hand) = hand_hint {
+            return format!(
+                "{} {}",
+                locale.text("upgrade", "升级"),
+                hand_label(locale, hand)
+            );
+        }
+        return String::new();
+    }
+    let display = if max_parts == 0 {
+        parts.len()
+    } else {
+        parts.len().min(max_parts)
+    };
+    let mut out = parts[..display].join(" | ");
+    if parts.len() > display {
+        out.push_str(&format!(
+            " {}{}",
+            locale.text("+", "+"),
+            parts.len() - display
+        ));
+    }
+    out
+}
+
+fn summarize_effect_op(locale: UiLocale, op: &EffectOp) -> String {
+    match op {
+        EffectOp::Score(effect) => format_rule_effect(locale, effect),
+        EffectOp::AddMoney(value) => format!("{}${value}", locale.text("+", "+")),
+        EffectOp::SetMoney(value) => format!("{}={value}", locale.text("money", "金钱")),
+        EffectOp::DoubleMoney { cap } => format!(
+            "{} x2 ({} {cap})",
+            locale.text("money", "金钱"),
+            locale.text("cap", "上限")
+        ),
+        EffectOp::AddMoneyFromJokers { cap } => format!(
+            "{} ({} {cap})",
+            locale.text("joker money", "小丑转钱"),
+            locale.text("cap", "上限")
+        ),
+        EffectOp::AddHandSize(value) => format!(
+            "{}{}",
+            locale.text("hand size ", "手牌上限 "),
+            signed_int(*value)
+        ),
+        EffectOp::UpgradeHand { hand, amount } => {
+            format!(
+                "{} {} +{}",
+                locale.text("upgrade", "升级"),
+                hand_label(locale, *hand),
+                amount
+            )
+        }
+        EffectOp::UpgradeAllHands { amount } => {
+            format!("{} +{}", locale.text("all hands", "全部牌型"), amount)
+        }
+        EffectOp::AddRandomConsumable { kind, count } => {
+            format!("+{} {}", count, consumable_kind_label(locale, *kind))
+        }
+        EffectOp::AddJoker { rarity, count } => {
+            format!("+{} {}({:?})", count, locale.text("joker", "小丑"), rarity)
+        }
+        EffectOp::AddRandomJoker { count } => {
+            format!("+{} {}", count, locale.text("random joker", "随机小丑"))
+        }
+        EffectOp::RandomJokerEdition { editions, chance } => format!(
+            "{} {:?} {} {:.0}%",
+            locale.text("joker edition", "小丑版本"),
+            editions,
+            locale.text("chance", "概率"),
+            chance * 100.0
+        ),
+        EffectOp::SetRandomJokerEdition { edition } => format!(
+            "{} {}",
+            locale.text("set joker edition", "设置小丑版本"),
+            edition_short(*edition)
+        ),
+        EffectOp::SetRandomJokerEditionDestroyOthers { edition } => format!(
+            "{} {}",
+            locale.text("set edition destroy others", "设置版本并销毁其他小丑"),
+            edition_short(*edition)
+        ),
+        EffectOp::DuplicateRandomJokerDestroyOthers { remove_negative } => format!(
+            "{}{}",
+            locale.text("duplicate random joker", "复制随机小丑"),
+            if *remove_negative {
+                locale.text(" (remove negative)", "（移除负片）")
+            } else {
+                ""
+            }
+        ),
+        EffectOp::EnhanceSelected { enhancement, count } => format!(
+            "{}{} {} {}",
+            locale.text("selected", "选中"),
+            count,
+            locale.text("add", "加成"),
+            enhancement_short(*enhancement)
+        ),
+        EffectOp::AddEditionToSelected { editions, count } => format!(
+            "{}{} {} {:?}",
+            locale.text("selected", "选中"),
+            count,
+            locale.text("edition", "版本"),
+            editions
+        ),
+        EffectOp::AddSealToSelected { seal, count } => {
+            format!(
+                "{}{} {}",
+                locale.text("selected", "选中"),
+                count,
+                seal_short(*seal)
+            )
+        }
+        EffectOp::ConvertSelectedSuit { suit, count } => format!(
+            "{}{} {} {}",
+            locale.text("selected", "选中"),
+            count,
+            locale.text("to suit", "改为花色"),
+            suit_short(*suit)
+        ),
+        EffectOp::IncreaseSelectedRank { count, delta } => format!(
+            "{}{} {} {}",
+            locale.text("selected", "选中"),
+            count,
+            locale.text("rank", "点数"),
+            signed_int(*delta as i64)
+        ),
+        EffectOp::DestroySelected { count } => format!(
+            "{}{} {}",
+            locale.text("destroy", "销毁"),
+            count,
+            locale.text("selected", "选中")
+        ),
+        EffectOp::DestroyRandomInHand { count } => format!(
+            "{}{} {}",
+            locale.text("destroy", "销毁"),
+            count,
+            locale.text("in hand random", "张手牌（随机）")
+        ),
+        EffectOp::CopySelected { count } => format!(
+            "{}{} {}",
+            locale.text("copy", "复制"),
+            count,
+            locale.text("selected", "选中")
+        ),
+        EffectOp::ConvertLeftIntoRight => locale
+            .text("left card turns right card", "左牌变为右牌")
+            .to_string(),
+        EffectOp::ConvertHandToRandomRank => locale
+            .text("hand to random rank", "手牌变为随机点数")
+            .to_string(),
+        EffectOp::ConvertHandToRandomSuit => locale
+            .text("hand to random suit", "手牌变为随机花色")
+            .to_string(),
+        EffectOp::AddRandomEnhancedCards { count, filter } => format!(
+            "+{} {} ({})",
+            count,
+            locale.text("enhanced cards", "增强牌"),
+            rank_filter_label(locale, *filter)
+        ),
+        EffectOp::CreateLastConsumable { exclude } => {
+            if let Some(exclude) = exclude {
+                format!(
+                    "{} {} ({exclude})",
+                    locale.text("repeat last consumable", "重复上一个消耗牌"),
+                    locale.text("exclude", "排除")
+                )
+            } else {
+                locale
+                    .text("repeat last consumable", "重复上一个消耗牌")
+                    .to_string()
+            }
+        }
+        EffectOp::RetriggerScored(times) => format!(
+            "{} {}",
+            locale.text("retrigger scored", "重触发计分牌"),
+            signed_int(*times)
+        ),
+        EffectOp::RetriggerHeld(times) => format!(
+            "{} {}",
+            locale.text("retrigger held", "重触发留手牌"),
+            signed_int(*times)
+        ),
+    }
+    .replace("  ", " ")
+    .trim()
+    .to_string()
+}
+
+fn hand_label(locale: UiLocale, hand: rulatro_core::HandKind) -> &'static str {
+    if matches!(locale, UiLocale::ZhCn) {
+        match hand {
+            rulatro_core::HandKind::HighCard => "高牌",
+            rulatro_core::HandKind::Pair => "对子",
+            rulatro_core::HandKind::TwoPair => "两对",
+            rulatro_core::HandKind::Trips => "三条",
+            rulatro_core::HandKind::Straight => "顺子",
+            rulatro_core::HandKind::Flush => "同花",
+            rulatro_core::HandKind::FullHouse => "葫芦",
+            rulatro_core::HandKind::Quads => "四条",
+            rulatro_core::HandKind::StraightFlush => "同花顺",
+            rulatro_core::HandKind::RoyalFlush => "皇家同花顺",
+            rulatro_core::HandKind::FiveOfAKind => "五条",
+            rulatro_core::HandKind::FlushHouse => "同花葫芦",
+            rulatro_core::HandKind::FlushFive => "同花五条",
+        }
+    } else {
+        match hand {
+            rulatro_core::HandKind::HighCard => "HighCard",
+            rulatro_core::HandKind::Pair => "Pair",
+            rulatro_core::HandKind::TwoPair => "TwoPair",
+            rulatro_core::HandKind::Trips => "Trips",
+            rulatro_core::HandKind::Straight => "Straight",
+            rulatro_core::HandKind::Flush => "Flush",
+            rulatro_core::HandKind::FullHouse => "FullHouse",
+            rulatro_core::HandKind::Quads => "Quads",
+            rulatro_core::HandKind::StraightFlush => "StraightFlush",
+            rulatro_core::HandKind::RoyalFlush => "RoyalFlush",
+            rulatro_core::HandKind::FiveOfAKind => "FiveOfAKind",
+            rulatro_core::HandKind::FlushHouse => "FlushHouse",
+            rulatro_core::HandKind::FlushFive => "FlushFive",
+        }
+    }
+}
+
+fn rank_filter_label(locale: UiLocale, filter: RankFilter) -> &'static str {
+    if matches!(locale, UiLocale::ZhCn) {
+        match filter {
+            RankFilter::Any => "任意",
+            RankFilter::Face => "人头牌",
+            RankFilter::Ace => "A",
+            RankFilter::Numbered => "数字牌",
+        }
+    } else {
+        match filter {
+            RankFilter::Any => "Any",
+            RankFilter::Face => "Face",
+            RankFilter::Ace => "Ace",
+            RankFilter::Numbered => "Numbered",
+        }
+    }
+}
+
+fn signed_int(value: i64) -> String {
+    if value >= 0 {
+        format!("+{value}")
+    } else {
+        value.to_string()
     }
 }
 
