@@ -1,5 +1,10 @@
 # Modding Quickstart
 
+> Status: Active
+> Audience: New mod authors
+> Last Reviewed: 2026-02-15
+> Doc Type: Guide
+
 This guide gets you from zero to a runnable mod quickly.
 
 ## 1) Create a Mod
@@ -54,7 +59,7 @@ The CLI loads `mods/` automatically.
   - `./tools/python tools/moddev.py hardcoded --root .`
 - Re-run the game and check runtime output.
 
-## Common Mistakes
+## 5) Common Mistakes
 
 - `meta.id` does not match folder name.
 - `entry` or `content.root` uses unsafe path (`..`, absolute path).

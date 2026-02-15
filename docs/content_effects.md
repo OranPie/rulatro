@@ -1,9 +1,14 @@
 # Content Effects Reference
 
+> Status: Active
+> Audience: Engine developers, content authors, mod authors
+> Last Reviewed: 2026-02-15
+> Doc Type: Reference
+
 This document summarizes enhancement data/effects, Joker DSL conditions, and
 consumable JSON conditions/effects. It reflects the current engine behavior.
 
-## Enhancements, Seals, Editions (Core Effects)
+## 1) Enhancements, Seals, Editions (Core Effects)
 
 Applied by the scoring pipeline and round-end hooks (see `rulatro-core`).
 
@@ -33,7 +38,7 @@ Notes:
 - Debuffed cards ignore enhancements/editions/seals and do not trigger per-card hooks.
 - Face-down cards are a visibility flag only.
 
-## Joker DSL (Conditions + Actions)
+## 2) Joker DSL (Conditions + Actions)
 
 Jokers, Tags, and Bosses share the same DSL and trigger pipeline.
 
@@ -124,7 +129,7 @@ add_shop_joker rare
 
 See `crates/core/src/effects.rs` for the full action list.
 
-## Consumables (JSON Conditions + Effects)
+## 3) Consumables (JSON Conditions + Effects)
 
 Consumables are data-defined in JSON (`tarots.json`, `planets.json`, `spectrals.json`).
 

@@ -1,5 +1,10 @@
 # Modding Overview
 
+> Status: Active
+> Audience: Mod authors, engine contributors
+> Last Reviewed: 2026-02-15
+> Doc Type: Guide
+
 This project supports data-first mods (content packs) and script hooks.
 
 For the maintained docs entrypoint, start here:
@@ -7,7 +12,7 @@ For the maintained docs entrypoint, start here:
 - Adaptive mixin guide: `docs/modding/mixins.md`
 - Hardcoded behavior audit: `docs/modding/hardcoded_behavior.md`
 
-## Folder Layout
+## 1) Folder Layout
 
 ```
 mods/<id>/
@@ -28,7 +33,7 @@ mods/<id>/
 
 Only files you include are loaded. Missing content files are treated as empty.
 
-## Manifest (mod.json)
+## 2) Manifest (mod.json)
 
 ```
 {
@@ -46,7 +51,7 @@ Notes:
 - `content.root` is optional for script-only mods.
 - `overrides` must reference existing base content; conflicts are errors by default.
 
-## Consumable Mixins (Data-side composition)
+## 3) Consumable Mixins (Data-side composition)
 
 For complex consumable behavior, define reusable effect blocks in:
 - `content/consumable_mixins.json`
@@ -60,7 +65,7 @@ Composition order:
 
 If a mixin sets `kinds`, only matching consumable kinds can use it.
 
-## Named Effect Mixins (Joker/Tag/Boss)
+## 4) Named Effect Mixins (Joker/Tag/Boss)
 
 For complex Joker/Tag/Boss composition, define reusable effect snippets in:
 - `content/named_effect_mixins.json`
@@ -91,7 +96,7 @@ Composition order:
 1. resolved named mixin effects (dependencies first)
 2. block's own `on ...` effects
 
-## Lua Hooks
+## 5) Lua Hooks
 
 Lua mods can register hooks and return effects.
 
@@ -136,7 +141,7 @@ If an effect needs card selection, include `selected` indices in the block:
 
 Card indices refer to the current hand.
 
-## Wasm Hooks
+## 6) Wasm Hooks
 
 Wasm support is available via runtime ABI (experimental).
 Expected exports:
@@ -145,7 +150,7 @@ Expected exports:
 - `on_hook(ptr: i32, len: i32) -> i64` (`(ptr << 32) | len`)
 - optional `dealloc(ptr: i32, len: i32)`
 
-## Dev Tooling
+## 7) Dev Tooling
 
 Use the helper script for scaffold/validate/inspect:
 

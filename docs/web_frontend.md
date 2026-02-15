@@ -1,8 +1,13 @@
 # Web Frontend (API Connected)
 
+> Status: Active
+> Audience: Web UI developers, players, QA
+> Last Reviewed: 2026-02-15
+> Doc Type: Guide
+
 This frontend talks to the Rust game core via a local HTTP API. No mock logic.
 
-## Run
+## 1) Run
 
 From repo root:
 
@@ -22,7 +27,7 @@ Then open:
 http://localhost:7878
 ```
 
-## Notes
+## 2) Notes
 
 - The server serves the static UI from `web/` and exposes JSON endpoints:
   - `GET /api/state`

@@ -1,8 +1,13 @@
 # Modding Docs Hub
 
+> Status: Active
+> Audience: Mod authors and maintainers
+> Last Reviewed: 2026-02-15
+> Doc Type: Index
+
 This is the single entry for modding authoring and engine integration.
 
-## Start Here
+## 1) Start Here
 
 - New mod authors: `docs/modding/quickstart.md`
 - Daily workflow and tooling: `docs/modding/tooling.md`
@@ -11,7 +16,7 @@ This is the single entry for modding authoring and engine integration.
 - Runtime/hook and integration details: `docs/modding_develop.md`
 - Effect/condition reference: `docs/content_effects.md`
 
-## Recommended Flow
+## 2) Recommended Flow
 
 1. Scaffold a mod:
    - `./tools/python tools/moddev.py init my_mod --template lua`
@@ -24,7 +29,7 @@ This is the single entry for modding authoring and engine integration.
 5. Run and iterate:
    - `cargo run -p rulatro-cli`
 
-## Scope Notes
+## 3) Scope Notes
 
 - Lua runtime is supported.
 - Wasm runtime is supported via an experimental ABI.

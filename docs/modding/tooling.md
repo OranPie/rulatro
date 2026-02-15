@@ -1,5 +1,10 @@
 # Modding Tooling
 
+> Status: Active
+> Audience: Mod authors, tooling maintainers
+> Last Reviewed: 2026-02-15
+> Doc Type: Reference
+
 Development helper script: `tools/moddev.py`
 
 Run via:
@@ -8,7 +13,7 @@ Run via:
 ./tools/python tools/moddev.py <command> ...
 ```
 
-## Commands
+## 1) Commands
 
 ## `init`
 
@@ -57,7 +62,7 @@ Audit prioritized hardcoded behavior anchors in core runtime.
 ./tools/python tools/moddev.py hardcoded --root . --strict
 ```
 
-## Suggested Inner Loop
+## 2) Suggested Inner Loop
 
 1. `validate`
 2. `cargo run -p rulatro-cli`

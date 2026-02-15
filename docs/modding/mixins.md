@@ -1,16 +1,21 @@
 # Adaptive Mixin Writing Guide
 
+> Status: Active
+> Audience: Mod authors, content engineers
+> Last Reviewed: 2026-02-15
+> Doc Type: Guide
+
 Mixins are for shared behavior with local overrides. Keep them adaptive:
 - put common logic in mixins
 - keep card-specific tuning in the concrete definition
 - prefer conditions/expressions over fixed IDs
 
-## Mixin Types
+## 1) Mixin Types
 
 - Consumable mixins: `content/consumable_mixins.json`
 - Named effect mixins (Joker/Tag/Boss): `content/named_effect_mixins.json`
 
-## Named Mixins (Joker/Tag/Boss)
+## 2) Named Mixins (Joker/Tag/Boss)
 
 Schema:
 
@@ -37,7 +42,7 @@ joker sample "Sample" Common {
 Also supported:
 - `mixins a, b, c`
 
-## Consumable Mixins
+## 3) Consumable Mixins
 
 Schema:
 
@@ -70,14 +75,14 @@ Reference in consumables (`tarots.json`/`planets.json`/`spectrals.json`):
 }
 ```
 
-## Composition Order
+## 4) Composition Order
 
 - Resolved mixin dependencies first (`requires` chain)
 - Then the card/block's own effects
 
 Use this to keep base behavior reusable while preserving local specialization.
 
-## Validation
+## 5) Validation
 
 Use the tooling each edit cycle:
 

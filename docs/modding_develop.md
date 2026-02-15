@@ -1,5 +1,10 @@
 # Modding Development Guide
 
+> Status: Active
+> Audience: Engine contributors, advanced mod authors
+> Last Reviewed: 2026-02-15
+> Doc Type: Reference
+
 This document is for mod authors and engine contributors implementing mod support.
 It describes the data model, runtime hooks, and expected mod layout.
 
@@ -9,13 +14,13 @@ Recommended docs entrypoint:
 Roadmap for flow improvements:
 - `docs/modding/roadmap.md`
 
-## Goals
+## 1) Goals
 
 - Data-first content: most gameplay rules live in DSL/JSON, not Rust.
 - Script hooks: mods can inject effects via the same EffectBlock pipeline.
 - Deterministic load order and explicit override rules.
 
-## Mod Layout
+## 2) Mod Layout
 
 ```
 mods/<id>/
@@ -39,7 +44,7 @@ Notes:
 - Missing content files are treated as empty.
 - `entry` is optional for data-only mods.
 
-## Manifest (mod.json)
+## 3) Manifest (mod.json)
 
 ```
 {
@@ -58,7 +63,7 @@ Validation rules:
 - If `overrides` are used, the base entry must exist and be from base content.
 - Any conflict without a matching override is a hard error.
 
-## Data Content Packs
+## 4) Data Content Packs
 
 Data mods use the same formats as core content:
 - `jokers.dsl`, `tags.dsl`, `bosses.dsl` (DSL)
@@ -88,7 +93,7 @@ Named mixin behavior:
 Hardcoded behavior audit command:
 - `./tools/python tools/moddev.py hardcoded --root .`
 
-## Script Runtime (Lua)
+## 5) Script Runtime (Lua)
 
 Lua runtime registers hooks and returns effects:
 
@@ -133,7 +138,7 @@ Effect blocks are the same structure as core consumables:
 If an effect requires card selection, include `selected` indices in the
 ModEffectBlock. Indices refer to the current hand.
 
-## Wasm Runtime
+## 6) Wasm Runtime
 
 Wasm runtime is available (experimental ABI).
 
@@ -146,7 +151,7 @@ Expected guest exports:
 Hook payloads are JSON-serialized `ModHookContext`, and return payload is
 `ModHookResult` or a single `ModEffectBlock`.
 
-## Engine Integration
+## 7) Engine Integration
 
 Hooks are executed after core rules (Boss/Tag/Joker DSL) at HookPriority::Post.
 The runtime receives a read-only context and can return EffectBlocks that are

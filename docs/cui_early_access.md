@@ -1,9 +1,14 @@
 # Early Access CUI (Playable Prototype)
 
+> Status: Active
+> Audience: Players, UI developers, QA
+> Last Reviewed: 2026-02-15
+> Doc Type: Guide
+
 This CLI provides a simple command-line interface (CUI) to play through the core Balatro loop:
 blinds, hands, scoring, shop, and packs. It is designed for fast iteration and debugging.
 
-## Run
+## 1) Run
 
 From repo root:
 
@@ -47,7 +52,7 @@ For an automated demo (no input):
 cargo run -p rulatro-cli -- --auto
 ```
 
-## Core Flow
+## 2) Core Flow
 
 1. Start in a blind (ante 1, small).
 2. `deal` to draw into hand.
@@ -56,7 +61,7 @@ cargo run -p rulatro-cli -- --auto
 5. `buy` cards/packs/vouchers or `reroll`.
 6. `leave` shop and `next` to start the next blind.
 
-## Commands
+## 3) Commands
 
 - `help` — show command list
 - `save [path]` — save run progression to local JSON (default path from `$RULATRO_SAVE` or `~/.rulatro_cli_state.json`)
@@ -85,7 +90,7 @@ cargo run -p rulatro-cli -- --auto
 - `next` — advance to next blind
 - `quit` — exit
 
-## Notes
+## 4) Notes
 
 - The CUI uses current content/config and the hook system, so any DSL changes are reflected.
 - `rulatro-cui` uses a panel interface with focus switching (`Tab`), selection (`Space`), and context action (`Enter`).

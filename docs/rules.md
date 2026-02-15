@@ -1,9 +1,14 @@
 # Core Flow (v1 skeleton)
 
+> Status: Active
+> Audience: Engine developers, gameplay designers
+> Last Reviewed: 2026-02-15
+> Doc Type: Reference
+
 This document mirrors the minimal flow implemented in `rulatro-core` and is
 intended to be filled out as more mechanics are added.
 
-## Flow
+## 1) Flow
 
 1. **RunInit**
    - Initialize RNG with seed.
@@ -34,7 +39,7 @@ intended to be filled out as more mechanics are added.
    - Buying a pack opens options and allows `picks` selections.
    - Arcana/Celestial/Spectral pack choices are used immediately.
 
-## Activation Order (Reference)
+## 2) Activation Order (Reference)
 
 Based on the wiki activation sequence, scoring follows this order:
 1. Boss blind effects
@@ -73,7 +78,7 @@ Activation types (for effect definitions):
 - On Use: triggers when a consumable is used (tarot/planet/spectral).
 - Passive: triggers when recomputing rule flags (no score/money side effects).
 
-## Card Modifiers (Baseline)
+## 3) Card Modifiers (Baseline)
 
 Enhancements applied on scoring unless noted otherwise:
 - Bonus: +30 chips when scored.
@@ -104,16 +109,16 @@ Debuffed cards:
 Face-down cards:
 - Cards can be marked face-down when drawn (boss effects); this is a visibility flag only.
 
-## Hand Levels (Baseline)
+## 4) Hand Levels (Baseline)
 
 Hands start at level 1 each run. Level ups increase base chips/mult by the
 per-hand increments in `hands.json` (`level_chips`, `level_mult`). Jokers and
 consumables can trigger level upgrades during play.
 
-## Data Files
+## 5) Data Files
 
 See `assets/README.md`. Joker effects are defined in `assets/content/jokers.dsl`.
 
-## TODO (Notes)
+## 6) TODO (Notes)
 
 - Use mixin rule modules to replace the most complex Joker DSL definitions and reduce code size.
