@@ -19,7 +19,7 @@ Create a mod scaffold.
 ```
 
 Options:
-- `--template lua|data` (default: `lua`)
+- `--template lua|data|wasm` (default: `lua`)
 - `--root <mods-root>` (default: `mods`)
 - `--force` (allow using non-empty target dir)
 

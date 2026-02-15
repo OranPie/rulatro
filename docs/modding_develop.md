@@ -135,8 +135,16 @@ ModEffectBlock. Indices refer to the current hand.
 
 ## Wasm Runtime
 
-Wasm is scaffolded but not implemented yet. `.wasm` entries currently fail
-with a runtime unavailable error.
+Wasm runtime is available (experimental ABI).
+
+Expected guest exports:
+- `memory`
+- `alloc(len: i32) -> i32`
+- `on_hook(ptr: i32, len: i32) -> i64` (packs output pointer/length)
+- optional `dealloc(ptr: i32, len: i32)`
+
+Hook payloads are JSON-serialized `ModHookContext`, and return payload is
+`ModHookResult` or a single `ModEffectBlock`.
 
 ## Engine Integration
 

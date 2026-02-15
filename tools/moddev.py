@@ -362,12 +362,6 @@ def validate_manifest(mod_dir: Path) -> ValidationResult:
                         f"entry extension '{ext}' is unusual (expected one of {sorted(VALID_ENTRY_EXT)})",
                         manifest_path,
                     )
-                if ext == "wasm":
-                    result.add(
-                        "warning",
-                        "wasm runtime is scaffolded but currently unavailable",
-                        manifest_path,
-                    )
 
     content_root: Optional[str] = None
     content = manifest_data.get("content")
@@ -837,6 +831,22 @@ def scaffold_mod(mod_dir: Path, mod_id: str, template: str) -> None:
             encoding="utf-8",
         )
 
+    if template == "wasm":
+        scripts_dir.mkdir(exist_ok=True)
+        manifest["entry"] = "scripts/main.wasm"
+        (scripts_dir / "README.md").write_text(
+            "# Wasm Mod ABI\n\n"
+            "This runtime expects exports:\n"
+            "- memory\n"
+            "- alloc(len: i32) -> i32\n"
+            "- on_hook(ptr: i32, len: i32) -> i64  # (ptr<<32)|len\n"
+            "- optional dealloc(ptr: i32, len: i32)\n\n"
+            "on_hook input: JSON serialized ModHookContext.\n"
+            "on_hook output: JSON ModHookResult or single ModEffectBlock.\n\n"
+            "Example build target: wasm32-unknown-unknown.\n",
+            encoding="utf-8",
+        )
+
     if template == "data":
         sample_tarot = [
             {
@@ -886,7 +896,7 @@ def build_parser() -> argparse.ArgumentParser:
     init_p.add_argument("--root", default="mods", help="mods root (default: mods)")
     init_p.add_argument(
         "--template",
-        choices=["lua", "data"],
+        choices=["lua", "data", "wasm"],
         default="lua",
         help="scaffold template",
     )

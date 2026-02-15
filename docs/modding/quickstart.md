@@ -16,6 +16,12 @@ Data-only template:
 ./tools/python tools/moddev.py init my_data_mod --template data
 ```
 
+Wasm template:
+
+```bash
+./tools/python tools/moddev.py init my_wasm_mod --template wasm
+```
+
 ## 2) Validate
 
 ```bash

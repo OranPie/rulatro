@@ -27,5 +27,5 @@ This is the single entry for modding authoring and engine integration.
 ## Scope Notes
 
 - Lua runtime is supported.
-- Wasm runtime is scaffolded but currently unavailable.
+- Wasm runtime is supported via an experimental ABI.
 - Content packs use the same DSL/JSON schema as base assets.

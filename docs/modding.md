@@ -138,7 +138,12 @@ Card indices refer to the current hand.
 
 ## Wasm Hooks
 
-Wasm support is scaffolded but not implemented yet.
+Wasm support is available via runtime ABI (experimental).
+Expected exports:
+- `memory`
+- `alloc(len: i32) -> i32`
+- `on_hook(ptr: i32, len: i32) -> i64` (`(ptr << 32) | len`)
+- optional `dealloc(ptr: i32, len: i32)`
 
 ## Dev Tooling
 

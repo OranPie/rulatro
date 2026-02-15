@@ -10,7 +10,7 @@ serde_json = "1"
 thiserror = "1"
 
 [features]
-default = ["mod_lua"]
+default = ["mod_lua", "mod_wasm"]
 mod_lua = ["dep:mlua"]
 mod_wasm = ["dep:wasmtime"]
 
