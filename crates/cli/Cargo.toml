@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 libc = "0.2"
 rulatro-core = { path = "../core" }
+rulatro-autoplay = { path = "../autoplay" }
 rulatro-cui = { path = "../cui" }
 rulatro-data = { path = "../data" }
 rulatro-modding = { path = "../modding" }

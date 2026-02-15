@@ -25,6 +25,7 @@ This directory is organized by technical concern. Start here, then jump to the a
 
 - CLI/CUI runtime and controls: `docs/cui_early_access.md`
 - Web API + frontend surface: `docs/web_frontend.md`
+- Seed autoplay MCTS package and usage: `docs/autoplay.md`
 
 ## 4) Modding
 

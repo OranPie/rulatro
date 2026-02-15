@@ -3,6 +3,7 @@ members = [
   "crates/core",
   "crates/data",
   "crates/modding",
+  "crates/autoplay",
   "crates/cli",
   "crates/cui",
   "crates/web",

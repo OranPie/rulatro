@@ -1192,10 +1192,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "rulatro-autoplay"
+version = "0.1.0"
+dependencies = [
+ "rulatro-core",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "rulatro-cli"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "rulatro-autoplay",
  "rulatro-core",
  "rulatro-cui",
  "rulatro-data",

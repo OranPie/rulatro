@@ -1,16 +1,22 @@
+use rulatro_autoplay::{
+    run_autoplay, write_json, write_text, AutoplayConfig, AutoplayError, AutoplayRequest,
+    ObjectiveWeights, Simulator, TargetConfig,
+};
 use rulatro_core::{
-    voucher_by_id, BlindKind, BlindOutcome, Card, ConsumableKind, Edition, EffectBlock, EffectOp,
-    Enhancement, Event, EventBus, PackOpen, PackOption, Phase, Rank, RankFilter, RuleEffect,
-    RunError, RunState, ScoreBreakdown, ScoreTables, ScoreTraceStep, Seal, ShopOfferRef, Suit,
+    voucher_by_id, BlindKind, BlindOutcome, Card, ConsumableKind, Content, Edition, EffectBlock,
+    EffectOp, Enhancement, Event, EventBus, GameConfig, PackOpen, PackOption, Phase, Rank,
+    RankFilter, RuleEffect, RunError, RunState, ScoreBreakdown, ScoreTables, ScoreTraceStep, Seal,
+    ShopOfferRef, Suit,
 };
 use rulatro_data::{load_content_with_mods_locale, load_game_config, normalize_locale};
-use rulatro_modding::ModManager;
+use rulatro_modding::{LoadedMod, ModManager};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{self, Read, Write};
 #[cfg(unix)]
 use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum UiLocale {
@@ -51,6 +57,15 @@ struct CliOptions {
     menu: bool,
     seed: Option<u64>,
     locale: UiLocale,
+}
+
+#[derive(Debug, Clone)]
+struct AutoplayCliOptions {
+    locale: UiLocale,
+    use_mods: bool,
+    request: AutoplayRequest,
+    trace_json: Option<PathBuf>,
+    trace_text: Option<PathBuf>,
 }
 
 const COMPLETION_COMMANDS: &[&str] = &[
@@ -865,8 +880,262 @@ fn parse_cli_options(args: &[String]) -> CliOptions {
     }
 }
 
+fn parse_autoplay_options(args: &[String]) -> Result<AutoplayCliOptions, String> {
+    let mut cfg = AutoplayConfig::default();
+    let mut targets = TargetConfig::default();
+    let mut weights = ObjectiveWeights::default();
+    let mut locale_arg: Option<String> = std::env::var("RULATRO_LANG").ok();
+    let mut use_mods = true;
+    let mut trace_json = None;
+    let mut trace_text = None;
+
+    let mut idx = 0usize;
+    while idx < args.len() {
+        match args[idx].as_str() {
+            "--seed" => {
+                idx += 1;
+                let value = args
+                    .get(idx)
+                    .ok_or_else(|| "missing value for --seed".to_string())?;
+                cfg.seed = value
+                    .parse::<u64>()
+                    .map_err(|_| "invalid --seed value".to_string())?;
+            }
+            "--lang" | "-l" => {
+                idx += 1;
+                let value = args
+                    .get(idx)
+                    .ok_or_else(|| "missing value for --lang".to_string())?;
+                locale_arg = Some(value.clone());
+            }
+            "--target-score" => {
+                idx += 1;
+                let value = args
+                    .get(idx)
+                    .ok_or_else(|| "missing value for --target-score".to_string())?;
+                targets.target_score = Some(
+                    value
+                        .parse::<i64>()
+                        .map_err(|_| "invalid --target-score value".to_string())?,
+                );
+            }
+            "--target-ante" => {
+                idx += 1;
+                let value = args
+                    .get(idx)
+                    .ok_or_else(|| "missing value for --target-ante".to_string())?;
+                targets.target_ante = Some(
+                    value
+                        .parse::<u8>()
+                        .map_err(|_| "invalid --target-ante value".to_string())?,
+                );
+            }
+            "--target-money" => {
+                idx += 1;
+                let value = args
+                    .get(idx)
+                    .ok_or_else(|| "missing value for --target-money".to_string())?;
+                targets.target_money = Some(
+                    value
+                        .parse::<i64>()
+                        .map_err(|_| "invalid --target-money value".to_string())?,
+                );
+            }
+            "--weight-score" => {
+                idx += 1;
+                let value = args
+                    .get(idx)
+                    .ok_or_else(|| "missing value for --weight-score".to_string())?;
+                weights.score = value
+                    .parse::<f64>()
+                    .map_err(|_| "invalid --weight-score value".to_string())?;
+            }
+            "--weight-ante" => {
+                idx += 1;
+                let value = args
+                    .get(idx)
+                    .ok_or_else(|| "missing value for --weight-ante".to_string())?;
+                weights.ante = value
+                    .parse::<f64>()
+                    .map_err(|_| "invalid --weight-ante value".to_string())?;
+            }
+            "--weight-money" => {
+                idx += 1;
+                let value = args
+                    .get(idx)
+                    .ok_or_else(|| "missing value for --weight-money".to_string())?;
+                weights.money = value
+                    .parse::<f64>()
+                    .map_err(|_| "invalid --weight-money value".to_string())?;
+            }
+            "--weight-survival" => {
+                idx += 1;
+                let value = args
+                    .get(idx)
+                    .ok_or_else(|| "missing value for --weight-survival".to_string())?;
+                weights.survival = value
+                    .parse::<f64>()
+                    .map_err(|_| "invalid --weight-survival value".to_string())?;
+            }
+            "--weight-steps" => {
+                idx += 1;
+                let value = args
+                    .get(idx)
+                    .ok_or_else(|| "missing value for --weight-steps".to_string())?;
+                weights.steps_penalty = value
+                    .parse::<f64>()
+                    .map_err(|_| "invalid --weight-steps value".to_string())?;
+            }
+            "--time-ms" => {
+                idx += 1;
+                let value = args
+                    .get(idx)
+                    .ok_or_else(|| "missing value for --time-ms".to_string())?;
+                cfg.per_step_time_ms = value
+                    .parse::<u64>()
+                    .map_err(|_| "invalid --time-ms value".to_string())?;
+            }
+            "--max-sims" => {
+                idx += 1;
+                let value = args
+                    .get(idx)
+                    .ok_or_else(|| "missing value for --max-sims".to_string())?;
+                cfg.per_step_max_simulations = value
+                    .parse::<u32>()
+                    .map_err(|_| "invalid --max-sims value".to_string())?;
+            }
+            "--max-steps" => {
+                idx += 1;
+                let value = args
+                    .get(idx)
+                    .ok_or_else(|| "missing value for --max-steps".to_string())?;
+                cfg.max_steps = value
+                    .parse::<u32>()
+                    .map_err(|_| "invalid --max-steps value".to_string())?;
+            }
+            "--max-play-candidates" => {
+                idx += 1;
+                let value = args
+                    .get(idx)
+                    .ok_or_else(|| "missing value for --max-play-candidates".to_string())?;
+                cfg.max_play_candidates = value
+                    .parse::<usize>()
+                    .map_err(|_| "invalid --max-play-candidates value".to_string())?;
+            }
+            "--max-discard-candidates" => {
+                idx += 1;
+                let value = args
+                    .get(idx)
+                    .ok_or_else(|| "missing value for --max-discard-candidates".to_string())?;
+                cfg.max_discard_candidates = value
+                    .parse::<usize>()
+                    .map_err(|_| "invalid --max-discard-candidates value".to_string())?;
+            }
+            "--max-shop-candidates" => {
+                idx += 1;
+                let value = args
+                    .get(idx)
+                    .ok_or_else(|| "missing value for --max-shop-candidates".to_string())?;
+                cfg.max_shop_candidates = value
+                    .parse::<usize>()
+                    .map_err(|_| "invalid --max-shop-candidates value".to_string())?;
+            }
+            "--rollout-depth" => {
+                idx += 1;
+                let value = args
+                    .get(idx)
+                    .ok_or_else(|| "missing value for --rollout-depth".to_string())?;
+                cfg.rollout_depth = value
+                    .parse::<u32>()
+                    .map_err(|_| "invalid --rollout-depth value".to_string())?;
+            }
+            "--exploration-c" => {
+                idx += 1;
+                let value = args
+                    .get(idx)
+                    .ok_or_else(|| "missing value for --exploration-c".to_string())?;
+                cfg.exploration_c = value
+                    .parse::<f64>()
+                    .map_err(|_| "invalid --exploration-c value".to_string())?;
+            }
+            "--trace-json" => {
+                idx += 1;
+                let value = args
+                    .get(idx)
+                    .ok_or_else(|| "missing value for --trace-json".to_string())?;
+                trace_json = Some(PathBuf::from(value));
+            }
+            "--trace-text" => {
+                idx += 1;
+                let value = args
+                    .get(idx)
+                    .ok_or_else(|| "missing value for --trace-text".to_string())?;
+                trace_text = Some(PathBuf::from(value));
+            }
+            "--keep-going-on-fail" => {
+                targets.stop_on_blind_failed = false;
+            }
+            "--no-mods" => {
+                use_mods = false;
+            }
+            "--help" | "-h" => {
+                print_autoplay_help();
+                std::process::exit(0);
+            }
+            other => {
+                return Err(format!("unknown autoplay option: {other}"));
+            }
+        }
+        idx += 1;
+    }
+
+    Ok(AutoplayCliOptions {
+        locale: UiLocale::from_opt(locale_arg.as_deref()),
+        use_mods,
+        request: AutoplayRequest {
+            config: cfg,
+            targets,
+            weights,
+        },
+        trace_json,
+        trace_text,
+    })
+}
+
+fn default_trace_path(seed: u64, ext: &str) -> PathBuf {
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|value| value.as_secs())
+        .unwrap_or(0);
+    PathBuf::from("traces").join(format!("autoplay_{ts}_{seed}.{ext}"))
+}
+
+fn print_autoplay_help() {
+    println!("rulatro-cli autoplay options:");
+    println!("  --seed <u64>");
+    println!("  --lang <en_US|zh_CN>");
+    println!("  --target-score <i64>");
+    println!("  --target-ante <u8>");
+    println!("  --target-money <i64>");
+    println!("  --time-ms <u64> --max-sims <u32> --max-steps <u32>");
+    println!("  --weight-score <f64> --weight-ante <f64> --weight-money <f64>");
+    println!("  --weight-survival <f64> --weight-steps <f64>");
+    println!("  --max-play-candidates <usize> --max-discard-candidates <usize>");
+    println!("  --max-shop-candidates <usize> --rollout-depth <u32>");
+    println!("  --exploration-c <f64>");
+    println!("  --trace-json <path> --trace-text <path>");
+    println!("  --keep-going-on-fail --no-mods");
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().is_some_and(|item| item == "autoplay") {
+        if let Err(err) = run_autoplay_command(&args[1..]) {
+            eprintln!("autoplay error: {err}");
+            std::process::exit(1);
+        }
+        return;
+    }
     let options = parse_cli_options(&args);
     if options.cui {
         let launch = rulatro_cui::LaunchOptions {
@@ -886,32 +1155,133 @@ fn main() {
     run_cui(options.locale, options.menu);
 }
 
-fn build_run_with_seed(
-    locale: UiLocale,
-    seed: u64,
-) -> Result<(RunState, Vec<String>, Vec<String>, String), String> {
+#[derive(Clone)]
+struct RunBlueprint {
+    config: GameConfig,
+    content: Content,
+    mods: Vec<LoadedMod>,
+    mod_ids: Vec<String>,
+    warnings: Vec<String>,
+    content_signature: String,
+    use_mods: bool,
+}
+
+impl RunBlueprint {
+    fn instantiate(&self, seed: u64) -> Result<RunState, String> {
+        let mut run = RunState::new(self.config.clone(), self.content.clone(), seed);
+        if self.use_mods {
+            let mut runtime = ModManager::new();
+            runtime
+                .load_mods(&self.mods)
+                .map_err(|err| err.to_string())?;
+            run.set_mod_runtime(Some(Box::new(runtime)));
+        }
+        Ok(run)
+    }
+}
+
+fn load_run_blueprint(locale: UiLocale, use_mods: bool) -> Result<RunBlueprint, String> {
     let config = load_game_config(Path::new("assets")).map_err(|err| err.to_string())?;
-    let modded =
-        load_content_with_mods_locale(Path::new("assets"), Path::new("mods"), Some(locale.code()))
-            .map_err(|err| err.to_string())?;
+    let mods_dir = if use_mods {
+        Path::new("mods")
+    } else {
+        Path::new("__no_mods__")
+    };
+    let modded = load_content_with_mods_locale(Path::new("assets"), mods_dir, Some(locale.code()))
+        .map_err(|err| err.to_string())?;
     let mod_ids: Vec<String> = modded
         .mods
         .iter()
         .map(|item| item.manifest.meta.id.clone())
         .collect();
     let warnings = modded.warnings.clone();
-    let mut runtime = ModManager::new();
-    runtime
-        .load_mods(&modded.mods)
-        .map_err(|err| err.to_string())?;
-    let mut run = RunState::new(config, modded.content, seed);
-    run.set_mod_runtime(Some(Box::new(runtime)));
     let content_signature = compute_content_signature(locale)?;
-    Ok((run, mod_ids, warnings, content_signature))
+    Ok(RunBlueprint {
+        config,
+        content: modded.content,
+        mods: modded.mods,
+        mod_ids,
+        warnings,
+        content_signature,
+        use_mods,
+    })
+}
+
+fn build_run_with_seed(
+    locale: UiLocale,
+    seed: u64,
+) -> Result<(RunState, Vec<String>, Vec<String>, String), String> {
+    let blueprint = load_run_blueprint(locale, true)?;
+    let run = blueprint.instantiate(seed)?;
+    Ok((
+        run,
+        blueprint.mod_ids,
+        blueprint.warnings,
+        blueprint.content_signature,
+    ))
 }
 
 fn build_run(locale: UiLocale) -> Result<(RunState, Vec<String>, Vec<String>, String), String> {
     build_run_with_seed(locale, DEFAULT_RUN_SEED)
+}
+
+fn run_autoplay_command(args: &[String]) -> Result<(), String> {
+    let options = parse_autoplay_options(args)?;
+    let blueprint = load_run_blueprint(options.locale, options.use_mods)?;
+
+    println!("autoplay locale: {}", options.locale.code());
+    println!("autoplay seed: {}", options.request.config.seed);
+    if options.use_mods {
+        println!("mods loaded: {}", blueprint.mod_ids.len());
+        for mod_id in &blueprint.mod_ids {
+            println!("mod: {}", mod_id);
+        }
+    } else {
+        println!("mods loaded: disabled");
+    }
+    for warning in &blueprint.warnings {
+        eprintln!("mod warning: {warning}");
+    }
+
+    let seed = options.request.config.seed;
+    let factory = || -> Result<Simulator, AutoplayError> {
+        let mut run = blueprint
+            .instantiate(seed)
+            .map_err(AutoplayError::Factory)?;
+        let mut events = EventBus::default();
+        run.start_blind(1, BlindKind::Small, &mut events)
+            .map_err(|err| AutoplayError::Run(err.to_string()))?;
+        let mut sim = Simulator::new(run);
+        sim.events = events;
+        let _ = sim.events.drain().count();
+        Ok(sim)
+    };
+
+    let result = run_autoplay(&factory, &options.request).map_err(|err| err.to_string())?;
+    let json_path = options
+        .trace_json
+        .unwrap_or_else(|| default_trace_path(seed, "json"));
+    let text_path = options
+        .trace_text
+        .unwrap_or_else(|| default_trace_path(seed, "txt"));
+    write_json(&json_path, &result).map_err(|err| err.to_string())?;
+    write_text(&text_path, &result).map_err(|err| err.to_string())?;
+
+    println!("autoplay status: {:?}", result.status);
+    println!(
+        "autoplay final: ante={} money={} score={}/{}",
+        result.final_metrics.ante,
+        result.final_metrics.money,
+        result.final_metrics.blind_score,
+        result.final_metrics.blind_target
+    );
+    println!(
+        "autoplay summary: steps={} simulations={} wall_ms={}",
+        result.summary.steps, result.summary.total_simulations, result.summary.wall_time_ms
+    );
+    println!("autoplay trace json: {}", json_path.display());
+    println!("autoplay trace text: {}", text_path.display());
+    Ok(())
 }
 
 fn run_auto(locale: UiLocale) {
