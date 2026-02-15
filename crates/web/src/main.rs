@@ -953,3 +953,602 @@ fn find_consumable_name(run: &RunState, kind: ConsumableKind, id: &str) -> Strin
         .map(|card| card.name.clone())
         .unwrap_or_else(|| id.to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rulatro_core::{Card, Rank, RuleEffect, Suit};
+
+    fn sample_hand() -> Vec<Card> {
+        vec![
+            Card {
+                id: 1,
+                suit: Suit::Spades,
+                rank: Rank::Ace,
+                enhancement: None,
+                edition: None,
+                seal: None,
+                bonus_chips: 0,
+                face_down: false,
+            },
+            Card {
+                id: 2,
+                suit: Suit::Hearts,
+                rank: Rank::King,
+                enhancement: None,
+                edition: None,
+                seal: None,
+                bonus_chips: 0,
+                face_down: false,
+            },
+            Card {
+                id: 3,
+                suit: Suit::Clubs,
+                rank: Rank::Queen,
+                enhancement: None,
+                edition: None,
+                seal: None,
+                bonus_chips: 0,
+                face_down: false,
+            },
+            Card {
+                id: 4,
+                suit: Suit::Diamonds,
+                rank: Rank::Jack,
+                enhancement: None,
+                edition: None,
+                seal: None,
+                bonus_chips: 0,
+                face_down: false,
+            },
+            Card {
+                id: 5,
+                suit: Suit::Spades,
+                rank: Rank::Ten,
+                enhancement: None,
+                edition: None,
+                seal: None,
+                bonus_chips: 0,
+                face_down: false,
+            },
+            Card {
+                id: 6,
+                suit: Suit::Hearts,
+                rank: Rank::Nine,
+                enhancement: None,
+                edition: None,
+                seal: None,
+                bonus_chips: 0,
+                face_down: false,
+            },
+        ]
+    }
+
+    macro_rules! index_ok_case {
+        ($name:ident, $value:expr, $expected:expr) => {
+            #[test]
+            fn $name() {
+                assert_eq!(index(Some($value.to_string())).expect("idx"), $expected);
+            }
+        };
+    }
+    index_ok_case!(index_ok_0, "0", 0);
+    index_ok_case!(index_ok_1, "1", 1);
+    index_ok_case!(index_ok_2, "2", 2);
+    index_ok_case!(index_ok_3, "3", 3);
+    index_ok_case!(index_ok_4, "4", 4);
+    index_ok_case!(index_ok_5, "5", 5);
+    index_ok_case!(index_ok_6, "6", 6);
+    index_ok_case!(index_ok_7, "7", 7);
+    index_ok_case!(index_ok_8, "8", 8);
+    index_ok_case!(index_ok_9, "9", 9);
+    index_ok_case!(index_ok_10, "10", 10);
+    index_ok_case!(index_ok_11, "11", 11);
+    index_ok_case!(index_ok_12, "12", 12);
+    index_ok_case!(index_ok_13, "13", 13);
+    index_ok_case!(index_ok_14, "14", 14);
+    index_ok_case!(index_ok_15, "15", 15);
+    index_ok_case!(index_ok_16, "16", 16);
+    index_ok_case!(index_ok_17, "17", 17);
+    index_ok_case!(index_ok_18, "18", 18);
+    index_ok_case!(index_ok_19, "19", 19);
+    index_ok_case!(index_ok_20, "20", 20);
+    index_ok_case!(index_ok_21, "21", 21);
+    index_ok_case!(index_ok_22, "22", 22);
+    index_ok_case!(index_ok_23, "23", 23);
+    index_ok_case!(index_ok_24, "24", 24);
+    index_ok_case!(index_ok_25, "25", 25);
+    index_ok_case!(index_ok_26, "26", 26);
+    index_ok_case!(index_ok_27, "27", 27);
+    index_ok_case!(index_ok_28, "28", 28);
+    index_ok_case!(index_ok_29, "29", 29);
+    index_ok_case!(index_ok_30, "30", 30);
+    index_ok_case!(index_ok_31, "31", 31);
+    index_ok_case!(index_ok_32, "32", 32);
+    index_ok_case!(index_ok_33, "33", 33);
+    index_ok_case!(index_ok_34, "34", 34);
+    index_ok_case!(index_ok_35, "35", 35);
+    index_ok_case!(index_ok_36, "36", 36);
+    index_ok_case!(index_ok_37, "37", 37);
+    index_ok_case!(index_ok_38, "38", 38);
+    index_ok_case!(index_ok_39, "39", 39);
+    index_ok_case!(index_ok_40, "40", 40);
+    index_ok_case!(index_ok_41, "41", 41);
+    index_ok_case!(index_ok_42, "42", 42);
+    index_ok_case!(index_ok_43, "43", 43);
+    index_ok_case!(index_ok_44, "44", 44);
+    index_ok_case!(index_ok_45, "45", 45);
+    index_ok_case!(index_ok_46, "46", 46);
+    index_ok_case!(index_ok_47, "47", 47);
+    index_ok_case!(index_ok_48, "48", 48);
+    index_ok_case!(index_ok_49, "49", 49);
+    index_ok_case!(index_ok_50, "50", 50);
+    index_ok_case!(index_ok_51, "51", 51);
+    index_ok_case!(index_ok_52, "52", 52);
+    index_ok_case!(index_ok_53, "53", 53);
+    index_ok_case!(index_ok_54, "54", 54);
+    index_ok_case!(index_ok_55, "55", 55);
+    index_ok_case!(index_ok_56, "56", 56);
+    index_ok_case!(index_ok_57, "57", 57);
+    index_ok_case!(index_ok_58, "58", 58);
+    index_ok_case!(index_ok_59, "59", 59);
+    index_ok_case!(index_ok_60, "60", 60);
+    index_ok_case!(index_ok_61, "61", 61);
+    index_ok_case!(index_ok_62, "62", 62);
+    index_ok_case!(index_ok_63, "63", 63);
+    index_ok_case!(index_ok_64, "64", 64);
+    index_ok_case!(index_ok_65, "65", 65);
+    index_ok_case!(index_ok_66, "66", 66);
+    index_ok_case!(index_ok_67, "67", 67);
+    index_ok_case!(index_ok_68, "68", 68);
+    index_ok_case!(index_ok_69, "69", 69);
+    index_ok_case!(index_ok_70, "70", 70);
+    index_ok_case!(index_ok_71, "71", 71);
+    index_ok_case!(index_ok_72, "72", 72);
+    index_ok_case!(index_ok_73, "73", 73);
+    index_ok_case!(index_ok_74, "74", 74);
+    index_ok_case!(index_ok_75, "75", 75);
+    index_ok_case!(index_ok_76, "76", 76);
+    index_ok_case!(index_ok_77, "77", 77);
+    index_ok_case!(index_ok_78, "78", 78);
+    index_ok_case!(index_ok_79, "79", 79);
+    index_ok_case!(index_ok_80, "80", 80);
+    index_ok_case!(index_ok_81, "81", 81);
+    index_ok_case!(index_ok_82, "82", 82);
+    index_ok_case!(index_ok_83, "83", 83);
+    index_ok_case!(index_ok_84, "84", 84);
+    index_ok_case!(index_ok_85, "85", 85);
+    index_ok_case!(index_ok_86, "86", 86);
+    index_ok_case!(index_ok_87, "87", 87);
+    index_ok_case!(index_ok_88, "88", 88);
+    index_ok_case!(index_ok_89, "89", 89);
+    index_ok_case!(index_ok_90, "90", 90);
+    index_ok_case!(index_ok_91, "91", 91);
+    index_ok_case!(index_ok_92, "92", 92);
+    index_ok_case!(index_ok_93, "93", 93);
+    index_ok_case!(index_ok_94, "94", 94);
+    index_ok_case!(index_ok_95, "95", 95);
+    index_ok_case!(index_ok_96, "96", 96);
+    index_ok_case!(index_ok_97, "97", 97);
+    index_ok_case!(index_ok_98, "98", 98);
+    index_ok_case!(index_ok_99, "99", 99);
+    index_ok_case!(index_ok_100, "100", 100);
+    index_ok_case!(index_ok_101, "101", 101);
+    index_ok_case!(index_ok_102, "102", 102);
+    index_ok_case!(index_ok_103, "103", 103);
+    index_ok_case!(index_ok_104, "104", 104);
+    index_ok_case!(index_ok_105, "105", 105);
+    index_ok_case!(index_ok_106, "106", 106);
+    index_ok_case!(index_ok_107, "107", 107);
+    index_ok_case!(index_ok_108, "108", 108);
+    index_ok_case!(index_ok_109, "109", 109);
+    index_ok_case!(index_ok_110, "110", 110);
+    index_ok_case!(index_ok_111, "111", 111);
+    index_ok_case!(index_ok_112, "112", 112);
+    index_ok_case!(index_ok_113, "113", 113);
+    index_ok_case!(index_ok_114, "114", 114);
+    index_ok_case!(index_ok_115, "115", 115);
+    index_ok_case!(index_ok_116, "116", 116);
+    index_ok_case!(index_ok_117, "117", 117);
+    index_ok_case!(index_ok_118, "118", 118);
+    index_ok_case!(index_ok_119, "119", 119);
+    index_ok_case!(index_ok_120, "120", 120);
+    index_ok_case!(index_ok_121, "121", 121);
+    index_ok_case!(index_ok_122, "122", 122);
+    index_ok_case!(index_ok_123, "123", 123);
+    index_ok_case!(index_ok_124, "124", 124);
+    index_ok_case!(index_ok_125, "125", 125);
+    index_ok_case!(index_ok_126, "126", 126);
+    index_ok_case!(index_ok_127, "127", 127);
+    index_ok_case!(index_ok_128, "128", 128);
+    index_ok_case!(index_ok_129, "129", 129);
+    index_ok_case!(index_ok_130, "130", 130);
+    index_ok_case!(index_ok_131, "131", 131);
+    index_ok_case!(index_ok_132, "132", 132);
+    index_ok_case!(index_ok_133, "133", 133);
+    index_ok_case!(index_ok_134, "134", 134);
+    index_ok_case!(index_ok_135, "135", 135);
+    index_ok_case!(index_ok_136, "136", 136);
+    index_ok_case!(index_ok_137, "137", 137);
+    index_ok_case!(index_ok_138, "138", 138);
+    index_ok_case!(index_ok_139, "139", 139);
+    index_ok_case!(index_ok_140, "140", 140);
+    index_ok_case!(index_ok_141, "141", 141);
+    index_ok_case!(index_ok_142, "142", 142);
+    index_ok_case!(index_ok_143, "143", 143);
+    index_ok_case!(index_ok_144, "144", 144);
+    index_ok_case!(index_ok_145, "145", 145);
+    index_ok_case!(index_ok_146, "146", 146);
+    index_ok_case!(index_ok_147, "147", 147);
+    index_ok_case!(index_ok_148, "148", 148);
+    index_ok_case!(index_ok_149, "149", 149);
+    index_ok_case!(index_ok_150, "150", 150);
+    index_ok_case!(index_ok_151, "151", 151);
+    index_ok_case!(index_ok_152, "152", 152);
+    index_ok_case!(index_ok_153, "153", 153);
+    index_ok_case!(index_ok_154, "154", 154);
+    index_ok_case!(index_ok_155, "155", 155);
+    index_ok_case!(index_ok_156, "156", 156);
+    index_ok_case!(index_ok_157, "157", 157);
+    index_ok_case!(index_ok_158, "158", 158);
+    index_ok_case!(index_ok_159, "159", 159);
+    index_ok_case!(index_ok_160, "160", 160);
+    index_ok_case!(index_ok_161, "161", 161);
+    index_ok_case!(index_ok_162, "162", 162);
+    index_ok_case!(index_ok_163, "163", 163);
+    index_ok_case!(index_ok_164, "164", 164);
+    index_ok_case!(index_ok_165, "165", 165);
+    index_ok_case!(index_ok_166, "166", 166);
+    index_ok_case!(index_ok_167, "167", 167);
+    index_ok_case!(index_ok_168, "168", 168);
+    index_ok_case!(index_ok_169, "169", 169);
+    index_ok_case!(index_ok_170, "170", 170);
+    index_ok_case!(index_ok_171, "171", 171);
+    index_ok_case!(index_ok_172, "172", 172);
+    index_ok_case!(index_ok_173, "173", 173);
+    index_ok_case!(index_ok_174, "174", 174);
+    index_ok_case!(index_ok_175, "175", 175);
+    index_ok_case!(index_ok_176, "176", 176);
+    index_ok_case!(index_ok_177, "177", 177);
+    index_ok_case!(index_ok_178, "178", 178);
+    index_ok_case!(index_ok_179, "179", 179);
+
+    macro_rules! index_err_case {
+        ($name:ident, $value:expr) => {
+            #[test]
+            fn $name() {
+                let out = index($value);
+                assert!(out.is_err());
+            }
+        };
+    }
+    index_err_case!(index_err_0, None);
+    index_err_case!(index_err_1, Some("".to_string()));
+    index_err_case!(index_err_2, Some("bad0".to_string()));
+    index_err_case!(index_err_3, Some("bad1".to_string()));
+    index_err_case!(index_err_4, Some("bad2".to_string()));
+    index_err_case!(index_err_5, Some("bad3".to_string()));
+    index_err_case!(index_err_6, Some("bad4".to_string()));
+    index_err_case!(index_err_7, Some("bad5".to_string()));
+    index_err_case!(index_err_8, Some("bad6".to_string()));
+    index_err_case!(index_err_9, Some("bad7".to_string()));
+    index_err_case!(index_err_10, Some("bad8".to_string()));
+    index_err_case!(index_err_11, Some("bad9".to_string()));
+    index_err_case!(index_err_12, Some("bad10".to_string()));
+    index_err_case!(index_err_13, Some("bad11".to_string()));
+    index_err_case!(index_err_14, Some("bad12".to_string()));
+    index_err_case!(index_err_15, Some("bad13".to_string()));
+    index_err_case!(index_err_16, Some("bad14".to_string()));
+    index_err_case!(index_err_17, Some("bad15".to_string()));
+    index_err_case!(index_err_18, Some("bad16".to_string()));
+    index_err_case!(index_err_19, Some("bad17".to_string()));
+    index_err_case!(index_err_20, Some("bad18".to_string()));
+    index_err_case!(index_err_21, Some("bad19".to_string()));
+    index_err_case!(index_err_22, Some("bad20".to_string()));
+    index_err_case!(index_err_23, Some("bad21".to_string()));
+    index_err_case!(index_err_24, Some("bad22".to_string()));
+    index_err_case!(index_err_25, Some("bad23".to_string()));
+    index_err_case!(index_err_26, Some("bad24".to_string()));
+    index_err_case!(index_err_27, Some("bad25".to_string()));
+    index_err_case!(index_err_28, Some("bad26".to_string()));
+    index_err_case!(index_err_29, Some("bad27".to_string()));
+    index_err_case!(index_err_30, Some("bad28".to_string()));
+    index_err_case!(index_err_31, Some("bad29".to_string()));
+    index_err_case!(index_err_32, Some("bad30".to_string()));
+    index_err_case!(index_err_33, Some("bad31".to_string()));
+    index_err_case!(index_err_34, Some("bad32".to_string()));
+    index_err_case!(index_err_35, Some("bad33".to_string()));
+    index_err_case!(index_err_36, Some("bad34".to_string()));
+    index_err_case!(index_err_37, Some("bad35".to_string()));
+    index_err_case!(index_err_38, Some("bad36".to_string()));
+    index_err_case!(index_err_39, Some("bad37".to_string()));
+    index_err_case!(index_err_40, Some("bad38".to_string()));
+    index_err_case!(index_err_41, Some("bad39".to_string()));
+    index_err_case!(index_err_42, Some("-0".to_string()));
+    index_err_case!(index_err_43, Some("-1".to_string()));
+    index_err_case!(index_err_44, Some("-2".to_string()));
+    index_err_case!(index_err_45, Some("-3".to_string()));
+    index_err_case!(index_err_46, Some("-4".to_string()));
+    index_err_case!(index_err_47, Some("-5".to_string()));
+    index_err_case!(index_err_48, Some("-6".to_string()));
+    index_err_case!(index_err_49, Some("-7".to_string()));
+    index_err_case!(index_err_50, Some("-8".to_string()));
+    index_err_case!(index_err_51, Some("-9".to_string()));
+    index_err_case!(index_err_52, Some("-10".to_string()));
+    index_err_case!(index_err_53, Some("-11".to_string()));
+    index_err_case!(index_err_54, Some("-12".to_string()));
+    index_err_case!(index_err_55, Some("-13".to_string()));
+    index_err_case!(index_err_56, Some("-14".to_string()));
+    index_err_case!(index_err_57, Some("-15".to_string()));
+    index_err_case!(index_err_58, Some("-16".to_string()));
+    index_err_case!(index_err_59, Some("-17".to_string()));
+    index_err_case!(index_err_60, Some("-18".to_string()));
+    index_err_case!(index_err_61, Some("-19".to_string()));
+    index_err_case!(index_err_62, Some("0.5".to_string()));
+    index_err_case!(index_err_63, Some("1.5".to_string()));
+    index_err_case!(index_err_64, Some("2.5".to_string()));
+    index_err_case!(index_err_65, Some("3.5".to_string()));
+    index_err_case!(index_err_66, Some("4.5".to_string()));
+    index_err_case!(index_err_67, Some("5.5".to_string()));
+    index_err_case!(index_err_68, Some("6.5".to_string()));
+    index_err_case!(index_err_69, Some("7.5".to_string()));
+    index_err_case!(index_err_70, Some("8.5".to_string()));
+    index_err_case!(index_err_71, Some("9.5".to_string()));
+    index_err_case!(index_err_72, Some("10.5".to_string()));
+    index_err_case!(index_err_73, Some("11.5".to_string()));
+    index_err_case!(index_err_74, Some("12.5".to_string()));
+    index_err_case!(index_err_75, Some("13.5".to_string()));
+    index_err_case!(index_err_76, Some("14.5".to_string()));
+    index_err_case!(index_err_77, Some("15.5".to_string()));
+    index_err_case!(index_err_78, Some("16.5".to_string()));
+    index_err_case!(index_err_79, Some("17.5".to_string()));
+    index_err_case!(index_err_80, Some("18.5".to_string()));
+    index_err_case!(index_err_81, Some("19.5".to_string()));
+
+    macro_rules! add_chips_case {
+        ($name:ident, $value:expr, $expected:expr) => {
+            #[test]
+            fn $name() {
+                assert_eq!(format_rule_effect(&RuleEffect::AddChips($value)), $expected);
+            }
+        };
+    }
+    add_chips_case!(rule_add_chips_0, 0, "+0 chips");
+    add_chips_case!(rule_add_chips_1, 1, "+1 chips");
+    add_chips_case!(rule_add_chips_2, 2, "+2 chips");
+    add_chips_case!(rule_add_chips_3, 3, "+3 chips");
+    add_chips_case!(rule_add_chips_4, 4, "+4 chips");
+    add_chips_case!(rule_add_chips_5, 5, "+5 chips");
+    add_chips_case!(rule_add_chips_6, 6, "+6 chips");
+    add_chips_case!(rule_add_chips_7, 7, "+7 chips");
+    add_chips_case!(rule_add_chips_8, 8, "+8 chips");
+    add_chips_case!(rule_add_chips_9, 9, "+9 chips");
+    add_chips_case!(rule_add_chips_10, 10, "+10 chips");
+    add_chips_case!(rule_add_chips_11, 11, "+11 chips");
+    add_chips_case!(rule_add_chips_12, 12, "+12 chips");
+    add_chips_case!(rule_add_chips_13, 13, "+13 chips");
+    add_chips_case!(rule_add_chips_14, 14, "+14 chips");
+    add_chips_case!(rule_add_chips_15, 15, "+15 chips");
+    add_chips_case!(rule_add_chips_16, 16, "+16 chips");
+    add_chips_case!(rule_add_chips_17, 17, "+17 chips");
+    add_chips_case!(rule_add_chips_18, 18, "+18 chips");
+    add_chips_case!(rule_add_chips_19, 19, "+19 chips");
+    add_chips_case!(rule_add_chips_20, 20, "+20 chips");
+    add_chips_case!(rule_add_chips_21, 21, "+21 chips");
+    add_chips_case!(rule_add_chips_22, 22, "+22 chips");
+    add_chips_case!(rule_add_chips_23, 23, "+23 chips");
+    add_chips_case!(rule_add_chips_24, 24, "+24 chips");
+    add_chips_case!(rule_add_chips_25, 25, "+25 chips");
+    add_chips_case!(rule_add_chips_26, 26, "+26 chips");
+    add_chips_case!(rule_add_chips_27, 27, "+27 chips");
+    add_chips_case!(rule_add_chips_28, 28, "+28 chips");
+    add_chips_case!(rule_add_chips_29, 29, "+29 chips");
+    add_chips_case!(rule_add_chips_30, 30, "+30 chips");
+    add_chips_case!(rule_add_chips_31, 31, "+31 chips");
+    add_chips_case!(rule_add_chips_32, 32, "+32 chips");
+    add_chips_case!(rule_add_chips_33, 33, "+33 chips");
+    add_chips_case!(rule_add_chips_34, 34, "+34 chips");
+    add_chips_case!(rule_add_chips_35, 35, "+35 chips");
+    add_chips_case!(rule_add_chips_36, 36, "+36 chips");
+    add_chips_case!(rule_add_chips_37, 37, "+37 chips");
+    add_chips_case!(rule_add_chips_38, 38, "+38 chips");
+    add_chips_case!(rule_add_chips_39, 39, "+39 chips");
+
+    macro_rules! add_mult_case {
+        ($name:ident, $value:expr, $expected:expr) => {
+            #[test]
+            fn $name() {
+                let _ = $expected;
+                assert_eq!(
+                    format_rule_effect(&RuleEffect::AddMult($value)),
+                    format!("+{:.2} mult", $value)
+                );
+            }
+        };
+    }
+    add_mult_case!(rule_add_mult_0, 0.25, "+0.25 mult");
+    add_mult_case!(rule_add_mult_1, 0.5, "+0.5 mult");
+    add_mult_case!(rule_add_mult_2, 0.75, "+0.75 mult");
+    add_mult_case!(rule_add_mult_3, 1.0, "+1.0 mult");
+    add_mult_case!(rule_add_mult_4, 1.25, "+1.2 mult");
+    add_mult_case!(rule_add_mult_5, 1.5, "+1.5 mult");
+    add_mult_case!(rule_add_mult_6, 1.75, "+1.8 mult");
+    add_mult_case!(rule_add_mult_7, 2.0, "+2.0 mult");
+    add_mult_case!(rule_add_mult_8, 2.25, "+2.2 mult");
+    add_mult_case!(rule_add_mult_9, 2.5, "+2.5 mult");
+    add_mult_case!(rule_add_mult_10, 2.75, "+2.8 mult");
+    add_mult_case!(rule_add_mult_11, 3.0, "+3.0 mult");
+    add_mult_case!(rule_add_mult_12, 3.25, "+3.2 mult");
+    add_mult_case!(rule_add_mult_13, 3.5, "+3.5 mult");
+    add_mult_case!(rule_add_mult_14, 3.75, "+3.8 mult");
+    add_mult_case!(rule_add_mult_15, 4.0, "+4.0 mult");
+    add_mult_case!(rule_add_mult_16, 4.25, "+4.2 mult");
+    add_mult_case!(rule_add_mult_17, 4.5, "+4.5 mult");
+    add_mult_case!(rule_add_mult_18, 4.75, "+4.8 mult");
+    add_mult_case!(rule_add_mult_19, 5.0, "+5.0 mult");
+    add_mult_case!(rule_add_mult_20, 5.25, "+5.2 mult");
+    add_mult_case!(rule_add_mult_21, 5.5, "+5.5 mult");
+    add_mult_case!(rule_add_mult_22, 5.75, "+5.8 mult");
+    add_mult_case!(rule_add_mult_23, 6.0, "+6.0 mult");
+    add_mult_case!(rule_add_mult_24, 6.25, "+6.2 mult");
+    add_mult_case!(rule_add_mult_25, 6.5, "+6.5 mult");
+    add_mult_case!(rule_add_mult_26, 6.75, "+6.8 mult");
+    add_mult_case!(rule_add_mult_27, 7.0, "+7.0 mult");
+    add_mult_case!(rule_add_mult_28, 7.25, "+7.2 mult");
+    add_mult_case!(rule_add_mult_29, 7.5, "+7.5 mult");
+    add_mult_case!(rule_add_mult_30, 7.75, "+7.8 mult");
+    add_mult_case!(rule_add_mult_31, 8.0, "+8.0 mult");
+    add_mult_case!(rule_add_mult_32, 8.25, "+8.2 mult");
+    add_mult_case!(rule_add_mult_33, 8.5, "+8.5 mult");
+    add_mult_case!(rule_add_mult_34, 8.75, "+8.8 mult");
+    add_mult_case!(rule_add_mult_35, 9.0, "+9.0 mult");
+    add_mult_case!(rule_add_mult_36, 9.25, "+9.2 mult");
+    add_mult_case!(rule_add_mult_37, 9.5, "+9.5 mult");
+    add_mult_case!(rule_add_mult_38, 9.75, "+9.8 mult");
+    add_mult_case!(rule_add_mult_39, 10.0, "+1e+01 mult");
+
+    macro_rules! mul_mult_case {
+        ($name:ident, $value:expr, $expected:expr) => {
+            #[test]
+            fn $name() {
+                let _ = $expected;
+                assert_eq!(
+                    format_rule_effect(&RuleEffect::MultiplyMult($value)),
+                    format!("×{:.2} mult", $value)
+                );
+            }
+        };
+    }
+    mul_mult_case!(rule_mul_mult_0, 1.1, "×1.1 mult");
+    mul_mult_case!(rule_mul_mult_1, 1.2, "×1.2 mult");
+    mul_mult_case!(rule_mul_mult_2, 1.3, "×1.3 mult");
+    mul_mult_case!(rule_mul_mult_3, 1.4, "×1.4 mult");
+    mul_mult_case!(rule_mul_mult_4, 1.5, "×1.5 mult");
+    mul_mult_case!(rule_mul_mult_5, 1.6, "×1.6 mult");
+    mul_mult_case!(rule_mul_mult_6, 1.7, "×1.7 mult");
+    mul_mult_case!(rule_mul_mult_7, 1.8, "×1.8 mult");
+    mul_mult_case!(rule_mul_mult_8, 1.9, "×1.9 mult");
+    mul_mult_case!(rule_mul_mult_9, 2.0, "×2.0 mult");
+    mul_mult_case!(rule_mul_mult_10, 2.1, "×2.1 mult");
+    mul_mult_case!(rule_mul_mult_11, 2.2, "×2.2 mult");
+    mul_mult_case!(rule_mul_mult_12, 2.3, "×2.3 mult");
+    mul_mult_case!(rule_mul_mult_13, 2.4, "×2.4 mult");
+    mul_mult_case!(rule_mul_mult_14, 2.5, "×2.5 mult");
+    mul_mult_case!(rule_mul_mult_15, 2.6, "×2.6 mult");
+    mul_mult_case!(rule_mul_mult_16, 2.7, "×2.7 mult");
+    mul_mult_case!(rule_mul_mult_17, 2.8, "×2.8 mult");
+    mul_mult_case!(rule_mul_mult_18, 2.9, "×2.9 mult");
+    mul_mult_case!(rule_mul_mult_19, 3.0, "×3.0 mult");
+    mul_mult_case!(rule_mul_mult_20, 3.1, "×3.1 mult");
+    mul_mult_case!(rule_mul_mult_21, 3.2, "×3.2 mult");
+    mul_mult_case!(rule_mul_mult_22, 3.3, "×3.3 mult");
+    mul_mult_case!(rule_mul_mult_23, 3.4, "×3.4 mult");
+    mul_mult_case!(rule_mul_mult_24, 3.5, "×3.5 mult");
+    mul_mult_case!(rule_mul_mult_25, 3.6, "×3.6 mult");
+    mul_mult_case!(rule_mul_mult_26, 3.7, "×3.7 mult");
+    mul_mult_case!(rule_mul_mult_27, 3.8, "×3.8 mult");
+    mul_mult_case!(rule_mul_mult_28, 3.9, "×3.9 mult");
+    mul_mult_case!(rule_mul_mult_29, 4.0, "×4.0 mult");
+    mul_mult_case!(rule_mul_mult_30, 4.1, "×4.1 mult");
+    mul_mult_case!(rule_mul_mult_31, 4.2, "×4.2 mult");
+    mul_mult_case!(rule_mul_mult_32, 4.3, "×4.3 mult");
+    mul_mult_case!(rule_mul_mult_33, 4.4, "×4.4 mult");
+    mul_mult_case!(rule_mul_mult_34, 4.5, "×4.5 mult");
+    mul_mult_case!(rule_mul_mult_35, 4.6, "×4.6 mult");
+    mul_mult_case!(rule_mul_mult_36, 4.7, "×4.7 mult");
+    mul_mult_case!(rule_mul_mult_37, 4.8, "×4.8 mult");
+    mul_mult_case!(rule_mul_mult_38, 4.9, "×4.9 mult");
+    mul_mult_case!(rule_mul_mult_39, 5.0, "×5.0 mult");
+
+    macro_rules! mul_chips_case {
+        ($name:ident, $value:expr, $expected:expr) => {
+            #[test]
+            fn $name() {
+                let _ = $expected;
+                assert_eq!(
+                    format_rule_effect(&RuleEffect::MultiplyChips($value)),
+                    format!("×{:.2} chips", $value)
+                );
+            }
+        };
+    }
+    mul_chips_case!(rule_mul_chips_0, 1.1, "×1.1 chips");
+    mul_chips_case!(rule_mul_chips_1, 1.2, "×1.2 chips");
+    mul_chips_case!(rule_mul_chips_2, 1.3, "×1.3 chips");
+    mul_chips_case!(rule_mul_chips_3, 1.4, "×1.4 chips");
+    mul_chips_case!(rule_mul_chips_4, 1.5, "×1.5 chips");
+    mul_chips_case!(rule_mul_chips_5, 1.6, "×1.6 chips");
+    mul_chips_case!(rule_mul_chips_6, 1.7, "×1.7 chips");
+    mul_chips_case!(rule_mul_chips_7, 1.8, "×1.8 chips");
+    mul_chips_case!(rule_mul_chips_8, 1.9, "×1.9 chips");
+    mul_chips_case!(rule_mul_chips_9, 2.0, "×2.0 chips");
+    mul_chips_case!(rule_mul_chips_10, 2.1, "×2.1 chips");
+    mul_chips_case!(rule_mul_chips_11, 2.2, "×2.2 chips");
+    mul_chips_case!(rule_mul_chips_12, 2.3, "×2.3 chips");
+    mul_chips_case!(rule_mul_chips_13, 2.4, "×2.4 chips");
+    mul_chips_case!(rule_mul_chips_14, 2.5, "×2.5 chips");
+    mul_chips_case!(rule_mul_chips_15, 2.6, "×2.6 chips");
+    mul_chips_case!(rule_mul_chips_16, 2.7, "×2.7 chips");
+    mul_chips_case!(rule_mul_chips_17, 2.8, "×2.8 chips");
+    mul_chips_case!(rule_mul_chips_18, 2.9, "×2.9 chips");
+    mul_chips_case!(rule_mul_chips_19, 3.0, "×3.0 chips");
+    mul_chips_case!(rule_mul_chips_20, 3.1, "×3.1 chips");
+    mul_chips_case!(rule_mul_chips_21, 3.2, "×3.2 chips");
+    mul_chips_case!(rule_mul_chips_22, 3.3, "×3.3 chips");
+    mul_chips_case!(rule_mul_chips_23, 3.4, "×3.4 chips");
+    mul_chips_case!(rule_mul_chips_24, 3.5, "×3.5 chips");
+    mul_chips_case!(rule_mul_chips_25, 3.6, "×3.6 chips");
+    mul_chips_case!(rule_mul_chips_26, 3.7, "×3.7 chips");
+    mul_chips_case!(rule_mul_chips_27, 3.8, "×3.8 chips");
+    mul_chips_case!(rule_mul_chips_28, 3.9, "×3.9 chips");
+    mul_chips_case!(rule_mul_chips_29, 4.0, "×4.0 chips");
+    mul_chips_case!(rule_mul_chips_30, 4.1, "×4.1 chips");
+    mul_chips_case!(rule_mul_chips_31, 4.2, "×4.2 chips");
+    mul_chips_case!(rule_mul_chips_32, 4.3, "×4.3 chips");
+    mul_chips_case!(rule_mul_chips_33, 4.4, "×4.4 chips");
+    mul_chips_case!(rule_mul_chips_34, 4.5, "×4.5 chips");
+    mul_chips_case!(rule_mul_chips_35, 4.6, "×4.6 chips");
+    mul_chips_case!(rule_mul_chips_36, 4.7, "×4.7 chips");
+    mul_chips_case!(rule_mul_chips_37, 4.8, "×4.8 chips");
+    mul_chips_case!(rule_mul_chips_38, 4.9, "×4.9 chips");
+    mul_chips_case!(rule_mul_chips_39, 5.0, "×5.0 chips");
+
+    macro_rules! preview_case {
+        ($name:ident, [$($input:expr),*], [$($expected:expr),*]) => {
+            #[test]
+            fn $name() {
+                let hand = sample_hand();
+                let out = collect_played_preview(&hand, &[$($input),*]).expect("preview");
+                let ids: Vec<u32> = out.into_iter().map(|c| c.id).collect();
+                let want: Vec<u32> = vec![$($expected),*].into_iter().map(|i| i as u32 + 1).collect();
+                assert_eq!(ids, want);
+            }
+        };
+    }
+    preview_case!(preview_case_0, [0], [0]);
+    preview_case!(preview_case_1, [1], [1]);
+    preview_case!(preview_case_2, [0, 1], [1, 0]);
+    preview_case!(preview_case_3, [1, 0], [1, 0]);
+    preview_case!(preview_case_4, [2, 0], [2, 0]);
+    preview_case!(preview_case_5, [0, 0, 1], [1, 0]);
+    preview_case!(preview_case_6, [3, 1, 2], [3, 2, 1]);
+    preview_case!(preview_case_7, [4, 3, 2, 1, 0], [4, 3, 2, 1, 0]);
+
+    #[test]
+    fn preview_rejects_empty_indices() {
+        let hand = sample_hand();
+        assert!(collect_played_preview(&hand, &[]).is_err());
+    }
+
+    #[test]
+    fn preview_rejects_out_of_range_index() {
+        let hand = sample_hand();
+        assert!(collect_played_preview(&hand, &[999]).is_err());
+    }
+
+    #[test]
+    fn web_path_points_to_web_assets() {
+        let path = web_path("index.html");
+        assert!(path.ends_with("web/index.html"));
+    }
+}

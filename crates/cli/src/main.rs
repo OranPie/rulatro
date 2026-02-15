@@ -4288,3 +4288,985 @@ fn signed_int(value: i64) -> String {
         value.to_string()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    macro_rules! parse_bool_true_case {
+        ($name:ident, $value:expr) => {
+            #[test]
+            fn $name() {
+                assert_eq!(parse_bool($value).expect("bool"), true);
+            }
+        };
+    }
+    parse_bool_true_case!(parse_bool_true_0, "1");
+    parse_bool_true_case!(parse_bool_true_1, "true");
+    parse_bool_true_case!(parse_bool_true_2, "TRUE");
+    parse_bool_true_case!(parse_bool_true_3, " yes ");
+    parse_bool_true_case!(parse_bool_true_4, "on");
+    parse_bool_true_case!(parse_bool_true_5, "On");
+    parse_bool_true_case!(parse_bool_true_6, "TrUe");
+    parse_bool_true_case!(parse_bool_true_7, "	YES	");
+    parse_bool_true_case!(parse_bool_true_8, " 1 ");
+
+    macro_rules! parse_bool_false_case {
+        ($name:ident, $value:expr) => {
+            #[test]
+            fn $name() {
+                assert_eq!(parse_bool($value).expect("bool"), false);
+            }
+        };
+    }
+    parse_bool_false_case!(parse_bool_false_0, "0");
+    parse_bool_false_case!(parse_bool_false_1, "false");
+    parse_bool_false_case!(parse_bool_false_2, "FALSE");
+    parse_bool_false_case!(parse_bool_false_3, " no ");
+    parse_bool_false_case!(parse_bool_false_4, "off");
+    parse_bool_false_case!(parse_bool_false_5, "Off");
+    parse_bool_false_case!(parse_bool_false_6, "FaLsE");
+    parse_bool_false_case!(parse_bool_false_7, "	NO	");
+    parse_bool_false_case!(parse_bool_false_8, " 0 ");
+
+    macro_rules! parse_bool_err_case {
+        ($name:ident, $value:expr) => {
+            #[test]
+            fn $name() {
+                assert!(parse_bool($value).is_err());
+            }
+        };
+    }
+    parse_bool_err_case!(parse_bool_err_0, "");
+    parse_bool_err_case!(parse_bool_err_1, "maybe");
+    parse_bool_err_case!(parse_bool_err_2, "2");
+    parse_bool_err_case!(parse_bool_err_3, "truthy");
+    parse_bool_err_case!(parse_bool_err_4, "null");
+    parse_bool_err_case!(parse_bool_err_5, "enabled");
+    parse_bool_err_case!(parse_bool_err_6, "disable");
+    parse_bool_err_case!(parse_bool_err_7, " y ");
+    parse_bool_err_case!(parse_bool_err_8, " n ");
+    parse_bool_err_case!(parse_bool_err_9, "x");
+
+    macro_rules! none_case {
+        ($name:ident, $value:expr, $expected:expr) => {
+            #[test]
+            fn $name() {
+                assert_eq!(is_none($value), $expected);
+            }
+        };
+    }
+    none_case!(is_none_true_0, "none", true);
+    none_case!(is_none_true_1, "None", true);
+    none_case!(is_none_true_2, " null ", true);
+    none_case!(is_none_true_3, "CLEAR", true);
+    none_case!(is_none_true_4, " clear ", true);
+    none_case!(is_none_true_5, "NuLl", true);
+    none_case!(is_none_true_6, " NONE ", true);
+    none_case!(is_none_true_7, "cLeAr", true);
+    none_case!(is_none_false_0, "", false);
+    none_case!(is_none_false_1, "0", false);
+    none_case!(is_none_false_2, "false", false);
+    none_case!(is_none_false_3, "unset", false);
+    none_case!(is_none_false_4, "clearer", false);
+    none_case!(is_none_false_5, "nullable", false);
+    none_case!(is_none_false_6, "noneish", false);
+    none_case!(is_none_false_7, "x", false);
+
+    macro_rules! signed_case {
+        ($name:ident, $value:expr, $expected:expr) => {
+            #[test]
+            fn $name() {
+                assert_eq!(signed_int($value), $expected);
+            }
+        };
+    }
+    signed_case!(signed_n80, -80, "-80");
+    signed_case!(signed_n79, -79, "-79");
+    signed_case!(signed_n78, -78, "-78");
+    signed_case!(signed_n77, -77, "-77");
+    signed_case!(signed_n76, -76, "-76");
+    signed_case!(signed_n75, -75, "-75");
+    signed_case!(signed_n74, -74, "-74");
+    signed_case!(signed_n73, -73, "-73");
+    signed_case!(signed_n72, -72, "-72");
+    signed_case!(signed_n71, -71, "-71");
+    signed_case!(signed_n70, -70, "-70");
+    signed_case!(signed_n69, -69, "-69");
+    signed_case!(signed_n68, -68, "-68");
+    signed_case!(signed_n67, -67, "-67");
+    signed_case!(signed_n66, -66, "-66");
+    signed_case!(signed_n65, -65, "-65");
+    signed_case!(signed_n64, -64, "-64");
+    signed_case!(signed_n63, -63, "-63");
+    signed_case!(signed_n62, -62, "-62");
+    signed_case!(signed_n61, -61, "-61");
+    signed_case!(signed_n60, -60, "-60");
+    signed_case!(signed_n59, -59, "-59");
+    signed_case!(signed_n58, -58, "-58");
+    signed_case!(signed_n57, -57, "-57");
+    signed_case!(signed_n56, -56, "-56");
+    signed_case!(signed_n55, -55, "-55");
+    signed_case!(signed_n54, -54, "-54");
+    signed_case!(signed_n53, -53, "-53");
+    signed_case!(signed_n52, -52, "-52");
+    signed_case!(signed_n51, -51, "-51");
+    signed_case!(signed_n50, -50, "-50");
+    signed_case!(signed_n49, -49, "-49");
+    signed_case!(signed_n48, -48, "-48");
+    signed_case!(signed_n47, -47, "-47");
+    signed_case!(signed_n46, -46, "-46");
+    signed_case!(signed_n45, -45, "-45");
+    signed_case!(signed_n44, -44, "-44");
+    signed_case!(signed_n43, -43, "-43");
+    signed_case!(signed_n42, -42, "-42");
+    signed_case!(signed_n41, -41, "-41");
+    signed_case!(signed_n40, -40, "-40");
+    signed_case!(signed_n39, -39, "-39");
+    signed_case!(signed_n38, -38, "-38");
+    signed_case!(signed_n37, -37, "-37");
+    signed_case!(signed_n36, -36, "-36");
+    signed_case!(signed_n35, -35, "-35");
+    signed_case!(signed_n34, -34, "-34");
+    signed_case!(signed_n33, -33, "-33");
+    signed_case!(signed_n32, -32, "-32");
+    signed_case!(signed_n31, -31, "-31");
+    signed_case!(signed_n30, -30, "-30");
+    signed_case!(signed_n29, -29, "-29");
+    signed_case!(signed_n28, -28, "-28");
+    signed_case!(signed_n27, -27, "-27");
+    signed_case!(signed_n26, -26, "-26");
+    signed_case!(signed_n25, -25, "-25");
+    signed_case!(signed_n24, -24, "-24");
+    signed_case!(signed_n23, -23, "-23");
+    signed_case!(signed_n22, -22, "-22");
+    signed_case!(signed_n21, -21, "-21");
+    signed_case!(signed_n20, -20, "-20");
+    signed_case!(signed_n19, -19, "-19");
+    signed_case!(signed_n18, -18, "-18");
+    signed_case!(signed_n17, -17, "-17");
+    signed_case!(signed_n16, -16, "-16");
+    signed_case!(signed_n15, -15, "-15");
+    signed_case!(signed_n14, -14, "-14");
+    signed_case!(signed_n13, -13, "-13");
+    signed_case!(signed_n12, -12, "-12");
+    signed_case!(signed_n11, -11, "-11");
+    signed_case!(signed_n10, -10, "-10");
+    signed_case!(signed_n9, -9, "-9");
+    signed_case!(signed_n8, -8, "-8");
+    signed_case!(signed_n7, -7, "-7");
+    signed_case!(signed_n6, -6, "-6");
+    signed_case!(signed_n5, -5, "-5");
+    signed_case!(signed_n4, -4, "-4");
+    signed_case!(signed_n3, -3, "-3");
+    signed_case!(signed_n2, -2, "-2");
+    signed_case!(signed_n1, -1, "-1");
+    signed_case!(signed_p0, 0, "+0");
+    signed_case!(signed_p1, 1, "+1");
+    signed_case!(signed_p2, 2, "+2");
+    signed_case!(signed_p3, 3, "+3");
+    signed_case!(signed_p4, 4, "+4");
+    signed_case!(signed_p5, 5, "+5");
+    signed_case!(signed_p6, 6, "+6");
+    signed_case!(signed_p7, 7, "+7");
+    signed_case!(signed_p8, 8, "+8");
+    signed_case!(signed_p9, 9, "+9");
+    signed_case!(signed_p10, 10, "+10");
+    signed_case!(signed_p11, 11, "+11");
+    signed_case!(signed_p12, 12, "+12");
+    signed_case!(signed_p13, 13, "+13");
+    signed_case!(signed_p14, 14, "+14");
+    signed_case!(signed_p15, 15, "+15");
+    signed_case!(signed_p16, 16, "+16");
+    signed_case!(signed_p17, 17, "+17");
+    signed_case!(signed_p18, 18, "+18");
+    signed_case!(signed_p19, 19, "+19");
+    signed_case!(signed_p20, 20, "+20");
+    signed_case!(signed_p21, 21, "+21");
+    signed_case!(signed_p22, 22, "+22");
+    signed_case!(signed_p23, 23, "+23");
+    signed_case!(signed_p24, 24, "+24");
+    signed_case!(signed_p25, 25, "+25");
+    signed_case!(signed_p26, 26, "+26");
+    signed_case!(signed_p27, 27, "+27");
+    signed_case!(signed_p28, 28, "+28");
+    signed_case!(signed_p29, 29, "+29");
+    signed_case!(signed_p30, 30, "+30");
+    signed_case!(signed_p31, 31, "+31");
+    signed_case!(signed_p32, 32, "+32");
+    signed_case!(signed_p33, 33, "+33");
+    signed_case!(signed_p34, 34, "+34");
+    signed_case!(signed_p35, 35, "+35");
+    signed_case!(signed_p36, 36, "+36");
+    signed_case!(signed_p37, 37, "+37");
+    signed_case!(signed_p38, 38, "+38");
+    signed_case!(signed_p39, 39, "+39");
+    signed_case!(signed_p40, 40, "+40");
+    signed_case!(signed_p41, 41, "+41");
+    signed_case!(signed_p42, 42, "+42");
+    signed_case!(signed_p43, 43, "+43");
+    signed_case!(signed_p44, 44, "+44");
+    signed_case!(signed_p45, 45, "+45");
+    signed_case!(signed_p46, 46, "+46");
+    signed_case!(signed_p47, 47, "+47");
+    signed_case!(signed_p48, 48, "+48");
+    signed_case!(signed_p49, 49, "+49");
+    signed_case!(signed_p50, 50, "+50");
+    signed_case!(signed_p51, 51, "+51");
+    signed_case!(signed_p52, 52, "+52");
+    signed_case!(signed_p53, 53, "+53");
+    signed_case!(signed_p54, 54, "+54");
+    signed_case!(signed_p55, 55, "+55");
+    signed_case!(signed_p56, 56, "+56");
+    signed_case!(signed_p57, 57, "+57");
+    signed_case!(signed_p58, 58, "+58");
+    signed_case!(signed_p59, 59, "+59");
+    signed_case!(signed_p60, 60, "+60");
+    signed_case!(signed_p61, 61, "+61");
+    signed_case!(signed_p62, 62, "+62");
+    signed_case!(signed_p63, 63, "+63");
+    signed_case!(signed_p64, 64, "+64");
+    signed_case!(signed_p65, 65, "+65");
+    signed_case!(signed_p66, 66, "+66");
+    signed_case!(signed_p67, 67, "+67");
+    signed_case!(signed_p68, 68, "+68");
+    signed_case!(signed_p69, 69, "+69");
+    signed_case!(signed_p70, 70, "+70");
+    signed_case!(signed_p71, 71, "+71");
+    signed_case!(signed_p72, 72, "+72");
+    signed_case!(signed_p73, 73, "+73");
+    signed_case!(signed_p74, 74, "+74");
+    signed_case!(signed_p75, 75, "+75");
+    signed_case!(signed_p76, 76, "+76");
+    signed_case!(signed_p77, 77, "+77");
+    signed_case!(signed_p78, 78, "+78");
+    signed_case!(signed_p79, 79, "+79");
+
+    macro_rules! lcp_case {
+        ($name:ident, $expected:expr, $( $item:expr ),+ ) => {
+            #[test]
+            fn $name() {
+                let values = [$( $item ),+];
+                assert_eq!(longest_common_prefix(&values), $expected);
+            }
+        };
+    }
+    lcp_case!(lcp_0, "ab", "abc", "abd", "abz");
+    lcp_case!(lcp_1, "same", "same", "same");
+    lcp_case!(lcp_2, "short", "short", "shorter");
+    lcp_case!(lcp_3, "", "x", "y");
+    lcp_case!(lcp_4, "pre", "prefix", "prelude", "prevent");
+    lcp_case!(lcp_5, "", "", "abc");
+    lcp_case!(lcp_6, "alpha", "alpha");
+    lcp_case!(lcp_7, "mod_0_", "mod_0_a", "mod_0_b");
+    lcp_case!(lcp_8, "mod_1_", "mod_1_a", "mod_1_b");
+    lcp_case!(lcp_9, "mod_2_", "mod_2_a", "mod_2_b");
+    lcp_case!(lcp_10, "mod_3_", "mod_3_a", "mod_3_b");
+    lcp_case!(lcp_11, "mod_4_", "mod_4_a", "mod_4_b");
+    lcp_case!(lcp_12, "mod_5_", "mod_5_a", "mod_5_b");
+    lcp_case!(lcp_13, "mod_6_", "mod_6_a", "mod_6_b");
+    lcp_case!(lcp_14, "mod_7_", "mod_7_a", "mod_7_b");
+    lcp_case!(lcp_15, "mod_8_", "mod_8_a", "mod_8_b");
+    lcp_case!(lcp_16, "mod_9_", "mod_9_a", "mod_9_b");
+    lcp_case!(lcp_17, "mod_10_", "mod_10_a", "mod_10_b");
+    lcp_case!(lcp_18, "mod_11_", "mod_11_a", "mod_11_b");
+    lcp_case!(lcp_19, "mod_12_", "mod_12_a", "mod_12_b");
+    lcp_case!(lcp_20, "mod_13_", "mod_13_a", "mod_13_b");
+    lcp_case!(lcp_21, "mod_14_", "mod_14_a", "mod_14_b");
+    lcp_case!(lcp_22, "mod_15_", "mod_15_a", "mod_15_b");
+    lcp_case!(lcp_23, "mod_16_", "mod_16_a", "mod_16_b");
+    lcp_case!(lcp_24, "mod_17_", "mod_17_a", "mod_17_b");
+    lcp_case!(lcp_25, "mod_18_", "mod_18_a", "mod_18_b");
+    lcp_case!(lcp_26, "mod_19_", "mod_19_a", "mod_19_b");
+    lcp_case!(lcp_27, "mod_20_", "mod_20_a", "mod_20_b");
+    lcp_case!(lcp_28, "mod_21_", "mod_21_a", "mod_21_b");
+    lcp_case!(lcp_29, "mod_22_", "mod_22_a", "mod_22_b");
+    lcp_case!(lcp_30, "mod_23_", "mod_23_a", "mod_23_b");
+    lcp_case!(lcp_31, "mod_24_", "mod_24_a", "mod_24_b");
+    lcp_case!(lcp_32, "mod_25_", "mod_25_a", "mod_25_b");
+    lcp_case!(lcp_33, "mod_26_", "mod_26_a", "mod_26_b");
+    lcp_case!(lcp_34, "mod_27_", "mod_27_a", "mod_27_b");
+    lcp_case!(lcp_35, "mod_28_", "mod_28_a", "mod_28_b");
+    lcp_case!(lcp_36, "mod_29_", "mod_29_a", "mod_29_b");
+    lcp_case!(lcp_37, "mod_30_", "mod_30_a", "mod_30_b");
+    lcp_case!(lcp_38, "mod_31_", "mod_31_a", "mod_31_b");
+    lcp_case!(lcp_39, "mod_32_", "mod_32_a", "mod_32_b");
+    lcp_case!(lcp_40, "mod_33_", "mod_33_a", "mod_33_b");
+    lcp_case!(lcp_41, "mod_34_", "mod_34_a", "mod_34_b");
+    lcp_case!(lcp_42, "mod_35_", "mod_35_a", "mod_35_b");
+    lcp_case!(lcp_43, "mod_36_", "mod_36_a", "mod_36_b");
+    lcp_case!(lcp_44, "mod_37_", "mod_37_a", "mod_37_b");
+    lcp_case!(lcp_45, "mod_38_", "mod_38_a", "mod_38_b");
+    lcp_case!(lcp_46, "mod_39_", "mod_39_a", "mod_39_b");
+
+    #[test]
+    fn char_boundaries_walk_utf8() {
+        let text = "a中🙂z";
+        let mut idx = 0usize;
+        idx = next_char_boundary(text, idx);
+        assert_eq!(idx, 1);
+        idx = next_char_boundary(text, idx);
+        assert_eq!(idx, 4);
+        idx = next_char_boundary(text, idx);
+        assert_eq!(idx, 8);
+        idx = prev_char_boundary(text, idx);
+        assert_eq!(idx, 4);
+    }
+
+    #[test]
+    fn completion_table_map() {
+        assert_eq!(completion_table_for("buy"), BUY_COMPLETIONS);
+        assert_eq!(completion_table_for("peek"), PEEK_COMPLETIONS);
+        assert!(completion_table_for("none").is_empty());
+    }
+
+    macro_rules! token_case {
+        ($name:ident, $token:expr, $append:expr, $updated:expr, [$( $item:expr ),*]) => {
+            #[test]
+            fn $name() {
+                let table = [$( $item ),*];
+                let out = complete_token($token, &table, $append);
+                assert_eq!(out.updated_line, $updated);
+            }
+        };
+    }
+    token_case!(
+        complete_token_case_0,
+        "d",
+        false,
+        None,
+        ["deal", "deck", "discard"]
+    );
+    token_case!(complete_token_case_1, "de", false, None, ["deal", "deck"]);
+    token_case!(
+        complete_token_case_2,
+        "buy",
+        true,
+        Some("buy ".to_string()),
+        ["buy"]
+    );
+    token_case!(complete_token_case_3, "x", false, None, ["alpha", "beta"]);
+    token_case!(
+        complete_token_case_4,
+        "m0",
+        false,
+        Some("m0_".to_string()),
+        ["m0_one", "m0_two"]
+    );
+    token_case!(
+        complete_token_case_5,
+        "m1",
+        false,
+        Some("m1_".to_string()),
+        ["m1_one", "m1_two"]
+    );
+    token_case!(
+        complete_token_case_6,
+        "m2",
+        false,
+        Some("m2_".to_string()),
+        ["m2_one", "m2_two"]
+    );
+    token_case!(
+        complete_token_case_7,
+        "m3",
+        false,
+        Some("m3_".to_string()),
+        ["m3_one", "m3_two"]
+    );
+    token_case!(
+        complete_token_case_8,
+        "m4",
+        false,
+        Some("m4_".to_string()),
+        ["m4_one", "m4_two"]
+    );
+    token_case!(
+        complete_token_case_9,
+        "m5",
+        false,
+        Some("m5_".to_string()),
+        ["m5_one", "m5_two"]
+    );
+    token_case!(
+        complete_token_case_10,
+        "m6",
+        false,
+        Some("m6_".to_string()),
+        ["m6_one", "m6_two"]
+    );
+    token_case!(
+        complete_token_case_11,
+        "m7",
+        false,
+        Some("m7_".to_string()),
+        ["m7_one", "m7_two"]
+    );
+    token_case!(
+        complete_token_case_12,
+        "m8",
+        false,
+        Some("m8_".to_string()),
+        ["m8_one", "m8_two"]
+    );
+    token_case!(
+        complete_token_case_13,
+        "m9",
+        false,
+        Some("m9_".to_string()),
+        ["m9_one", "m9_two"]
+    );
+    token_case!(
+        complete_token_case_14,
+        "m10",
+        false,
+        Some("m10_".to_string()),
+        ["m10_one", "m10_two"]
+    );
+    token_case!(
+        complete_token_case_15,
+        "m11",
+        false,
+        Some("m11_".to_string()),
+        ["m11_one", "m11_two"]
+    );
+    token_case!(
+        complete_token_case_16,
+        "m12",
+        false,
+        Some("m12_".to_string()),
+        ["m12_one", "m12_two"]
+    );
+    token_case!(
+        complete_token_case_17,
+        "m13",
+        false,
+        Some("m13_".to_string()),
+        ["m13_one", "m13_two"]
+    );
+    token_case!(
+        complete_token_case_18,
+        "m14",
+        false,
+        Some("m14_".to_string()),
+        ["m14_one", "m14_two"]
+    );
+    token_case!(
+        complete_token_case_19,
+        "m15",
+        false,
+        Some("m15_".to_string()),
+        ["m15_one", "m15_two"]
+    );
+    token_case!(
+        complete_token_case_20,
+        "m16",
+        false,
+        Some("m16_".to_string()),
+        ["m16_one", "m16_two"]
+    );
+    token_case!(
+        complete_token_case_21,
+        "m17",
+        false,
+        Some("m17_".to_string()),
+        ["m17_one", "m17_two"]
+    );
+    token_case!(
+        complete_token_case_22,
+        "m18",
+        false,
+        Some("m18_".to_string()),
+        ["m18_one", "m18_two"]
+    );
+    token_case!(
+        complete_token_case_23,
+        "m19",
+        false,
+        Some("m19_".to_string()),
+        ["m19_one", "m19_two"]
+    );
+    token_case!(
+        complete_token_case_24,
+        "m20",
+        false,
+        Some("m20_".to_string()),
+        ["m20_one", "m20_two"]
+    );
+    token_case!(
+        complete_token_case_25,
+        "m21",
+        false,
+        Some("m21_".to_string()),
+        ["m21_one", "m21_two"]
+    );
+    token_case!(
+        complete_token_case_26,
+        "m22",
+        false,
+        Some("m22_".to_string()),
+        ["m22_one", "m22_two"]
+    );
+    token_case!(
+        complete_token_case_27,
+        "m23",
+        false,
+        Some("m23_".to_string()),
+        ["m23_one", "m23_two"]
+    );
+    token_case!(
+        complete_token_case_28,
+        "m24",
+        false,
+        Some("m24_".to_string()),
+        ["m24_one", "m24_two"]
+    );
+    token_case!(
+        complete_token_case_29,
+        "m25",
+        false,
+        Some("m25_".to_string()),
+        ["m25_one", "m25_two"]
+    );
+    token_case!(
+        complete_token_case_30,
+        "m26",
+        false,
+        Some("m26_".to_string()),
+        ["m26_one", "m26_two"]
+    );
+    token_case!(
+        complete_token_case_31,
+        "m27",
+        false,
+        Some("m27_".to_string()),
+        ["m27_one", "m27_two"]
+    );
+    token_case!(
+        complete_token_case_32,
+        "m28",
+        false,
+        Some("m28_".to_string()),
+        ["m28_one", "m28_two"]
+    );
+    token_case!(
+        complete_token_case_33,
+        "m29",
+        false,
+        Some("m29_".to_string()),
+        ["m29_one", "m29_two"]
+    );
+    token_case!(
+        complete_token_case_34,
+        "m30",
+        false,
+        Some("m30_".to_string()),
+        ["m30_one", "m30_two"]
+    );
+    token_case!(
+        complete_token_case_35,
+        "m31",
+        false,
+        Some("m31_".to_string()),
+        ["m31_one", "m31_two"]
+    );
+    token_case!(
+        complete_token_case_36,
+        "m32",
+        false,
+        Some("m32_".to_string()),
+        ["m32_one", "m32_two"]
+    );
+    token_case!(
+        complete_token_case_37,
+        "m33",
+        false,
+        Some("m33_".to_string()),
+        ["m33_one", "m33_two"]
+    );
+    token_case!(
+        complete_token_case_38,
+        "m34",
+        false,
+        Some("m34_".to_string()),
+        ["m34_one", "m34_two"]
+    );
+    token_case!(
+        complete_token_case_39,
+        "m35",
+        false,
+        Some("m35_".to_string()),
+        ["m35_one", "m35_two"]
+    );
+    token_case!(
+        complete_token_case_40,
+        "m36",
+        false,
+        Some("m36_".to_string()),
+        ["m36_one", "m36_two"]
+    );
+    token_case!(
+        complete_token_case_41,
+        "m37",
+        false,
+        Some("m37_".to_string()),
+        ["m37_one", "m37_two"]
+    );
+    token_case!(
+        complete_token_case_42,
+        "m38",
+        false,
+        Some("m38_".to_string()),
+        ["m38_one", "m38_two"]
+    );
+    token_case!(
+        complete_token_case_43,
+        "m39",
+        false,
+        Some("m39_".to_string()),
+        ["m39_one", "m39_two"]
+    );
+
+    macro_rules! complete_line_case {
+        ($name:ident, $line:expr, $cursor:expr) => {
+            #[test]
+            fn $name() {
+                let _ = complete_line($line, $cursor);
+            }
+        };
+    }
+    complete_line_case!(complete_line_case_0, "", 0);
+    complete_line_case!(complete_line_case_1, "de", 2);
+    complete_line_case!(complete_line_case_2, "buy ", 4);
+    complete_line_case!(complete_line_case_3, "peek d", 6);
+    complete_line_case!(complete_line_case_4, "buy c", 5);
+    complete_line_case!(complete_line_case_5, "unknown", 7);
+    complete_line_case!(complete_line_case_6, "deal", 4);
+    complete_line_case!(complete_line_case_7, "buy c0", 6);
+    complete_line_case!(complete_line_case_8, "buy c1", 6);
+    complete_line_case!(complete_line_case_9, "buy c2", 6);
+    complete_line_case!(complete_line_case_10, "buy c3", 6);
+    complete_line_case!(complete_line_case_11, "buy c4", 6);
+    complete_line_case!(complete_line_case_12, "buy c5", 6);
+    complete_line_case!(complete_line_case_13, "buy c6", 6);
+    complete_line_case!(complete_line_case_14, "buy c7", 6);
+    complete_line_case!(complete_line_case_15, "buy c8", 6);
+    complete_line_case!(complete_line_case_16, "buy c9", 6);
+    complete_line_case!(complete_line_case_17, "buy c10", 7);
+    complete_line_case!(complete_line_case_18, "buy c11", 7);
+    complete_line_case!(complete_line_case_19, "buy c12", 7);
+    complete_line_case!(complete_line_case_20, "buy c13", 7);
+    complete_line_case!(complete_line_case_21, "buy c14", 7);
+    complete_line_case!(complete_line_case_22, "buy c15", 7);
+    complete_line_case!(complete_line_case_23, "buy c16", 7);
+    complete_line_case!(complete_line_case_24, "buy c17", 7);
+    complete_line_case!(complete_line_case_25, "buy c18", 7);
+    complete_line_case!(complete_line_case_26, "buy c19", 7);
+    complete_line_case!(complete_line_case_27, "buy c20", 7);
+    complete_line_case!(complete_line_case_28, "buy c21", 7);
+    complete_line_case!(complete_line_case_29, "buy c22", 7);
+    complete_line_case!(complete_line_case_30, "buy c23", 7);
+    complete_line_case!(complete_line_case_31, "buy c24", 7);
+    complete_line_case!(complete_line_case_32, "buy c25", 7);
+    complete_line_case!(complete_line_case_33, "buy c26", 7);
+    complete_line_case!(complete_line_case_34, "buy c27", 7);
+    complete_line_case!(complete_line_case_35, "buy c28", 7);
+    complete_line_case!(complete_line_case_36, "buy c29", 7);
+    complete_line_case!(complete_line_case_37, "buy c30", 7);
+    complete_line_case!(complete_line_case_38, "buy c31", 7);
+    complete_line_case!(complete_line_case_39, "buy c32", 7);
+    complete_line_case!(complete_line_case_40, "buy c33", 7);
+    complete_line_case!(complete_line_case_41, "buy c34", 7);
+    complete_line_case!(complete_line_case_42, "buy c35", 7);
+    complete_line_case!(complete_line_case_43, "buy c36", 7);
+    complete_line_case!(complete_line_case_44, "buy c37", 7);
+    complete_line_case!(complete_line_case_45, "buy c38", 7);
+    complete_line_case!(complete_line_case_46, "buy c39", 7);
+
+    macro_rules! path_case {
+        ($name:ident, $value:expr, $expected:expr) => {
+            #[test]
+            fn $name() {
+                let out = parse_optional_path(&[$value]).expect("path");
+                assert_eq!(out, PathBuf::from($expected));
+            }
+        };
+    }
+    path_case!(parse_optional_path_0, "save_0.json", "save_0.json");
+    path_case!(parse_optional_path_1, "save_1.json", "save_1.json");
+    path_case!(parse_optional_path_2, "save_2.json", "save_2.json");
+    path_case!(parse_optional_path_3, "save_3.json", "save_3.json");
+    path_case!(parse_optional_path_4, "save_4.json", "save_4.json");
+    path_case!(parse_optional_path_5, "save_5.json", "save_5.json");
+    path_case!(parse_optional_path_6, "save_6.json", "save_6.json");
+    path_case!(parse_optional_path_7, "save_7.json", "save_7.json");
+    path_case!(parse_optional_path_8, "save_8.json", "save_8.json");
+    path_case!(parse_optional_path_9, "save_9.json", "save_9.json");
+    path_case!(parse_optional_path_10, "save_10.json", "save_10.json");
+    path_case!(parse_optional_path_11, "save_11.json", "save_11.json");
+    path_case!(parse_optional_path_12, "save_12.json", "save_12.json");
+    path_case!(parse_optional_path_13, "save_13.json", "save_13.json");
+    path_case!(parse_optional_path_14, "save_14.json", "save_14.json");
+    path_case!(parse_optional_path_15, "save_15.json", "save_15.json");
+    path_case!(parse_optional_path_16, "save_16.json", "save_16.json");
+    path_case!(parse_optional_path_17, "save_17.json", "save_17.json");
+    path_case!(parse_optional_path_18, "save_18.json", "save_18.json");
+    path_case!(parse_optional_path_19, "save_19.json", "save_19.json");
+    path_case!(parse_optional_path_20, "save_20.json", "save_20.json");
+    path_case!(parse_optional_path_21, "save_21.json", "save_21.json");
+    path_case!(parse_optional_path_22, "save_22.json", "save_22.json");
+    path_case!(parse_optional_path_23, "save_23.json", "save_23.json");
+    path_case!(parse_optional_path_24, "save_24.json", "save_24.json");
+    path_case!(parse_optional_path_25, "save_25.json", "save_25.json");
+    path_case!(parse_optional_path_26, "save_26.json", "save_26.json");
+    path_case!(parse_optional_path_27, "save_27.json", "save_27.json");
+    path_case!(parse_optional_path_28, "save_28.json", "save_28.json");
+    path_case!(parse_optional_path_29, "save_29.json", "save_29.json");
+    path_case!(parse_optional_path_30, "save_30.json", "save_30.json");
+    path_case!(parse_optional_path_31, "save_31.json", "save_31.json");
+    path_case!(parse_optional_path_32, "save_32.json", "save_32.json");
+    path_case!(parse_optional_path_33, "save_33.json", "save_33.json");
+    path_case!(parse_optional_path_34, "save_34.json", "save_34.json");
+    path_case!(parse_optional_path_35, "save_35.json", "save_35.json");
+    path_case!(parse_optional_path_36, "save_36.json", "save_36.json");
+    path_case!(parse_optional_path_37, "save_37.json", "save_37.json");
+    path_case!(parse_optional_path_38, "save_38.json", "save_38.json");
+    path_case!(parse_optional_path_39, "save_39.json", "save_39.json");
+
+    #[test]
+    fn parse_optional_path_empty_uses_default_when_env_set() {
+        std::env::set_var("RULATRO_SAVE", "from_env.json");
+        let out = parse_optional_path(&[]).expect("env path");
+        assert!(out.ends_with("from_env.json"));
+        std::env::remove_var("RULATRO_SAVE");
+    }
+
+    macro_rules! phase_case {
+        ($name:ident, $variant:expr, $en:expr, $zh:expr) => {
+            #[test]
+            fn $name() {
+                assert_eq!(phase_short($variant), $en);
+                assert_eq!(phase_label(UiLocale::EnUs, $variant), $en);
+                assert_eq!(phase_label(UiLocale::ZhCn, $variant), $zh);
+            }
+        };
+    }
+    phase_case!(phase_setup, Phase::Setup, "Setup", "准备");
+    phase_case!(phase_deal, Phase::Deal, "Deal", "发牌");
+    phase_case!(phase_play, Phase::Play, "Play", "出牌");
+    phase_case!(phase_score, Phase::Score, "Score", "计分");
+    phase_case!(phase_cleanup, Phase::Cleanup, "Clean", "清理");
+    phase_case!(phase_shop, Phase::Shop, "Shop", "商店");
+
+    macro_rules! blind_case {
+        ($name:ident, $variant:expr, $en:expr, $zh:expr) => {
+            #[test]
+            fn $name() {
+                assert_eq!(blind_short($variant), $en);
+                assert_eq!(blind_label(UiLocale::EnUs, $variant), $en);
+                assert_eq!(blind_label(UiLocale::ZhCn, $variant), $zh);
+            }
+        };
+    }
+    blind_case!(blind_small, BlindKind::Small, "Small", "小盲");
+    blind_case!(blind_big, BlindKind::Big, "Big", "大盲");
+    blind_case!(blind_boss, BlindKind::Boss, "Boss", "Boss");
+
+    macro_rules! rank_case {
+        ($name:ident, $variant:expr, $expected:expr) => {
+            #[test]
+            fn $name() {
+                assert_eq!(rank_short($variant), $expected);
+            }
+        };
+    }
+    rank_case!(rank_ace, Rank::Ace, "A");
+    rank_case!(rank_king, Rank::King, "K");
+    rank_case!(rank_queen, Rank::Queen, "Q");
+    rank_case!(rank_jack, Rank::Jack, "J");
+    rank_case!(rank_ten, Rank::Ten, "T");
+    rank_case!(rank_nine, Rank::Nine, "9");
+    rank_case!(rank_eight, Rank::Eight, "8");
+    rank_case!(rank_seven, Rank::Seven, "7");
+    rank_case!(rank_six, Rank::Six, "6");
+    rank_case!(rank_five, Rank::Five, "5");
+    rank_case!(rank_four, Rank::Four, "4");
+    rank_case!(rank_three, Rank::Three, "3");
+    rank_case!(rank_two, Rank::Two, "2");
+    rank_case!(rank_joker, Rank::Joker, "Jk");
+
+    macro_rules! suit_case {
+        ($name:ident, $variant:expr, $expected:expr) => {
+            #[test]
+            fn $name() {
+                assert_eq!(suit_short($variant), $expected);
+            }
+        };
+    }
+    suit_case!(suit_spades, Suit::Spades, "S");
+    suit_case!(suit_hearts, Suit::Hearts, "H");
+    suit_case!(suit_clubs, Suit::Clubs, "C");
+    suit_case!(suit_diamonds, Suit::Diamonds, "D");
+    suit_case!(suit_wild, Suit::Wild, "W");
+
+    macro_rules! enhancement_case {
+        ($name:ident, $variant:expr, $expected:expr) => {
+            #[test]
+            fn $name() {
+                assert_eq!(enhancement_short($variant), $expected);
+            }
+        };
+    }
+    enhancement_case!(enh_bonus, Enhancement::Bonus, "Bonus");
+    enhancement_case!(enh_mult, Enhancement::Mult, "Mult");
+    enhancement_case!(enh_wild, Enhancement::Wild, "Wild");
+    enhancement_case!(enh_glass, Enhancement::Glass, "Glass");
+    enhancement_case!(enh_steel, Enhancement::Steel, "Steel");
+    enhancement_case!(enh_stone, Enhancement::Stone, "Stone");
+    enhancement_case!(enh_lucky, Enhancement::Lucky, "Lucky");
+    enhancement_case!(enh_gold, Enhancement::Gold, "Gold");
+
+    macro_rules! seal_case {
+        ($name:ident, $variant:expr, $expected:expr) => {
+            #[test]
+            fn $name() {
+                assert_eq!(seal_short($variant), $expected);
+            }
+        };
+    }
+    seal_case!(seal_red, Seal::Red, "R");
+    seal_case!(seal_blue, Seal::Blue, "B");
+    seal_case!(seal_gold, Seal::Gold, "G");
+    seal_case!(seal_purple, Seal::Purple, "P");
+
+    macro_rules! hand_case {
+        ($name:ident, $variant:expr, $en:expr, $zh:expr) => {
+            #[test]
+            fn $name() {
+                assert_eq!(hand_label_short(UiLocale::EnUs, $variant), $en);
+                assert_eq!(hand_label_short(UiLocale::ZhCn, $variant), $zh);
+            }
+        };
+    }
+    hand_case!(
+        hand_highcard,
+        rulatro_core::HandKind::HighCard,
+        "HighCard",
+        "高牌"
+    );
+    hand_case!(hand_pair, rulatro_core::HandKind::Pair, "Pair", "对子");
+    hand_case!(
+        hand_twopair,
+        rulatro_core::HandKind::TwoPair,
+        "TwoPair",
+        "两对"
+    );
+    hand_case!(hand_trips, rulatro_core::HandKind::Trips, "Trips", "三条");
+    hand_case!(
+        hand_straight,
+        rulatro_core::HandKind::Straight,
+        "Straight",
+        "顺子"
+    );
+    hand_case!(hand_flush, rulatro_core::HandKind::Flush, "Flush", "同花");
+    hand_case!(
+        hand_fullhouse,
+        rulatro_core::HandKind::FullHouse,
+        "FullHouse",
+        "葫芦"
+    );
+    hand_case!(hand_quads, rulatro_core::HandKind::Quads, "Quads", "四条");
+    hand_case!(
+        hand_straightflush,
+        rulatro_core::HandKind::StraightFlush,
+        "StraightFlush",
+        "同花顺"
+    );
+    hand_case!(
+        hand_royalflush,
+        rulatro_core::HandKind::RoyalFlush,
+        "RoyalFlush",
+        "皇家同花顺"
+    );
+    hand_case!(
+        hand_fiveofakind,
+        rulatro_core::HandKind::FiveOfAKind,
+        "FiveOfAKind",
+        "五条"
+    );
+    hand_case!(
+        hand_flushhouse,
+        rulatro_core::HandKind::FlushHouse,
+        "FlushHouse",
+        "同花葫芦"
+    );
+    hand_case!(
+        hand_flushfive,
+        rulatro_core::HandKind::FlushFive,
+        "FlushFive",
+        "同花五条"
+    );
+
+    macro_rules! kind_case {
+        ($name:ident, $variant:expr, $en:expr, $zh:expr) => {
+            #[test]
+            fn $name() {
+                assert_eq!(consumable_kind_short(UiLocale::EnUs, $variant), $en);
+                assert_eq!(consumable_kind_short(UiLocale::ZhCn, $variant), $zh);
+            }
+        };
+    }
+    kind_case!(
+        consumable_kind_tarot,
+        ConsumableKind::Tarot,
+        "Tarot",
+        "塔罗"
+    );
+    kind_case!(
+        consumable_kind_planet,
+        ConsumableKind::Planet,
+        "Planet",
+        "星球"
+    );
+    kind_case!(
+        consumable_kind_spectral,
+        ConsumableKind::Spectral,
+        "Spectral",
+        "幻灵"
+    );
+
+    macro_rules! filter_case {
+        ($name:ident, $variant:expr, $en:expr, $zh:expr) => {
+            #[test]
+            fn $name() {
+                assert_eq!(rank_filter_label_short(UiLocale::EnUs, $variant), $en);
+                assert_eq!(rank_filter_label_short(UiLocale::ZhCn, $variant), $zh);
+            }
+        };
+    }
+    filter_case!(rank_filter_any, RankFilter::Any, "Any", "任意");
+    filter_case!(rank_filter_face, RankFilter::Face, "Face", "人头牌");
+    filter_case!(rank_filter_ace, RankFilter::Ace, "Ace", "A");
+    filter_case!(
+        rank_filter_numbered,
+        RankFilter::Numbered,
+        "Numbered",
+        "数字牌"
+    );
+
+    #[test]
+    fn format_rule_effect_short_labels() {
+        assert_eq!(
+            format_rule_effect_short(UiLocale::EnUs, &RuleEffect::AddChips(12)),
+            "+chips 12"
+        );
+        assert_eq!(
+            format_rule_effect_short(UiLocale::ZhCn, &RuleEffect::AddChips(12)),
+            "+筹码 12"
+        );
+        assert_eq!(
+            format_rule_effect_short(UiLocale::EnUs, &RuleEffect::MultiplyMult(1.25)),
+            "xmult 1.25"
+        );
+    }
+}
