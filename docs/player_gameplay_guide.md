@@ -5,6 +5,9 @@
 > Last Reviewed: 2026-02-15
 > Doc Type: Guide
 
+For the newer player docs directory, start here:
+- `docs/player/index.md`
+
 Quick guide for actually playing Rulatro (CLI/CUI/Web), with a focus on fun and flow.
 
 ## 1) Start Playing

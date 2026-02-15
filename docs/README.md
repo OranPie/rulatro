@@ -18,7 +18,8 @@ This directory is organized by technical concern. Start here, then jump to the a
 - Content effect language and action reference: `docs/content_effects.md`
 - System architecture and package boundaries: `docs/architecture.md`
 - Gameplay engineering (tuning, playability, test scenarios): `docs/gameplay_engineering.md`
-- Player gameplay guide (CLI/CUI/Web): `docs/player_gameplay_guide.md`
+- Player docs hub (游玩帮助入口): `docs/player/index.md`
+- Legacy player gameplay guide: `docs/player_gameplay_guide.md`
 
 ## 3) Runtime Frontends
 
