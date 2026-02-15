@@ -3,6 +3,12 @@
 This document is for mod authors and engine contributors implementing mod support.
 It describes the data model, runtime hooks, and expected mod layout.
 
+Recommended docs entrypoint:
+- `docs/modding/index.md`
+
+Roadmap for flow improvements:
+- `docs/modding/roadmap.md`
+
 ## Goals
 
 - Data-first content: most gameplay rules live in DSL/JSON, not Rust.
@@ -18,6 +24,8 @@ mods/<id>/
     jokers.dsl
     tags.dsl
     bosses.dsl
+    named_effect_mixins.json
+    consumable_mixins.json
     tarots.json
     planets.json
     spectrals.json
@@ -55,10 +63,30 @@ Validation rules:
 Data mods use the same formats as core content:
 - `jokers.dsl`, `tags.dsl`, `bosses.dsl` (DSL)
 - `tarots.json`, `planets.json`, `spectrals.json` (JSON)
+- `named_effect_mixins.json` (optional reusable Joker/Tag/Boss DSL effect snippets)
+- `consumable_mixins.json` (optional reusable effect blocks)
 
 Merge behavior:
 - By default, any duplicate ID is rejected.
 - Overrides require `overrides` entries like `joker:blueprint`.
+
+Consumable mixin behavior:
+- Consumables can include `mixins: ["id"]`.
+- Mixins are loaded from `consumable_mixins.json`.
+- Mixin dependencies (`requires`) are expanded first.
+- Final effect order is: mixin effects -> consumable effects.
+
+Named mixin behavior:
+- Jokers/Tags/Bosses can reference DSL mixins inside block bodies:
+  - `mixin base_bonus`
+  - `mixins base_bonus, other_bonus`
+- Mixins are loaded from `named_effect_mixins.json`.
+- `kinds` can limit a mixin to `joker`, `tag`, `boss`.
+- Final effect order is: named mixin effects -> block effects.
+- Design note: mixins should stay adaptive (conditions/expressions), avoid ID-specific branches.
+
+Hardcoded behavior audit command:
+- `./tools/python tools/moddev.py hardcoded --root .`
 
 ## Script Runtime (Lua)
 
@@ -69,6 +97,7 @@ rulatro.log("loaded")
 
 rulatro.register_hook("OnShopEnter", function(ctx)
   return {
+    cancel_core = false,
     effects = {
       {
         block = {
@@ -82,10 +111,19 @@ rulatro.register_hook("OnShopEnter", function(ctx)
 end)
 ```
 
+Lifecycle phases:
+- `rulatro.register_hook(trigger, fn)` => post-core phase
+- `rulatro.register_hook(trigger, fn, "pre")` => pre-core phase
+- In pre-core phase, return `{ cancel_core = true }` to skip core Boss/Tag/Joker rule hooks for this trigger.
+
 Return value formats:
 - `nil` => no action
-- `{ stop = true, effects = { ... } }`
+- `{ stop = true, cancel_core = false, effects = { ... } }`
 - `{ block = ..., selected = { ... } }` (single ModEffectBlock)
+
+Notes:
+- `stop` stops later hooks in the current hook pipeline.
+- Save/load remains host-side command behavior (CLI/CUI), not DSL/mod hook op.
 
 Effect blocks are the same structure as core consumables:
 - `trigger` uses `ActivationType` enum names (e.g., `OnPlayed`, `OnUse`).

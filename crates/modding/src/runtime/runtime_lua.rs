@@ -1,7 +1,7 @@
 use crate::{LoadedMod, ModError};
 use mlua::LuaSerdeExt;
 use mlua::{Function, Lua, RegistryKey, Value};
-use rulatro_core::{ActivationType, ModEffectBlock, ModHookContext, ModHookResult};
+use rulatro_core::{ActivationType, ModEffectBlock, ModHookContext, ModHookPhase, ModHookResult};
 use serde::Deserialize;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -18,43 +18,55 @@ struct LuaHookReturn {
     #[serde(default)]
     stop: bool,
     #[serde(default)]
+    cancel_core: bool,
+    #[serde(default)]
     effects: Vec<ModEffectBlock>,
 }
 
 pub struct LuaRuntime {
     lua: Lua,
-    hooks: Rc<RefCell<HashMap<ActivationType, Vec<LuaHook>>>>,
+    hooks: Rc<RefCell<HashMap<(ActivationType, ModHookPhase), Vec<LuaHook>>>>,
 }
 
 impl LuaRuntime {
     pub fn new() -> Result<Self, ModError> {
         let lua = Lua::new();
-        let hooks = Rc::new(RefCell::new(HashMap::<ActivationType, Vec<LuaHook>>::new()));
+        let hooks = Rc::new(RefCell::new(HashMap::<
+            (ActivationType, ModHookPhase),
+            Vec<LuaHook>,
+        >::new()));
         let api = lua
             .create_table()
             .map_err(|err| ModError::Runtime(err.to_string()))?;
 
         let hooks_ref = hooks.clone();
         let register = lua
-            .create_function_mut(move |lua, (trigger, func): (String, Function)| {
-                let Some(trigger) = parse_trigger(&trigger) else {
-                    return Err(mlua::Error::RuntimeError(format!(
-                        "unknown hook trigger {}",
-                        trigger
-                    )));
-                };
-                let key = lua.create_registry_value(func)?;
-                let mod_id: String = lua
-                    .globals()
-                    .get("__rulatro_mod_id")
-                    .unwrap_or_else(|_| "unknown".to_string());
-                hooks_ref
-                    .borrow_mut()
-                    .entry(trigger)
-                    .or_default()
-                    .push(LuaHook { mod_id, func: key });
-                Ok(())
-            })
+            .create_function_mut(
+                move |lua, (trigger, func, phase): (String, Function, Option<String>)| {
+                    let Some(trigger) = parse_trigger(&trigger) else {
+                        return Err(mlua::Error::RuntimeError(format!(
+                            "unknown hook trigger {}",
+                            trigger
+                        )));
+                    };
+                    let phase = parse_phase(phase.as_deref()).ok_or_else(|| {
+                        mlua::Error::RuntimeError(
+                            "invalid hook phase (expected pre/post)".to_string(),
+                        )
+                    })?;
+                    let key = lua.create_registry_value(func)?;
+                    let mod_id: String = lua
+                        .globals()
+                        .get("__rulatro_mod_id")
+                        .unwrap_or_else(|_| "unknown".to_string());
+                    hooks_ref
+                        .borrow_mut()
+                        .entry((trigger, phase))
+                        .or_default()
+                        .push(LuaHook { mod_id, func: key });
+                    Ok(())
+                },
+            )
             .map_err(|err| ModError::Runtime(err.to_string()))?;
 
         let log = lua
@@ -102,7 +114,7 @@ impl LuaRuntime {
         let mut result = ModHookResult::default();
         let mut hooks_snapshot = {
             let mut hooks = self.hooks.borrow_mut();
-            hooks.remove(&ctx.trigger).unwrap_or_default()
+            hooks.remove(&(ctx.trigger, ctx.phase)).unwrap_or_default()
         };
         if hooks_snapshot.is_empty() {
             return result;
@@ -147,6 +159,9 @@ impl LuaRuntime {
                 if parsed.stop {
                     result.stop = true;
                 }
+                if parsed.cancel_core {
+                    result.cancel_core = true;
+                }
                 if !parsed.effects.is_empty() {
                     result.effects.extend(parsed.effects);
                 }
@@ -160,10 +175,22 @@ impl LuaRuntime {
         }
         let mut hooks = self.hooks.borrow_mut();
         hooks
-            .entry(ctx.trigger)
+            .entry((ctx.trigger, ctx.phase))
             .or_default()
             .extend(hooks_snapshot.drain(..));
         result
+    }
+}
+
+fn parse_phase(value: Option<&str>) -> Option<ModHookPhase> {
+    let Some(raw) = value else {
+        return Some(ModHookPhase::Post);
+    };
+    let normalized = raw.trim().to_ascii_lowercase();
+    match normalized.as_str() {
+        "" | "post" | "postcore" => Some(ModHookPhase::Post),
+        "pre" | "precore" | "before" => Some(ModHookPhase::Pre),
+        _ => None,
     }
 }
 
@@ -196,5 +223,19 @@ fn parse_trigger(value: &str) -> Option<ActivationType> {
         "onacquire" | "acquire" => Some(ActivationType::OnAcquire),
         "passive" => Some(ActivationType::Passive),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_hook_phase_aliases() {
+        assert_eq!(parse_phase(None), Some(ModHookPhase::Post));
+        assert_eq!(parse_phase(Some("post")), Some(ModHookPhase::Post));
+        assert_eq!(parse_phase(Some("pre")), Some(ModHookPhase::Pre));
+        assert_eq!(parse_phase(Some("before")), Some(ModHookPhase::Pre));
+        assert_eq!(parse_phase(Some("bad")), None);
     }
 }

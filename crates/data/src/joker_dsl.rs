@@ -56,6 +56,22 @@ pub fn load_tags_dsl_with_locale(path: &Path, locale: Option<&str>) -> Result<Ve
     })
 }
 
+pub(crate) fn load_joker_mixin_refs(path: &Path) -> Result<HashMap<String, Vec<String>>> {
+    load_named_mixin_refs(path, "joker")
+}
+
+pub(crate) fn load_tag_mixin_refs(path: &Path) -> Result<HashMap<String, Vec<String>>> {
+    load_named_mixin_refs(path, "tag")
+}
+
+pub(crate) fn load_boss_mixin_refs(path: &Path) -> Result<HashMap<String, Vec<String>>> {
+    load_named_mixin_refs(path, "boss")
+}
+
+pub(crate) fn parse_effect_dsl_line(line: &str) -> Result<JokerEffect> {
+    parse_effect_line(line.trim())
+}
+
 #[derive(Debug, Clone)]
 struct Template {
     params: Vec<String>,
@@ -225,6 +241,52 @@ fn parse_named_defs(src: &str, keyword: &str, locale: Option<&str>) -> Result<Ve
         defs.push(NamedDef { id, name, effects });
     }
     Ok(defs)
+}
+
+fn load_named_mixin_refs(path: &Path, keyword: &str) -> Result<HashMap<String, Vec<String>>> {
+    let raw = fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
+    let expanded = expand_templates(&raw)?;
+    let blocks = parse_blocks(&expanded, keyword)?;
+    let mut refs = HashMap::new();
+    for block in blocks {
+        let id = token_to_string(block.tokens.get(1))
+            .ok_or_else(|| anyhow!("{} id missing", keyword))?;
+        refs.insert(id, parse_block_mixin_refs(&block.body)?);
+    }
+    Ok(refs)
+}
+
+fn parse_block_mixin_refs(body: &str) -> Result<Vec<String>> {
+    let mut refs = Vec::new();
+    for raw_line in body.lines() {
+        let clean = strip_comments(raw_line);
+        let line = clean.trim();
+        if line.is_empty() {
+            continue;
+        }
+        if line == "mixin" || line == "mixins" {
+            bail!("invalid mixin line '{}': missing mixin id", line);
+        }
+        if !line.starts_with("mixin ") && !line.starts_with("mixins ") {
+            continue;
+        }
+        let (_, tail) = line
+            .split_once(char::is_whitespace)
+            .ok_or_else(|| anyhow!("invalid mixin line '{}'", line))?;
+        let mut found = false;
+        for token in tail.replace(',', " ").split_whitespace() {
+            let id = token.trim();
+            if id.is_empty() {
+                continue;
+            }
+            refs.push(id.to_string());
+            found = true;
+        }
+        if !found {
+            bail!("invalid mixin line '{}': missing mixin id", line);
+        }
+    }
+    Ok(refs)
 }
 
 fn resolve_localized_name(base_name: String, body: &str, locale: Option<&str>) -> Result<String> {
@@ -1010,4 +1072,36 @@ fn tokenize_expr(input: &str) -> Result<Vec<ExprToken>> {
         }
     }
     Ok(tokens)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_block_mixin_refs() {
+        let refs = parse_block_mixin_refs(
+            r#"
+            i18n zh_CN "样例"
+            mixin base_bonus
+            mixins extra_one, extra_two
+            on independent { add_mult 4 }
+        "#,
+        )
+        .expect("parse mixin refs");
+        assert_eq!(
+            refs,
+            vec![
+                "base_bonus".to_string(),
+                "extra_one".to_string(),
+                "extra_two".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn rejects_empty_mixin_line() {
+        let err = parse_block_mixin_refs("mixin   ").expect_err("empty mixin must fail");
+        assert!(err.to_string().contains("missing mixin id"));
+    }
 }

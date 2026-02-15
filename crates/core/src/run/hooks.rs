@@ -42,6 +42,7 @@ pub(super) enum HookPriority {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum HookResult {
     Continue,
+    CancelCore,
     Stop,
 }
 
@@ -419,10 +420,11 @@ impl HookRegistry {
     pub(super) fn with_defaults() -> Self {
         let mut registry = Self::new();
         // TODO: expose hook registration to mod runtime (mixin injection).
+        registry.register(Box::new(ModRuntimeHook::new(crate::ModHookPhase::Pre)));
         registry.register(Box::new(BossHook::new()));
         registry.register(Box::new(TagHook::new()));
         registry.register(Box::new(JokerDslHook::new()));
-        registry.register(Box::new(ModRuntimeHook::new()));
+        registry.register(Box::new(ModRuntimeHook::new(crate::ModHookPhase::Post)));
         registry
     }
 
@@ -446,9 +448,16 @@ impl HookRegistry {
         events: &mut EventBus,
         args: &mut HookArgs<'_>,
     ) {
+        let mut cancel_core = false;
         for entry in self.hooks.iter_mut() {
+            if cancel_core && entry.priority != HookPriority::Post {
+                continue;
+            }
             match entry.hook.on_hook(point, run, events, args) {
                 HookResult::Continue => {}
+                HookResult::CancelCore => {
+                    cancel_core = true;
+                }
                 HookResult::Stop => break,
             }
         }
@@ -484,11 +493,13 @@ impl JokerDslHook {
     }
 }
 
-struct ModRuntimeHook;
+struct ModRuntimeHook {
+    phase: crate::ModHookPhase,
+}
 
 impl ModRuntimeHook {
-    fn new() -> Self {
-        Self
+    fn new(phase: crate::ModHookPhase) -> Self {
+        Self { phase }
     }
 }
 
@@ -498,7 +509,10 @@ impl RuleHook for ModRuntimeHook {
     }
 
     fn priority(&self) -> HookPriority {
-        HookPriority::Post
+        match self.phase {
+            crate::ModHookPhase::Pre => HookPriority::CoreRules,
+            crate::ModHookPhase::Post => HookPriority::Post,
+        }
     }
 
     fn on_hook(
@@ -526,6 +540,7 @@ impl RuleHook for ModRuntimeHook {
             &inject,
         );
         let ctx = crate::ModHookContext {
+            phase: self.phase,
             trigger,
             state: &run.state,
             hand_kind: view.hand_kind,
@@ -559,6 +574,8 @@ impl RuleHook for ModRuntimeHook {
         args.inject = inject;
         if result.stop {
             HookResult::Stop
+        } else if result.cancel_core && self.phase == crate::ModHookPhase::Pre {
+            HookResult::CancelCore
         } else {
             HookResult::Continue
         }
