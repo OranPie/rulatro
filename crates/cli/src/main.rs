@@ -1004,6 +1004,15 @@ fn parse_autoplay_options(args: &[String]) -> Result<AutoplayCliOptions, String>
                     .parse::<u32>()
                     .map_err(|_| "invalid --max-sims value".to_string())?;
             }
+            "--min-sims" => {
+                idx += 1;
+                let value = args
+                    .get(idx)
+                    .ok_or_else(|| "missing value for --min-sims".to_string())?;
+                cfg.min_simulations_per_step = value
+                    .parse::<u32>()
+                    .map_err(|_| "invalid --min-sims value".to_string())?;
+            }
             "--max-steps" => {
                 idx += 1;
                 let value = args
@@ -1057,6 +1066,33 @@ fn parse_autoplay_options(args: &[String]) -> Result<AutoplayCliOptions, String>
                 cfg.exploration_c = value
                     .parse::<f64>()
                     .map_err(|_| "invalid --exploration-c value".to_string())?;
+            }
+            "--action-retries" => {
+                idx += 1;
+                let value = args
+                    .get(idx)
+                    .ok_or_else(|| "missing value for --action-retries".to_string())?;
+                cfg.action_retry_limit = value
+                    .parse::<u32>()
+                    .map_err(|_| "invalid --action-retries value".to_string())?;
+            }
+            "--rollout-top-k" => {
+                idx += 1;
+                let value = args
+                    .get(idx)
+                    .ok_or_else(|| "missing value for --rollout-top-k".to_string())?;
+                cfg.rollout_top_k = value
+                    .parse::<usize>()
+                    .map_err(|_| "invalid --rollout-top-k value".to_string())?;
+            }
+            "--tactical-finish-margin" => {
+                idx += 1;
+                let value = args
+                    .get(idx)
+                    .ok_or_else(|| "missing value for --tactical-finish-margin".to_string())?;
+                cfg.tactical_finish_margin = value
+                    .parse::<i64>()
+                    .map_err(|_| "invalid --tactical-finish-margin value".to_string())?;
             }
             "--trace-json" => {
                 idx += 1;
@@ -1117,12 +1153,13 @@ fn print_autoplay_help() {
     println!("  --target-score <i64>");
     println!("  --target-ante <u8>");
     println!("  --target-money <i64>");
-    println!("  --time-ms <u64> --max-sims <u32> --max-steps <u32>");
+    println!("  --time-ms <u64> --max-sims <u32> --min-sims <u32> --max-steps <u32>");
     println!("  --weight-score <f64> --weight-ante <f64> --weight-money <f64>");
     println!("  --weight-survival <f64> --weight-steps <f64>");
     println!("  --max-play-candidates <usize> --max-discard-candidates <usize>");
     println!("  --max-shop-candidates <usize> --rollout-depth <u32>");
-    println!("  --exploration-c <f64>");
+    println!("  --exploration-c <f64> --rollout-top-k <usize> --action-retries <u32>");
+    println!("  --tactical-finish-margin <i64>");
     println!("  --trace-json <path> --trace-text <path>");
     println!("  --keep-going-on-fail --no-mods");
 }

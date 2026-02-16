@@ -44,12 +44,16 @@ If trace paths are omitted, defaults are generated under `traces/`.
 - `--weight-steps <f64>`
 - `--time-ms <u64>`
 - `--max-sims <u32>`
+- `--min-sims <u32>`
 - `--max-steps <u32>`
 - `--max-play-candidates <usize>`
 - `--max-discard-candidates <usize>`
 - `--max-shop-candidates <usize>`
 - `--exploration-c <f64>`
 - `--rollout-depth <u32>`
+- `--rollout-top-k <usize>`
+- `--action-retries <u32>`
+- `--tactical-finish-margin <i64>`
 
 ## 4) Output
 
@@ -60,7 +64,21 @@ JSON trace includes per-step:
 - MCTS stats (sim count, elapsed, selected visits/value)
 - event count and blind outcome
 
-Text output summarizes final status and step stream for quick reading.
+Text output now includes richer per-step context:
+
+- bilingual labels (`English/中文`) for quick cross-language reading
+- real selected card faces (`AS`, `TD`, etc.) instead of only action indices
+- play scoring details (score delta + score-trace effect chain)
+- buy details with concrete shop item names/effects (joker/tarot/planet/voucher/pack)
+- blind/ante transition details and target values
+- per-ante target table (`small`, `big`, `boss`) at report top
+
+Search now includes invalid-action recovery:
+
+- root actions are validated before expansion
+- rollout retries alternate candidates when action application fails
+- execution retries with action blacklisting instead of aborting immediately
+- near-target tactical finish lookahead to prioritize clearing the current blind
 
 ## 5) Crate API
 
