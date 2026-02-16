@@ -23,6 +23,31 @@ pub struct SavedRunState {
     pub actions: Vec<SavedAction>,
 }
 
+#[derive(Debug, Clone)]
+pub struct AutoPerformScript {
+    pub locale: Option<String>,
+    pub seed: Option<u64>,
+    pub actions: Vec<SavedAction>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct AutoPerformScriptFile {
+    #[serde(default)]
+    locale: Option<String>,
+    #[serde(default)]
+    seed: Option<u64>,
+    #[serde(default)]
+    actions: Vec<SavedAction>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+enum AutoPerformPayload {
+    SavedRunState(SavedRunState),
+    Script(AutoPerformScriptFile),
+    Actions(Vec<SavedAction>),
+}
+
 pub fn default_state_path() -> Option<PathBuf> {
     if let Some(path) = std::env::var_os("RULATRO_SAVE") {
         return Some(PathBuf::from(path));
@@ -58,6 +83,37 @@ pub fn load_state_file(path: &Path) -> Result<SavedRunState, String> {
         ));
     }
     Ok(payload)
+}
+
+pub fn load_auto_perform_file(path: &Path) -> Result<AutoPerformScript, String> {
+    let body = fs::read_to_string(path).map_err(|err| err.to_string())?;
+    let payload: AutoPerformPayload = serde_json::from_str(&body).map_err(|err| err.to_string())?;
+    let script = match payload {
+        AutoPerformPayload::SavedRunState(saved) => {
+            if saved.version != SAVE_SCHEMA_VERSION {
+                return Err(format!(
+                    "unsupported save version {} (expected {})",
+                    saved.version, SAVE_SCHEMA_VERSION
+                ));
+            }
+            AutoPerformScript {
+                locale: Some(saved.locale),
+                seed: Some(saved.seed),
+                actions: saved.actions,
+            }
+        }
+        AutoPerformPayload::Script(script) => AutoPerformScript {
+            locale: script.locale,
+            seed: script.seed,
+            actions: script.actions,
+        },
+        AutoPerformPayload::Actions(actions) => AutoPerformScript {
+            locale: None,
+            seed: None,
+            actions,
+        },
+    };
+    Ok(script)
 }
 
 #[derive(Clone, Copy)]
@@ -152,6 +208,42 @@ mod tests {
         assert_eq!(loaded.content_signature, "abc123");
         assert_eq!(loaded.actions.len(), actions.len());
         assert_eq!(loaded.actions[1].indices, vec![0, 2, 4]);
+        let _ = std::fs::remove_file(file);
+    }
+
+    #[test]
+    fn load_auto_perform_from_actions_array() {
+        let file = unique_temp_file();
+        let body = r#"
+[
+  {"action":"deal"},
+  {"action":"play","indices":[0,1,2]}
+]
+"#;
+        std::fs::write(&file, body).expect("write");
+        let loaded = load_auto_perform_file(&file).expect("load auto");
+        assert_eq!(loaded.seed, None);
+        assert_eq!(loaded.locale, None);
+        assert_eq!(loaded.actions.len(), 2);
+        assert_eq!(loaded.actions[1].indices, vec![0, 1, 2]);
+        let _ = std::fs::remove_file(file);
+    }
+
+    #[test]
+    fn load_auto_perform_from_script_object() {
+        let file = unique_temp_file();
+        let body = r#"
+{
+  "locale":"zh_CN",
+  "seed":99,
+  "actions":[{"action":"deal"}]
+}
+"#;
+        std::fs::write(&file, body).expect("write");
+        let loaded = load_auto_perform_file(&file).expect("load auto");
+        assert_eq!(loaded.seed, Some(99));
+        assert_eq!(loaded.locale.as_deref(), Some("zh_CN"));
+        assert_eq!(loaded.actions.len(), 1);
         let _ = std::fs::remove_file(file);
     }
 

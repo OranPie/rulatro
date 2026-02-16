@@ -50,12 +50,13 @@ impl UiLocale {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct CliOptions {
     auto: bool,
     cui: bool,
     menu: bool,
     seed: Option<u64>,
+    cui_auto_json: Option<PathBuf>,
     locale: UiLocale,
 }
 
@@ -848,6 +849,7 @@ fn parse_cli_options(args: &[String]) -> CliOptions {
     let mut cui = false;
     let mut menu = false;
     let mut seed = None;
+    let mut cui_auto_json = None;
     let mut locale_arg: Option<String> = std::env::var("RULATRO_LANG").ok();
     let mut idx = 0usize;
     while idx < args.len() {
@@ -867,6 +869,12 @@ fn parse_cli_options(args: &[String]) -> CliOptions {
                     idx += 1;
                 }
             }
+            "--cui-auto-json" => {
+                if let Some(value) = args.get(idx + 1) {
+                    cui_auto_json = Some(PathBuf::from(value));
+                    idx += 1;
+                }
+            }
             _ => {}
         }
         idx += 1;
@@ -876,6 +884,7 @@ fn parse_cli_options(args: &[String]) -> CliOptions {
         cui,
         menu,
         seed,
+        cui_auto_json,
         locale: UiLocale::from_opt(locale_arg.as_deref()),
     }
 }
@@ -1178,6 +1187,7 @@ fn main() {
         let launch = rulatro_cui::LaunchOptions {
             locale: Some(options.locale.code().to_string()),
             seed: options.seed,
+            auto_perform_json: options.cui_auto_json.clone(),
         };
         if let Err(err) = rulatro_cui::run(launch) {
             eprintln!("cui launch error: {err}");

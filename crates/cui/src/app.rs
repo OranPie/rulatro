@@ -809,6 +809,27 @@ impl App {
         });
     }
 
+    pub fn auto_perform_actions(&mut self, actions: &[SavedAction]) -> Result<(), String> {
+        for (idx, action) in actions.iter().enumerate() {
+            if let Err(err) =
+                apply_saved_action(&mut self.run, &mut self.events, &mut self.open_pack, action)
+            {
+                return Err(format!("auto step {} failed: {}", idx + 1, err));
+            }
+        }
+        self.recorded_actions.extend(actions.iter().cloned());
+        self.clear_selection();
+        self.normalize_cursors();
+        self.flush_events();
+        self.push_status(format!(
+            "{} {} {}",
+            self.locale.text("auto performed", "自动执行"),
+            actions.len(),
+            self.locale.text("actions from json", "条JSON动作")
+        ));
+        Ok(())
+    }
+
     pub fn activate_primary(&mut self) {
         if self.show_help {
             self.show_help = false;

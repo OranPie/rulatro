@@ -11,21 +11,45 @@ use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
 use crossterm::{execute, ExecutableCommand};
+use persistence::load_auto_perform_file;
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 use std::io::{self, stdout, IsTerminal};
+use std::path::PathBuf;
 use std::time::Duration;
 
 #[derive(Debug, Clone, Default)]
 pub struct LaunchOptions {
     pub locale: Option<String>,
     pub seed: Option<u64>,
+    pub auto_perform_json: Option<PathBuf>,
 }
 
 pub fn run(options: LaunchOptions) -> Result<()> {
-    let locale = UiLocale::from_opt(options.locale.as_deref());
-    let seed = options.seed.unwrap_or(DEFAULT_RUN_SEED);
+    let mut locale_value = options.locale.clone();
+    let mut seed_value = options.seed;
+    let mut auto_actions = None;
+    if let Some(path) = options.auto_perform_json.as_ref() {
+        let script = load_auto_perform_file(path)
+            .map_err(|err| anyhow::anyhow!(err))
+            .with_context(|| format!("load auto perform json from {}", path.display()))?;
+        if locale_value.is_none() {
+            locale_value = script.locale;
+        }
+        if seed_value.is_none() {
+            seed_value = script.seed;
+        }
+        auto_actions = Some(script.actions);
+    }
+
+    let locale = UiLocale::from_opt(locale_value.as_deref());
+    let seed = seed_value.unwrap_or(DEFAULT_RUN_SEED);
     let mut app = App::bootstrap(locale, seed)?;
+    if let Some(actions) = auto_actions {
+        app.auto_perform_actions(&actions)
+            .map_err(|err| anyhow::anyhow!(err))
+            .context("apply auto perform actions")?;
+    }
 
     ensure_interactive_terminal()?;
 
@@ -54,6 +78,7 @@ pub fn run_with_args(args: &[String]) -> Result<()> {
 fn parse_options(args: &[String]) -> LaunchOptions {
     let mut locale = std::env::var("RULATRO_LANG").ok();
     let mut seed = None;
+    let mut auto_perform_json = None;
     let mut idx = 0usize;
     while idx < args.len() {
         match args[idx].as_str() {
@@ -69,11 +94,21 @@ fn parse_options(args: &[String]) -> LaunchOptions {
                     idx += 1;
                 }
             }
+            "--auto-perform-json" | "--auto-json" => {
+                if let Some(value) = args.get(idx + 1) {
+                    auto_perform_json = Some(PathBuf::from(value));
+                    idx += 1;
+                }
+            }
             _ => {}
         }
         idx += 1;
     }
-    LaunchOptions { locale, seed }
+    LaunchOptions {
+        locale,
+        seed,
+        auto_perform_json,
+    }
 }
 
 fn run_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App) -> Result<()> {

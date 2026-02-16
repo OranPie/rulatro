@@ -34,6 +34,18 @@ With locale and seed:
 cargo run -p rulatro-cui -- --lang zh_CN --seed 12345
 ```
 
+Auto-perform actions from JSON at startup:
+
+```
+cargo run -p rulatro-cui -- --auto-perform-json traces/demo_actions.json
+```
+
+From CLI entrypoint:
+
+```
+cargo run -p rulatro-cli -- --cui --cui-auto-json traces/demo_actions.json
+```
+
 Menu-driven CUI mode (numbered actions, no command memorization):
 
 ```
@@ -109,6 +121,10 @@ cargo run -p rulatro-cli -- --auto
 - Save file schema uses action-log replay (deterministic seed), so it remains robust across minor internal state changes.
 - Save file includes run seed; `load` restores the same seed before replaying actions.
 - Save file includes content signature (assets/mods fingerprint); `load` verifies signature before replay.
+- `rulatro-cui --auto-perform-json <path>` supports:
+  - full save JSON (same schema as `save`)
+  - simple script object (`{ "seed": 42, "locale": "zh_CN", "actions": [...] }`)
+  - plain action array (`[{ "action": "deal" }, ...]`)
 - DSL name localization is supported in `jokers.dsl`, `bosses.dsl`, and `tags.dsl`:
   - `i18n zh_CN "名称"`
   - `name.zh_CN "名称"`
