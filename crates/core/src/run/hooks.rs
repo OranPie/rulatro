@@ -687,6 +687,9 @@ impl RuleHook for BossHook {
         _events: &mut EventBus,
         args: &mut HookArgs<'_>,
     ) -> HookResult {
+        if run.state.blind != BlindKind::Boss {
+            return HookResult::Continue;
+        }
         let Some(boss_id) = run.state.boss_id.clone() else {
             return HookResult::Continue;
         };
