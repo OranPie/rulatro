@@ -1,6 +1,6 @@
 use rulatro_core::{
     format_action_compact, format_expr_compact, format_joker_effect_compact, Action, ActionOp,
-    ActivationType, BinaryOp, Expr, JokerEffect, UnaryOp,
+    ActionOpKind, ActivationType, BinaryOp, Expr, JokerEffect, UnaryOp,
 };
 
 macro_rules! keyword_case {
@@ -650,7 +650,7 @@ macro_rules! action_case {
         #[test]
         fn $name() {
             let action = Action {
-                op: ActionOp::AddMoney,
+                op: ActionOpKind::Builtin(ActionOp::AddMoney),
                 target: Some("bank".to_string()),
                 value: Expr::Number($value),
             };
@@ -673,7 +673,7 @@ action_case!(action_value_9, 9.0, "add_money bank 9");
 #[test]
 fn action_without_target_omits_target_text() {
     let action = Action {
-        op: ActionOp::AddMoney,
+        op: ActionOpKind::Builtin(ActionOp::AddMoney),
         target: None,
         value: Expr::Number(7.0),
     };
@@ -690,7 +690,7 @@ fn effect_with_condition_formats_compact_text() {
             right: Box::new(Expr::Number(3.0)),
         },
         actions: vec![Action {
-            op: ActionOp::SetVar,
+            op: ActionOpKind::Builtin(ActionOp::SetVar),
             target: Some("score".to_string()),
             value: Expr::Number(10.0),
         }],

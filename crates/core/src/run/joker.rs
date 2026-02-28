@@ -494,14 +494,34 @@ impl RunState {
     ) {
         for action in actions {
             if trigger == ActivationType::Passive {
-                match action.op {
-                    ActionOp::SetRule | ActionOp::AddRule | ActionOp::ClearRule => {}
-                    _ => continue,
+                let is_rule_op = matches!(
+                    &action.op,
+                    crate::ActionOpKind::Builtin(
+                        ActionOp::SetRule | ActionOp::AddRule | ActionOp::ClearRule
+                    )
+                );
+                if !is_rule_op {
+                    continue;
                 }
             }
             let evaluated = self.eval_expr(&action.value, ctx);
             let value = evaluated.as_number();
-            match action.op {
+            match &action.op {
+                crate::ActionOpKind::Custom(name) => {
+                    if let Some(rt) = self.mod_runtime.as_mut() {
+                        let effect_ctx = crate::ModEffectContext {
+                            state: &self.state,
+                            hand_kind: Some(ctx.hand_kind),
+                            card: ctx.card,
+                            joker_id: Some(&joker.id),
+                        };
+                        let mod_val = evaluated.as_number().unwrap_or(0.0);
+                        let result =
+                            rt.invoke_effect(name, action.target.as_deref(), mod_val, &effect_ctx);
+                        self.apply_mod_action_result(&result, joker, score, money);
+                    }
+                }
+                crate::ActionOpKind::Builtin(op) => match op {
                 ActionOp::AddChips => {
                     if let Some(value) = value {
                         let source = format!("joker:{}:add_chips", joker.id);
@@ -963,7 +983,61 @@ impl RunState {
                         *entry += value;
                     }
                 }
-            }
+                } // end Builtin match
+            } // end ActionOpKind match
+        }
+    }
+
+    /// Apply the lightweight mutations returned by a mod-registered DSL effect.
+    pub(super) fn apply_mod_action_result(
+        &mut self,
+        result: &crate::ModActionResult,
+        joker: &mut crate::JokerInstance,
+        score: &mut Score,
+        money: &mut i64,
+    ) {
+        if result.add_chips != 0 {
+            let source = format!("mod_effect:{}:add_chips", joker.id);
+            self.apply_rule_effect(
+                score,
+                crate::RuleEffect::AddChips(result.add_chips),
+                &source,
+            );
+        }
+        if result.add_mult != 0.0 {
+            let source = format!("mod_effect:{}:add_mult", joker.id);
+            self.apply_rule_effect(score, crate::RuleEffect::AddMult(result.add_mult), &source);
+        }
+        if result.mul_mult != 0.0 {
+            let source = format!("mod_effect:{}:mul_mult", joker.id);
+            self.apply_rule_effect(
+                score,
+                crate::RuleEffect::MultiplyMult(result.mul_mult),
+                &source,
+            );
+        }
+        if result.mul_chips != 0.0 {
+            let source = format!("mod_effect:{}:mul_chips", joker.id);
+            self.apply_rule_effect(
+                score,
+                crate::RuleEffect::MultiplyChips(result.mul_chips),
+                &source,
+            );
+        }
+        *money += result.add_money;
+        for (key, val) in &result.set_rules {
+            self.set_rule_var(key, *val);
+        }
+        for (key, delta) in &result.add_rules {
+            let current = self.rule_value(key);
+            self.set_rule_var(key, current + delta);
+        }
+        for (key, val) in &result.set_vars {
+            joker.vars.insert(normalize(key), *val);
+        }
+        for (key, delta) in &result.add_vars {
+            let entry = joker.vars.entry(normalize(key)).or_insert(0.0);
+            *entry += delta;
         }
     }
 

@@ -617,6 +617,7 @@ fn hand_kind_weight(kind: HandKind) -> i64 {
         HandKind::FiveOfAKind => 11,
         HandKind::FlushHouse => 12,
         HandKind::FlushFive => 13,
+        HandKind::Custom(_) => 7, // treat custom hands as roughly FullHouse weight
     }
 }
 

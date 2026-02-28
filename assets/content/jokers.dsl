@@ -734,3 +734,15 @@ joker chicot "Chicot" Legendary {
 joker perkeo "Perkeo" Legendary {
   on shop_exit { duplicate_random_consumable 1 }
 }
+
+joker shortcut_joker "Shortcut" Uncommon {
+  mixin shortcut_hand
+}
+
+joker card_shark "Card Shark" Uncommon {
+  mixin free_reroll_on_enter
+}
+
+joker restructure "Restructure" Rare {
+  mixin boss_reroll_on_sell
+}

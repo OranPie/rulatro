@@ -13,6 +13,10 @@ impl RunState {
         }
         deck.shuffle(&mut rng);
         let tables = ScoreTables::from_config(&config);
+        let initial_hand_size = config.economy.initial_hand_size;
+        let mut state = GameState::new();
+        state.hand_size_base = initial_hand_size;
+        state.hand_size = initial_hand_size;
         Self {
             config,
             tables,
@@ -21,7 +25,7 @@ impl RunState {
             rng,
             deck,
             hand: Vec::new(),
-            state: GameState::new(),
+            state,
             shop: None,
             pending_effects: Vec::new(),
             last_score_trace: Vec::new(),
@@ -43,6 +47,7 @@ impl RunState {
             deferred_card_added: Vec::new(),
             mod_runtime: None,
             hooks: HookRegistry::with_defaults(),
+            custom_hand_registry: Vec::new(),
         }
     }
 
@@ -190,27 +195,22 @@ impl RunState {
     }
 
     pub(super) fn is_card_debuffed(&mut self, card: crate::Card) -> bool {
-        if self.rule_flag("debuff_face") && is_face(card) {
-            return true;
-        }
-        if self.rule_flag("debuff_suit_spades") && card.suit == crate::Suit::Spades {
-            return true;
-        }
-        if self.rule_flag("debuff_suit_hearts") && card.suit == crate::Suit::Hearts {
-            return true;
-        }
-        if self.rule_flag("debuff_suit_clubs") && card.suit == crate::Suit::Clubs {
-            return true;
-        }
-        if self.rule_flag("debuff_suit_diamonds") && card.suit == crate::Suit::Diamonds {
-            return true;
-        }
-        if self.rule_flag("debuff_played_ante")
-            && self.state.played_card_ids_ante.contains(&card.id)
-        {
-            return true;
-        }
-        false
+        // Compute base debuff from rule_flags.
+        let base = self.rule_flag("debuff_face") && is_face(card)
+            || self.rule_flag("debuff_suit_spades") && card.suit == crate::Suit::Spades
+            || self.rule_flag("debuff_suit_hearts") && card.suit == crate::Suit::Hearts
+            || self.rule_flag("debuff_suit_clubs") && card.suit == crate::Suit::Clubs
+            || self.rule_flag("debuff_suit_diamonds") && card.suit == crate::Suit::Diamonds
+            || (self.rule_flag("debuff_played_ante")
+                && self.state.played_card_ids_ante.contains(&card.id));
+        // Apply Flow Kernel CardDebuff patch.
+        let patch = if let Some(rt) = self.mod_runtime.as_mut() {
+            let ctx = FlowCtx::card_debuff(&self.state, card);
+            rt.flow_card_debuff_patch(CardDebuffPatch::default(), &ctx)
+        } else {
+            CardDebuffPatch::default()
+        };
+        patch.resolve(base)
     }
 
     pub(super) fn boss_disabled(&self) -> bool {

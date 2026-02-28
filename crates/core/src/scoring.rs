@@ -1,6 +1,6 @@
 use crate::{
-    evaluate_hand, evaluate_hand_with_rules, level_kind, scoring_cards, GameConfig, HandEvalRules,
-    HandKind, Rank, Score,
+    evaluate_hand, evaluate_hand_with_rules, level_kind, scoring_cards, CardAttrRules, GameConfig,
+    HandEvalRules, HandKind, Rank, Score,
 };
 use std::collections::HashMap;
 
@@ -9,6 +9,8 @@ pub struct ScoreTables {
     hand_rules: HashMap<String, (i64, f64)>,
     hand_level_rules: HashMap<String, (i64, f64)>,
     rank_chips: HashMap<Rank, i64>,
+    /// Card attribute balance (enhancement / edition / seal stats).
+    pub card_attrs: CardAttrRules,
 }
 
 impl ScoreTables {
@@ -27,6 +29,7 @@ impl ScoreTables {
             hand_rules,
             hand_level_rules,
             rank_chips,
+            card_attrs: config.card_attrs.clone(),
         }
     }
 
@@ -156,5 +159,6 @@ fn default_hand_base(kind: HandKind) -> (i64, f64) {
         HandKind::FiveOfAKind => (120, 12.0),
         HandKind::FlushHouse => (140, 14.0),
         HandKind::FlushFive => (160, 16.0),
+        HandKind::Custom(_) => (5, 1.0),
     }
 }

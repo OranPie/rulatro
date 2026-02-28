@@ -1,7 +1,7 @@
 use rulatro_core::{
-    Action, ActionOp, ActivationType, BlindKind, BossDef, Card, ConsumableKind, Edition,
-    Enhancement, EventBus, Expr, HandKind, JokerDef, JokerEffect, JokerRarity, Phase, Rank,
-    RunState, Seal, ShopOfferRef, Suit,
+    Action, ActionOp, ActionOpKind, ActivationType, BlindKind, BossDef, Card, ConsumableKind,
+    Edition, Enhancement, EventBus, Expr, HandKind, JokerDef, JokerEffect, JokerRarity, Phase,
+    Rank, RunState, Seal, ShopOfferRef, Suit,
 };
 use rulatro_data::{load_content, load_game_config};
 use std::path::PathBuf;
@@ -93,7 +93,7 @@ fn complex_joker_scoring_trace_preserves_action_order() {
         "j_add_chips",
         ActivationType::Independent,
         vec![Action {
-            op: ActionOp::AddChips,
+            op: ActionOpKind::Builtin(ActionOp::AddChips),
             target: None,
             value: Expr::Number(10.0),
         }],
@@ -103,7 +103,7 @@ fn complex_joker_scoring_trace_preserves_action_order() {
         "j_mul_chips",
         ActivationType::Independent,
         vec![Action {
-            op: ActionOp::MultiplyChips,
+            op: ActionOpKind::Builtin(ActionOp::MultiplyChips),
             target: None,
             value: Expr::Number(2.0),
         }],
@@ -113,7 +113,7 @@ fn complex_joker_scoring_trace_preserves_action_order() {
         "j_add_mult",
         ActivationType::Independent,
         vec![Action {
-            op: ActionOp::AddMult,
+            op: ActionOpKind::Builtin(ActionOp::AddMult),
             target: None,
             value: Expr::Number(1.5),
         }],
@@ -145,13 +145,14 @@ fn complex_joker_disable_boss_and_destroy_self_blocks_boss_scoring_bonus() {
     let boss_id = "complex_money_boss";
     let mut baseline = new_run();
     baseline.content.bosses.push(BossDef {
+        weight: 1,
         id: boss_id.to_string(),
         name: "Complex Boss".to_string(),
         effects: vec![JokerEffect {
             trigger: ActivationType::Independent,
             when: Expr::Bool(true),
             actions: vec![Action {
-                op: ActionOp::AddMoney,
+                op: ActionOpKind::Builtin(ActionOp::AddMoney),
                 target: None,
                 value: Expr::Number(17.0),
             }],
@@ -167,13 +168,14 @@ fn complex_joker_disable_boss_and_destroy_self_blocks_boss_scoring_bonus() {
 
     let mut run = new_run();
     run.content.bosses.push(BossDef {
+        weight: 1,
         id: boss_id.to_string(),
         name: "Complex Boss".to_string(),
         effects: vec![JokerEffect {
             trigger: ActivationType::Independent,
             when: Expr::Bool(true),
             actions: vec![Action {
-                op: ActionOp::AddMoney,
+                op: ActionOpKind::Builtin(ActionOp::AddMoney),
                 target: None,
                 value: Expr::Number(17.0),
             }],
@@ -185,12 +187,12 @@ fn complex_joker_disable_boss_and_destroy_self_blocks_boss_scoring_bonus() {
         ActivationType::OnPlayed,
         vec![
             Action {
-                op: ActionOp::DisableBoss,
+                op: ActionOpKind::Builtin(ActionOp::DisableBoss),
                 target: None,
                 value: Expr::Number(1.0),
             },
             Action {
-                op: ActionOp::DestroySelf,
+                op: ActionOpKind::Builtin(ActionOp::DestroySelf),
                 target: None,
                 value: Expr::Number(1.0),
             },
@@ -306,12 +308,12 @@ fn complex_tags_apply_before_joker_shop_overrides() {
         ActivationType::OnShopEnter,
         vec![
             Action {
-                op: ActionOp::SetShopPrice,
+                op: ActionOpKind::Builtin(ActionOp::SetShopPrice),
                 target: Some("cards".to_string()),
                 value: Expr::Number(4.0),
             },
             Action {
-                op: ActionOp::SetRerollCost,
+                op: ActionOpKind::Builtin(ActionOp::SetRerollCost),
                 target: None,
                 value: Expr::Number(6.0),
             },
@@ -335,7 +337,7 @@ fn complex_duplicate_next_tag_stacks_with_coupon_effect() {
         "dup_tag",
         ActivationType::OnBlindStart,
         vec![Action {
-            op: ActionOp::DuplicateNextTag,
+            op: ActionOpKind::Builtin(ActionOp::DuplicateNextTag),
             target: None,
             value: Expr::Number(1.0),
         }],
@@ -345,7 +347,7 @@ fn complex_duplicate_next_tag_stacks_with_coupon_effect() {
         "add_coupon",
         ActivationType::OnBlindStart,
         vec![Action {
-            op: ActionOp::AddTag,
+            op: ActionOpKind::Builtin(ActionOp::AddTag),
             target: Some("coupon_tag".to_string()),
             value: Expr::Number(1.0),
         }],
@@ -369,13 +371,14 @@ fn complex_boss_shop_bonus_blocked_after_disable_during_play() {
     let boss_id = "shop_money_boss";
     let mut baseline = new_run();
     baseline.content.bosses.push(BossDef {
+        weight: 1,
         id: boss_id.to_string(),
         name: "Shop Bonus Boss".to_string(),
         effects: vec![JokerEffect {
             trigger: ActivationType::OnShopEnter,
             when: Expr::Bool(true),
             actions: vec![Action {
-                op: ActionOp::AddMoney,
+                op: ActionOpKind::Builtin(ActionOp::AddMoney),
                 target: None,
                 value: Expr::Number(9.0),
             }],
@@ -391,13 +394,14 @@ fn complex_boss_shop_bonus_blocked_after_disable_during_play() {
 
     let mut run = new_run();
     run.content.bosses.push(BossDef {
+        weight: 1,
         id: boss_id.to_string(),
         name: "Shop Bonus Boss".to_string(),
         effects: vec![JokerEffect {
             trigger: ActivationType::OnShopEnter,
             when: Expr::Bool(true),
             actions: vec![Action {
-                op: ActionOp::AddMoney,
+                op: ActionOpKind::Builtin(ActionOp::AddMoney),
                 target: None,
                 value: Expr::Number(9.0),
             }],
@@ -408,7 +412,7 @@ fn complex_boss_shop_bonus_blocked_after_disable_during_play() {
         "disable_in_play",
         ActivationType::OnPlayed,
         vec![Action {
-            op: ActionOp::DisableBoss,
+            op: ActionOpKind::Builtin(ActionOp::DisableBoss),
             target: None,
             value: Expr::Number(1.0),
         }],
@@ -430,13 +434,14 @@ fn complex_boss_effect_requires_boss_blind_even_if_boss_id_is_set() {
     let boss_id = "blind_specific_boss";
     let mut run = new_run();
     run.content.bosses.push(BossDef {
+        weight: 1,
         id: boss_id.to_string(),
         name: "Blind Specific Boss".to_string(),
         effects: vec![JokerEffect {
             trigger: ActivationType::Independent,
             when: Expr::Bool(true),
             actions: vec![Action {
-                op: ActionOp::AddMoney,
+                op: ActionOpKind::Builtin(ActionOp::AddMoney),
                 target: None,
                 value: Expr::Number(11.0),
             }],
@@ -450,13 +455,14 @@ fn complex_boss_effect_requires_boss_blind_even_if_boss_id_is_set() {
 
     let mut run_with_id = new_run();
     run_with_id.content.bosses.push(BossDef {
+        weight: 1,
         id: boss_id.to_string(),
         name: "Blind Specific Boss".to_string(),
         effects: vec![JokerEffect {
             trigger: ActivationType::Independent,
             when: Expr::Bool(true),
             actions: vec![Action {
-                op: ActionOp::AddMoney,
+                op: ActionOpKind::Builtin(ActionOp::AddMoney),
                 target: None,
                 value: Expr::Number(11.0),
             }],
@@ -472,13 +478,14 @@ fn complex_boss_effect_requires_boss_blind_even_if_boss_id_is_set() {
 
     let mut run_boss = new_run();
     run_boss.content.bosses.push(BossDef {
+        weight: 1,
         id: boss_id.to_string(),
         name: "Blind Specific Boss".to_string(),
         effects: vec![JokerEffect {
             trigger: ActivationType::Independent,
             when: Expr::Bool(true),
             actions: vec![Action {
-                op: ActionOp::AddMoney,
+                op: ActionOpKind::Builtin(ActionOp::AddMoney),
                 target: None,
                 value: Expr::Number(11.0),
             }],
@@ -503,7 +510,7 @@ fn complex_buy_flow_after_tag_and_joker_price_override() {
         "card_price_three",
         ActivationType::OnShopEnter,
         vec![Action {
-            op: ActionOp::SetShopPrice,
+            op: ActionOpKind::Builtin(ActionOp::SetShopPrice),
             target: Some("cards".to_string()),
             value: Expr::Number(3.0),
         }],
@@ -531,7 +538,7 @@ fn complex_joker_copy_right_replays_neighbor_action_once() {
         "copy_right",
         ActivationType::OnPlayed,
         vec![Action {
-            op: ActionOp::CopyJokerRight,
+            op: ActionOpKind::Builtin(ActionOp::CopyJokerRight),
             target: None,
             value: Expr::Number(1.0),
         }],
@@ -541,7 +548,7 @@ fn complex_joker_copy_right_replays_neighbor_action_once() {
         "money_neighbor",
         ActivationType::OnPlayed,
         vec![Action {
-            op: ActionOp::AddMoney,
+            op: ActionOpKind::Builtin(ActionOp::AddMoney),
             target: None,
             value: Expr::Number(5.0),
         }],
@@ -561,7 +568,7 @@ fn complex_joker_destroy_right_skips_neighbor_effect_same_trigger() {
         "destroy_right",
         ActivationType::OnPlayed,
         vec![Action {
-            op: ActionOp::DestroyJokerRight,
+            op: ActionOpKind::Builtin(ActionOp::DestroyJokerRight),
             target: None,
             value: Expr::Number(1.0),
         }],
@@ -571,7 +578,7 @@ fn complex_joker_destroy_right_skips_neighbor_effect_same_trigger() {
         "money_victim",
         ActivationType::OnPlayed,
         vec![Action {
-            op: ActionOp::AddMoney,
+            op: ActionOpKind::Builtin(ActionOp::AddMoney),
             target: None,
             value: Expr::Number(25.0),
         }],
@@ -603,7 +610,7 @@ fn complex_boss_disable_in_shop_applies_to_next_boss_start() {
         "shop_disable_boss",
         ActivationType::OnShopEnter,
         vec![Action {
-            op: ActionOp::DisableBoss,
+            op: ActionOpKind::Builtin(ActionOp::DisableBoss),
             target: None,
             value: Expr::Number(1.0),
         }],

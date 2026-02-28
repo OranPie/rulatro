@@ -17,6 +17,9 @@ pub enum HandKind {
     FiveOfAKind,
     FlushHouse,
     FlushFive,
+    /// A custom hand registered by a mod. The `u32` is an index into the run's
+    /// `CustomHandRegistry` for name / base-stat lookups.
+    Custom(u32),
 }
 
 impl HandKind {
@@ -51,6 +54,7 @@ impl HandKind {
             HandKind::FiveOfAKind => "five_kind",
             HandKind::FlushHouse => "flush_house",
             HandKind::FlushFive => "flush_five",
+            HandKind::Custom(_) => "custom",
         }
     }
 }
@@ -229,7 +233,8 @@ pub fn scoring_cards(cards: &[Card], kind: HandKind) -> Vec<usize> {
         | HandKind::RoyalFlush
         | HandKind::FiveOfAKind
         | HandKind::FlushHouse
-        | HandKind::FlushFive => {
+        | HandKind::FlushFive
+        | HandKind::Custom(_) => {
             scoring.extend((0..cards.len()).filter(|idx| !cards[*idx].is_stone()));
         }
     }

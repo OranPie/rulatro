@@ -13,6 +13,11 @@ pub struct AutoplayConfig {
     pub rollout_depth: u32,
     pub rollout_top_k: usize,
     pub tactical_finish_margin: i64,
+    pub tactical_force_min_sims: u32,
+    pub tactical_max_step_share: f64,
+    pub skip_blind_deficit_penalty: f64,
+    pub endgame_exact_lookahead: bool,
+    pub desperation_discard_boost: f64,
 }
 
 impl Default for AutoplayConfig {
@@ -31,6 +36,11 @@ impl Default for AutoplayConfig {
             rollout_depth: 24,
             rollout_top_k: 4,
             tactical_finish_margin: 180,
+            tactical_force_min_sims: 6,
+            tactical_max_step_share: 0.45,
+            skip_blind_deficit_penalty: 6000.0,
+            endgame_exact_lookahead: true,
+            desperation_discard_boost: 0.45,
         }
     }
 }

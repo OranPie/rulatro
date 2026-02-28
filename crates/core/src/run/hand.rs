@@ -102,19 +102,101 @@ impl RunState {
         let mut played = take_cards(&mut self.hand, indices)?;
         self.state.phase = Phase::Score;
         let eval_rules = self.hand_eval_rules();
+        // Apply Flow Kernel patches on top of rule_vars — backwards-compatible.
+        let patch = if let Some(rt) = self.mod_runtime.as_mut() {
+            let ctx = FlowCtx::patch(FlowPoint::HandEval, &self.state);
+            rt.flow_hand_eval_patch(HandEvalPatch::default(), &ctx)
+        } else {
+            HandEvalPatch::default()
+        };
+        // Merge: Flow Kernel overrides > rule_vars fallbacks.
+        let final_rules = crate::HandEvalRules {
+            smeared_suits: patch.smear_suits.unwrap_or(eval_rules.smeared_suits),
+            four_fingers:  patch.four_fingers.unwrap_or(eval_rules.four_fingers),
+            shortcut: patch.max_gap.map(|g| g > 1).unwrap_or(eval_rules.shortcut),
+        };
+        let splash = patch.splash.unwrap_or(self.splash_active());
         let mut eval_cards = played.clone();
         for card in &mut eval_cards {
             if self.is_card_debuffed(*card) && card.enhancement == Some(Enhancement::Stone) {
                 card.enhancement = None;
             }
         }
-        let mut breakdown = score_hand_with_rules(
-            &eval_cards,
-            &self.tables,
-            eval_rules,
-            &self.state.hand_levels,
-        );
-        if self.splash_active() {
+
+        // Let mods evaluate the hand first (custom hand types) via legacy path.
+        // New path: Flow Kernel "replace" mode takes priority if registered.
+        let flow_replace_result = if let Some(rt) = self.mod_runtime.as_mut() {
+            let ctx = FlowCtx::hand_type(&self.state, &eval_cards);
+            rt.flow_hand_type_replace(&ctx)
+        } else {
+            None
+        };
+        let custom_result = if flow_replace_result.is_none() {
+            if let Some(rt) = self.mod_runtime.as_mut() {
+                rt.evaluate_hand(&ModHandEvalContext {
+                    state: &self.state,
+                    cards: &eval_cards,
+                    smeared_suits: final_rules.smeared_suits,
+                    four_fingers:  final_rules.four_fingers,
+                    shortcut:      final_rules.shortcut,
+                })
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        // Merge: flow_replace_result wins over legacy custom_result.
+        let merged_custom: Option<ModHandResult> = flow_replace_result
+            .map(|o| o.into())
+            .or(custom_result);
+
+        let mut breakdown = if let Some(mod_hand) = merged_custom {
+            // Find or register the custom hand in the registry.
+            let idx = self
+                .custom_hand_registry
+                .iter()
+                .position(|def| def.id == mod_hand.hand_id)
+                .unwrap_or_else(|| {
+                    let i = self.custom_hand_registry.len();
+                    self.custom_hand_registry.push(CustomHandDef {
+                        id: mod_hand.hand_id.clone(),
+                        base_chips: mod_hand.base_chips.unwrap_or(5),
+                        base_mult: mod_hand.base_mult.unwrap_or(1.0),
+                        level_chips: mod_hand.level_chips.unwrap_or(0),
+                        level_mult: mod_hand.level_mult.unwrap_or(0.0),
+                    });
+                    i
+                });
+            let hand_kind = HandKind::Custom(idx as u32);
+            let def = &self.custom_hand_registry[idx];
+            let level = self.state.hand_levels.get(&hand_kind).copied().unwrap_or(1);
+            let extra = (level.saturating_sub(1)) as i64;
+            let base_chips = def.base_chips + def.level_chips * extra;
+            let base_mult = def.base_mult + def.level_mult * extra as f64;
+            let rank_chips: i64 = mod_hand
+                .scoring_indices
+                .iter()
+                .map(|&i| {
+                    if eval_cards[i].is_stone() {
+                        0
+                    } else {
+                        self.tables.rank_chips(eval_cards[i].rank)
+                    }
+                })
+                .sum();
+            ScoreBreakdown {
+                hand: hand_kind,
+                base: Score { chips: base_chips, mult: base_mult },
+                rank_chips,
+                scoring_indices: mod_hand.scoring_indices,
+                total: Score { chips: base_chips + rank_chips, mult: base_mult },
+            }
+        } else {
+            score_hand_with_rules(&eval_cards, &self.tables, final_rules, &self.state.hand_levels)
+        };
+
+        if splash {
             breakdown.scoring_indices = (0..played.len()).collect();
         }
         self.clear_score_trace();
@@ -133,7 +215,14 @@ impl RunState {
             }
             self.state.round_hand_types.insert(breakdown.hand);
         }
-        let level_delta = self.rule_value("hand_level_delta").floor() as i64;
+        // Apply ScoreBase patch (Flow Kernel overrides rule_vars fallbacks).
+        let score_patch = if let Some(rt) = self.mod_runtime.as_mut() {
+            let ctx = FlowCtx::patch(FlowPoint::ScoreBase, &self.state);
+            rt.flow_score_base_patch(ScoreBasePatch::default(), &ctx)
+        } else {
+            ScoreBasePatch::default()
+        };
+        let level_delta = score_patch.level_delta + self.rule_value("hand_level_delta").floor() as i64;
         if level_delta != 0 {
             let base_level = self.hand_level(breakdown.hand) as i64;
             let effective = (base_level + level_delta).max(1) as u32;
@@ -144,12 +233,12 @@ impl RunState {
             breakdown.total.chips = breakdown.base.chips + breakdown.rank_chips;
             breakdown.total.mult = breakdown.base.mult;
         }
-        let base_chips_mult = self.rule_value_or("base_chips_mult", 1.0);
-        let base_mult_mult = self.rule_value_or("base_mult_mult", 1.0);
-        if base_chips_mult != 1.0 || base_mult_mult != 1.0 {
-            let scaled = (breakdown.base.chips as f64 * base_chips_mult).floor() as i64;
+        let chips_mult = score_patch.chips_mult * self.rule_value_or("base_chips_mult", 1.0);
+        let mult_mult  = score_patch.mult_mult  * self.rule_value_or("base_mult_mult",  1.0);
+        if chips_mult != 1.0 || mult_mult != 1.0 {
+            let scaled = (breakdown.base.chips as f64 * chips_mult).floor() as i64;
             breakdown.base.chips = scaled;
-            breakdown.base.mult *= base_mult_mult;
+            breakdown.base.mult *= mult_mult;
             breakdown.total.chips = breakdown.base.chips + breakdown.rank_chips;
             breakdown.total.mult = breakdown.base.mult;
         }
@@ -495,18 +584,23 @@ impl RunState {
         let mut lucky_triggers = 0i64;
         match card.enhancement {
             Some(Enhancement::Bonus) => {
-                self.apply_rule_effect(score, crate::RuleEffect::AddChips(30), "enhancement:bonus")
+                let chips = self.tables.card_attrs.enhancement("bonus").chips;
+                self.apply_rule_effect(score, crate::RuleEffect::AddChips(chips), "enhancement:bonus")
             }
             Some(Enhancement::Mult) => {
-                self.apply_rule_effect(score, crate::RuleEffect::AddMult(4.0), "enhancement:mult")
+                let mult = self.tables.card_attrs.enhancement("mult").mult_add;
+                self.apply_rule_effect(score, crate::RuleEffect::AddMult(mult), "enhancement:mult")
             }
             Some(Enhancement::Glass) => {
+                let def = self.tables.card_attrs.enhancement("glass").clone();
+                let mul = if def.mult_mul != 0.0 { def.mult_mul } else { 2.0 };
                 self.apply_rule_effect(
                     score,
-                    crate::RuleEffect::MultiplyMult(2.0),
+                    crate::RuleEffect::MultiplyMult(mul),
                     "enhancement:glass_mult",
                 );
-                if self.roll(4) {
+                let odds = if def.destroy_odds > 0 { def.destroy_odds } else { 4 };
+                if self.roll(odds.into()) {
                     if !destroyed.iter().any(|&existing| existing == idx) {
                         destroyed.push(idx);
                         destroyed_now = true;
@@ -514,19 +608,26 @@ impl RunState {
                 }
             }
             Some(Enhancement::Stone) => {
-                self.apply_rule_effect(score, crate::RuleEffect::AddChips(50), "enhancement:stone")
+                let chips = self.tables.card_attrs.enhancement("stone").chips;
+                let chips = if chips != 0 { chips } else { 50 };
+                self.apply_rule_effect(score, crate::RuleEffect::AddChips(chips), "enhancement:stone")
             }
             Some(Enhancement::Lucky) => {
-                if self.roll(5) {
+                let def = self.tables.card_attrs.enhancement("lucky").clone();
+                let mult_odds = if def.prob_mult_odds > 0 { def.prob_mult_odds } else { 5 };
+                let mult_add = if def.prob_mult_add != 0.0 { def.prob_mult_add } else { 20.0 };
+                let money_odds = if def.prob_money_odds > 0 { def.prob_money_odds } else { 15 };
+                let money_add = if def.prob_money_add != 0 { def.prob_money_add } else { 20 };
+                if self.roll(mult_odds.into()) {
                     self.apply_rule_effect(
                         score,
-                        crate::RuleEffect::AddMult(20.0),
+                        crate::RuleEffect::AddMult(mult_add),
                         "enhancement:lucky_mult",
                     );
                     lucky_triggers += 1;
                 }
-                if self.roll(15) {
-                    *money += 20;
+                if self.roll(money_odds.into()) {
+                    *money += money_add;
                     lucky_triggers += 1;
                 }
             }
@@ -542,11 +643,11 @@ impl RunState {
         _money: &mut i64,
     ) {
         match card.enhancement {
-            Some(Enhancement::Steel) => self.apply_rule_effect(
-                score,
-                crate::RuleEffect::MultiplyMult(1.5),
-                "enhancement:steel",
-            ),
+            Some(Enhancement::Steel) => {
+                let mul = self.tables.card_attrs.enhancement("steel").mult_mul_held;
+                let mul = if mul != 0.0 { mul } else { 1.5 };
+                self.apply_rule_effect(score, crate::RuleEffect::MultiplyMult(mul), "enhancement:steel")
+            }
             _ => {}
         }
     }
@@ -559,7 +660,8 @@ impl RunState {
         _results: &mut TriggerResults,
     ) {
         if card.seal == Some(Seal::Gold) {
-            *money += 3;
+            let amount = self.tables.card_attrs.seal("gold").money_scored;
+            *money += if amount != 0 { amount } else { 3 };
         }
     }
 
@@ -575,18 +677,20 @@ impl RunState {
     pub(super) fn apply_card_edition_scored(&mut self, card: Card, score: &mut Score) {
         match card.edition {
             Some(Edition::Foil) => {
-                self.apply_rule_effect(score, crate::RuleEffect::AddChips(50), "edition:foil")
+                let chips = self.tables.card_attrs.edition("foil").chips;
+                let chips = if chips != 0 { chips } else { 50 };
+                self.apply_rule_effect(score, crate::RuleEffect::AddChips(chips), "edition:foil")
             }
-            Some(Edition::Holographic) => self.apply_rule_effect(
-                score,
-                crate::RuleEffect::AddMult(10.0),
-                "edition:holographic",
-            ),
-            Some(Edition::Polychrome) => self.apply_rule_effect(
-                score,
-                crate::RuleEffect::MultiplyMult(1.5),
-                "edition:polychrome",
-            ),
+            Some(Edition::Holographic) => {
+                let mult = self.tables.card_attrs.edition("holographic").mult_add;
+                let mult = if mult != 0.0 { mult } else { 10.0 };
+                self.apply_rule_effect(score, crate::RuleEffect::AddMult(mult), "edition:holographic")
+            }
+            Some(Edition::Polychrome) => {
+                let mul = self.tables.card_attrs.edition("polychrome").mult_mul;
+                let mul = if mul != 0.0 { mul } else { 1.5 };
+                self.apply_rule_effect(score, crate::RuleEffect::MultiplyMult(mul), "edition:polychrome")
+            }
             _ => {}
         }
     }
@@ -612,14 +716,17 @@ impl RunState {
         for card in discarded {
             let debuffed = self.is_card_debuffed(*card);
             if !debuffed && card.seal == Some(Seal::Purple) {
-                let tarot_id = self
-                    .content
-                    .pick_consumable(crate::ConsumableKind::Tarot, &mut self.rng)
-                    .map(|tarot| tarot.id.clone());
-                if let Some(id) = tarot_id {
-                    let _ = self
-                        .inventory
-                        .add_consumable(id, crate::ConsumableKind::Tarot);
+                let seal_def = self.tables.card_attrs.seal("purple");
+                if seal_def.grant_tarot_discard.unwrap_or(true) {
+                    let tarot_id = self
+                        .content
+                        .pick_consumable(crate::ConsumableKind::Tarot, &mut self.rng)
+                        .map(|tarot| tarot.id.clone());
+                    if let Some(id) = tarot_id {
+                        let _ = self
+                            .inventory
+                            .add_consumable(id, crate::ConsumableKind::Tarot);
+                    }
                 }
             }
             if debuffed {
@@ -666,10 +773,15 @@ impl RunState {
         let hand = self.hand.clone();
         for card in &hand {
             if card.enhancement == Some(Enhancement::Gold) {
-                self.state.money += 3;
+                let amount = self.tables.card_attrs.seal("gold").money_held;
+                self.state.money += if amount != 0 { amount } else { 3 };
             }
             if card.seal == Some(Seal::Blue) {
-                self.grant_planet_for_hand(hand_kind);
+                let seal_def = self.tables.card_attrs.seal("blue");
+                // grant_planet defaults to true (standard Blue seal behavior)
+                if seal_def.grant_planet.unwrap_or(true) {
+                    self.grant_planet_for_hand(hand_kind);
+                }
             }
         }
         let mut scratch_score = Score::default();
@@ -1097,6 +1209,16 @@ impl RunState {
                     let _ = self.inventory.add_consumable(last.id, last.kind);
                 }
                 EffectOp::RetriggerScored(_) | EffectOp::RetriggerHeld(_) => {}
+                EffectOp::Custom { name, value } => {
+                    if let Some(rt) = self.mod_runtime.as_mut() {
+                        let ctx = ModEffectContext { state: &self.state, hand_kind: None, card: None, joker_id: None };
+                        if !rt.invoke_effect_op(name, *value, &ctx) {
+                            eprintln!("[core] unhandled EffectOp::Custom '{}'", name);
+                        }
+                    } else {
+                        eprintln!("[core] no mod runtime for EffectOp::Custom '{}'", name);
+                    }
+                }
             }
         }
         Ok(())

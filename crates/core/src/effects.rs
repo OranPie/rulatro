@@ -104,6 +104,9 @@ pub enum EffectOp {
     CreateLastConsumable { exclude: Option<String> },
     RetriggerScored(i64),
     RetriggerHeld(i64),
+    /// A mod-registered consumable effect. `name` is the effect identifier;
+    /// `value` is an optional numeric parameter (defaults to 0.0).
+    Custom { name: String, #[serde(default)] value: f64 },
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -258,9 +261,17 @@ impl ActionOp {
     }
 }
 
+/// The operation in a DSL action: either a built-in op or a mod-registered custom keyword.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ActionOpKind {
+    Builtin(ActionOp),
+    /// Keyword registered by a mod via `rulatro.register_effect`.
+    Custom(String),
+}
+
 #[derive(Debug, Clone)]
 pub struct Action {
-    pub op: ActionOp,
+    pub op: ActionOpKind,
     pub target: Option<String>,
     pub value: Expr,
 }
@@ -337,7 +348,10 @@ pub fn format_joker_effect_compact(effect: &JokerEffect) -> String {
 }
 
 pub fn format_action_compact(action: &Action) -> String {
-    let op = action_op_name(action.op);
+    let op = match &action.op {
+        ActionOpKind::Builtin(op) => action_op_name(*op),
+        ActionOpKind::Custom(name) => name.clone(),
+    };
     let value = format_expr_compact(&action.value);
     match action.target.as_deref() {
         Some(target) => format!("{op} {target} {value}"),
@@ -467,7 +481,7 @@ mod tests {
             trigger: ActivationType::OnBlindStart,
             when: Expr::Bool(true),
             actions: vec![Action {
-                op: ActionOp::MultiplyTarget,
+                op: ActionOpKind::Builtin(ActionOp::MultiplyTarget),
                 target: None,
                 value: Expr::Number(2.0),
             }],

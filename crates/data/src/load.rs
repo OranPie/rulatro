@@ -4,11 +4,12 @@ use crate::joker_dsl::{
     parse_effect_dsl_line,
 };
 use crate::schema::{
-    AnteRule, BlindRule, BossDef, ConsumableDef, ConsumableKind, Content, ContentPack, EconomyRule,
-    EffectBlock, GameConfig, HandRule, JokerDef, RankRule, ShopRule, TagDef,
+    AnteRule, BlindRule, BossDef, CardAttrRules, ConsumableDef, ConsumableKind, Content,
+    ContentPack, EconomyRule, EffectBlock, GameConfig, HandRule, JokerDef, RankRule, ShopRule,
+    TagDef,
 };
 use anyhow::{bail, Context};
-use rulatro_core::{HandKind, JokerEffect};
+use rulatro_core::{ActionOp, ActionOpKind, HandKind, JokerEffect};
 use rulatro_modding::{FileSystemModLoader, LoadedMod};
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
@@ -32,6 +33,12 @@ pub fn load_game_config(dir: &Path) -> anyhow::Result<GameConfig> {
     let antes: Vec<AnteRule> = load_json(dir.join("antes.json"))?;
     let economy: EconomyRule = load_json(dir.join("economy.json"))?;
     let shop: ShopRule = load_json(dir.join("shop.json"))?;
+    let card_attrs_path = dir.join("card_attributes.json");
+    let card_attrs: CardAttrRules = if card_attrs_path.exists() {
+        load_json(card_attrs_path)?
+    } else {
+        CardAttrRules::default()
+    };
 
     Ok(GameConfig {
         hands,
@@ -40,6 +47,7 @@ pub fn load_game_config(dir: &Path) -> anyhow::Result<GameConfig> {
         antes,
         economy,
         shop,
+        card_attrs,
     })
 }
 
@@ -1076,7 +1084,7 @@ mod tests {
             trigger: ActivationType::OnUse,
             when: Expr::Bool(true),
             actions: vec![Action {
-                op: ActionOp::AddMoney,
+                op: ActionOpKind::Builtin(ActionOp::AddMoney),
                 target: None,
                 value: Expr::Number(value),
             }],
@@ -1085,7 +1093,7 @@ mod tests {
 
     fn first_joker_money(effect: &JokerEffect) -> Option<f64> {
         let action = effect.actions.first()?;
-        if action.op != ActionOp::AddMoney {
+        if action.op != ActionOpKind::Builtin(ActionOp::AddMoney) {
             return None;
         }
         if let Expr::Number(value) = action.value.clone() {

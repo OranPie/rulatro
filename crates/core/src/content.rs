@@ -1,6 +1,10 @@
 use crate::{ConsumableKind, EffectBlock, HandKind, JokerEffect, JokerRarity, Rank, Suit};
 use serde::{Deserialize, Serialize};
 
+fn default_weight() -> u32 {
+    1
+}
+
 #[derive(Debug, Clone)]
 pub struct JokerDef {
     pub id: String,
@@ -14,6 +18,8 @@ pub struct BossDef {
     pub id: String,
     pub name: String,
     pub effects: Vec<JokerEffect>,
+    /// Relative selection weight. Defaults to 1. Higher = more common.
+    pub weight: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -95,8 +101,20 @@ impl Content {
         if self.bosses.is_empty() {
             return None;
         }
-        let idx = (rng.next_u64() % self.bosses.len() as u64) as usize;
-        self.bosses.get(idx)
+        let total_weight: u64 = self.bosses.iter().map(|b| b.weight as u64).sum();
+        if total_weight == 0 {
+            // All weights zero — fall back to uniform
+            let idx = (rng.next_u64() % self.bosses.len() as u64) as usize;
+            return self.bosses.get(idx);
+        }
+        let mut roll = rng.next_u64() % total_weight;
+        for boss in &self.bosses {
+            if roll < boss.weight as u64 {
+                return Some(boss);
+            }
+            roll -= boss.weight as u64;
+        }
+        self.bosses.last()
     }
 
     pub fn boss_by_id(&self, id: &str) -> Option<&BossDef> {

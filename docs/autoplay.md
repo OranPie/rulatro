@@ -54,6 +54,12 @@ If trace paths are omitted, defaults are generated under `traces/`.
 - `--rollout-top-k <usize>`
 - `--action-retries <u32>`
 - `--tactical-finish-margin <i64>`
+- `--tactical-force-min-sims <u32>`
+- `--tactical-max-step-share <f64>`
+- `--skip-blind-deficit-penalty <f64>`
+- `--endgame-exact-lookahead <bool>`
+- `--no-endgame-exact-lookahead`
+- `--desperation-discard-boost <f64>`
 
 ## 4) Output
 
@@ -79,6 +85,8 @@ Search now includes invalid-action recovery:
 - rollout retries alternate candidates when action application fails
 - execution retries with action blacklisting instead of aborting immediately
 - near-target tactical finish lookahead to prioritize clearing the current blind
+- tactical + MCTS hybrid execution with forced minimum sims in pressure states
+- endgame exact lookahead for last-hand play/discard closeout choices
 
 ## 5) Crate API
 

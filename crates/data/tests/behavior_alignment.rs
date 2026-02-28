@@ -1,11 +1,11 @@
 use rulatro_core::{
     evaluate_hand, evaluate_hand_with_rules, open_pack, pick_pack_options, score_hand,
-    scoring_cards, Action, ActionOp, ActivationType, BlindKind, BossDef, Card, CardOffer,
-    CardWeight, ConsumableDef, ConsumableKind, Edition, Enhancement, EventBus, Expr, HandEvalRules,
-    HandKind, JokerDef, JokerEffect, JokerRarity, JokerRarityWeight, LastConsumable, PackError,
-    PackKind, PackOffer, PackOpen, PackOption, PackSize, Phase, Rank, RngState, RunError, RunState,
-    ScoreTables, Seal, ShopCardKind, ShopOfferRef, ShopPurchase, ShopRestrictions, ShopState, Suit,
-    TagDef,
+    scoring_cards, Action, ActionOp, ActionOpKind, ActivationType, BlindKind, BossDef, Card,
+    CardOffer, CardWeight, ConsumableDef, ConsumableKind, Edition, Enhancement, EventBus, Expr,
+    HandEvalRules, HandKind, JokerDef, JokerEffect, JokerRarity, JokerRarityWeight, LastConsumable,
+    PackError, PackKind, PackOffer, PackOpen, PackOption, PackSize, Phase, Rank, RngState,
+    RunError, RunState, ScoreTables, Seal, ShopCardKind, ShopOfferRef, ShopPurchase,
+    ShopRestrictions, ShopState, Suit, TagDef,
 };
 use rulatro_data::{load_content, load_game_config};
 use std::path::PathBuf;
@@ -77,7 +77,7 @@ fn add_rule_joker(run: &mut RunState, id: &str, key: &str, value: f64) {
             trigger: ActivationType::Passive,
             when: Expr::Bool(true),
             actions: vec![Action {
-                op: ActionOp::SetRule,
+                op: ActionOpKind::Builtin(ActionOp::SetRule),
                 target: Some(key.to_string()),
                 value: Expr::Number(value),
             }],
@@ -97,7 +97,7 @@ fn add_scoring_joker(run: &mut RunState, id: &str, op: ActionOp, value: f64) {
             trigger: ActivationType::Independent,
             when: Expr::Bool(true),
             actions: vec![Action {
-                op,
+                op: ActionOpKind::Builtin(op),
                 target: None,
                 value: Expr::Number(value),
             }],
@@ -876,7 +876,7 @@ fn shop_add_joker_offer_action_adds_card() {
             trigger: ActivationType::OnShopEnter,
             when: Expr::Bool(true),
             actions: vec![Action {
-                op: ActionOp::AddShopJoker,
+                op: ActionOpKind::Builtin(ActionOp::AddShopJoker),
                 target: Some("rare".to_string()),
                 value: Expr::Number(0.0),
             }],
@@ -907,7 +907,7 @@ fn shop_set_reroll_cost_action_applies() {
             trigger: ActivationType::OnShopEnter,
             when: Expr::Bool(true),
             actions: vec![Action {
-                op: ActionOp::SetRerollCost,
+                op: ActionOpKind::Builtin(ActionOp::SetRerollCost),
                 target: None,
                 value: Expr::Number(1.0),
             }],
@@ -934,7 +934,7 @@ fn shop_add_voucher_action_increases_slots() {
             trigger: ActivationType::OnShopEnter,
             when: Expr::Bool(true),
             actions: vec![Action {
-                op: ActionOp::AddVoucher,
+                op: ActionOpKind::Builtin(ActionOp::AddVoucher),
                 target: None,
                 value: Expr::Number(2.0),
             }],
@@ -962,7 +962,7 @@ fn prevent_death_action_clears_failed_blind() {
             trigger: ActivationType::OnBlindFailed,
             when: Expr::Bool(true),
             actions: vec![Action {
-                op: ActionOp::PreventDeath,
+                op: ActionOpKind::Builtin(ActionOp::PreventDeath),
                 target: None,
                 value: Expr::Number(1.0),
             }],
@@ -994,7 +994,7 @@ fn duplicate_next_tag_action_duplicates_tag() {
             trigger: ActivationType::OnBlindStart,
             when: Expr::Bool(true),
             actions: vec![Action {
-                op: ActionOp::DuplicateNextTag,
+                op: ActionOpKind::Builtin(ActionOp::DuplicateNextTag),
                 target: None,
                 value: Expr::Number(1.0),
             }],
@@ -1008,7 +1008,7 @@ fn duplicate_next_tag_action_duplicates_tag() {
             trigger: ActivationType::OnBlindStart,
             when: Expr::Bool(true),
             actions: vec![Action {
-                op: ActionOp::AddTag,
+                op: ActionOpKind::Builtin(ActionOp::AddTag),
                 target: Some("coupon_tag".to_string()),
                 value: Expr::Number(1.0),
             }],
@@ -1038,7 +1038,7 @@ fn duplicate_next_tag_exclude_skips_duplicate() {
             trigger: ActivationType::OnBlindStart,
             when: Expr::Bool(true),
             actions: vec![Action {
-                op: ActionOp::DuplicateNextTag,
+                op: ActionOpKind::Builtin(ActionOp::DuplicateNextTag),
                 target: Some("coupon_tag".to_string()),
                 value: Expr::Number(1.0),
             }],
@@ -1052,7 +1052,7 @@ fn duplicate_next_tag_exclude_skips_duplicate() {
             trigger: ActivationType::OnBlindStart,
             when: Expr::Bool(true),
             actions: vec![Action {
-                op: ActionOp::AddTag,
+                op: ActionOpKind::Builtin(ActionOp::AddTag),
                 target: Some("coupon_tag".to_string()),
                 value: Expr::Number(1.0),
             }],
@@ -1089,7 +1089,7 @@ fn add_pack_action_adds_pack_offer() {
             trigger: ActivationType::OnShopEnter,
             when: Expr::Bool(true),
             actions: vec![Action {
-                op: ActionOp::AddPack,
+                op: ActionOpKind::Builtin(ActionOp::AddPack),
                 target: Some("buffoon_mega".to_string()),
                 value: Expr::Number(0.0),
             }],
@@ -1659,7 +1659,7 @@ fn shop_reroll_price_override_ordered_jokers() {
             trigger: ActivationType::OnShopReroll,
             when: Expr::Bool(true),
             actions: vec![Action {
-                op: ActionOp::SetShopPrice,
+                op: ActionOpKind::Builtin(ActionOp::SetShopPrice),
                 target: Some("cards".to_string()),
                 value: Expr::Number(2.0),
             }],
@@ -1673,7 +1673,7 @@ fn shop_reroll_price_override_ordered_jokers() {
             trigger: ActivationType::OnShopReroll,
             when: Expr::Bool(true),
             actions: vec![Action {
-                op: ActionOp::SetShopPrice,
+                op: ActionOpKind::Builtin(ActionOp::SetShopPrice),
                 target: Some("planet".to_string()),
                 value: Expr::Number(0.0),
             }],
@@ -2052,13 +2052,14 @@ fn boss_effects_apply_on_shop_enter() {
     let mut run = new_run();
     let boss_id = "test_boss";
     run.content.bosses.push(BossDef {
+        weight: 1,
         id: boss_id.to_string(),
         name: "Test Boss".to_string(),
         effects: vec![JokerEffect {
             trigger: ActivationType::OnShopEnter,
             when: Expr::Bool(true),
             actions: vec![Action {
-                op: ActionOp::AddMoney,
+                op: ActionOpKind::Builtin(ActionOp::AddMoney),
                 target: None,
                 value: Expr::Number(7.0),
             }],
@@ -2086,7 +2087,7 @@ fn tag_coupon_then_joker_overrides_card_prices() {
             trigger: ActivationType::OnShopEnter,
             when: Expr::Bool(true),
             actions: vec![Action {
-                op: ActionOp::SetShopPrice,
+                op: ActionOpKind::Builtin(ActionOp::SetShopPrice),
                 target: Some("cards".to_string()),
                 value: Expr::Number(2.0),
             }],

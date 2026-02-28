@@ -81,6 +81,7 @@ pub(super) fn hand_name(kind: crate::HandKind) -> &'static str {
         crate::HandKind::FiveOfAKind => "FiveOfAKind",
         crate::HandKind::FlushHouse => "FlushHouse",
         crate::HandKind::FlushFive => "FlushFive",
+        crate::HandKind::Custom(_) => "Custom",
     }
 }
 
@@ -99,6 +100,7 @@ pub(super) fn hand_id(kind: crate::HandKind) -> u8 {
         crate::HandKind::FiveOfAKind => 10,
         crate::HandKind::FlushHouse => 11,
         crate::HandKind::FlushFive => 12,
+        crate::HandKind::Custom(_) => 255,
     }
 }
 
@@ -447,5 +449,6 @@ pub(super) fn hand_contains_kind(hand: crate::HandKind, target: crate::HandKind)
         FiveOfAKind => matches!(hand, FiveOfAKind | FlushFive),
         FlushHouse => matches!(hand, FlushHouse),
         FlushFive => matches!(hand, FlushFive),
+        Custom(id) => matches!(hand, Custom(h) if h == id),
     }
 }

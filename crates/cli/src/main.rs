@@ -1103,6 +1103,53 @@ fn parse_autoplay_options(args: &[String]) -> Result<AutoplayCliOptions, String>
                     .parse::<i64>()
                     .map_err(|_| "invalid --tactical-finish-margin value".to_string())?;
             }
+            "--tactical-force-min-sims" => {
+                idx += 1;
+                let value = args
+                    .get(idx)
+                    .ok_or_else(|| "missing value for --tactical-force-min-sims".to_string())?;
+                cfg.tactical_force_min_sims = value
+                    .parse::<u32>()
+                    .map_err(|_| "invalid --tactical-force-min-sims value".to_string())?;
+            }
+            "--tactical-max-step-share" => {
+                idx += 1;
+                let value = args
+                    .get(idx)
+                    .ok_or_else(|| "missing value for --tactical-max-step-share".to_string())?;
+                cfg.tactical_max_step_share = value
+                    .parse::<f64>()
+                    .map_err(|_| "invalid --tactical-max-step-share value".to_string())?;
+            }
+            "--skip-blind-deficit-penalty" => {
+                idx += 1;
+                let value = args
+                    .get(idx)
+                    .ok_or_else(|| "missing value for --skip-blind-deficit-penalty".to_string())?;
+                cfg.skip_blind_deficit_penalty = value
+                    .parse::<f64>()
+                    .map_err(|_| "invalid --skip-blind-deficit-penalty value".to_string())?;
+            }
+            "--endgame-exact-lookahead" => {
+                idx += 1;
+                let value = args
+                    .get(idx)
+                    .ok_or_else(|| "missing value for --endgame-exact-lookahead".to_string())?;
+                cfg.endgame_exact_lookahead = parse_bool_flag(value)
+                    .ok_or_else(|| "invalid --endgame-exact-lookahead value".to_string())?;
+            }
+            "--no-endgame-exact-lookahead" => {
+                cfg.endgame_exact_lookahead = false;
+            }
+            "--desperation-discard-boost" => {
+                idx += 1;
+                let value = args
+                    .get(idx)
+                    .ok_or_else(|| "missing value for --desperation-discard-boost".to_string())?;
+                cfg.desperation_discard_boost = value
+                    .parse::<f64>()
+                    .map_err(|_| "invalid --desperation-discard-boost value".to_string())?;
+            }
             "--trace-json" => {
                 idx += 1;
                 let value = args
@@ -1134,6 +1181,18 @@ fn parse_autoplay_options(args: &[String]) -> Result<AutoplayCliOptions, String>
         idx += 1;
     }
 
+    if !cfg.tactical_max_step_share.is_finite()
+        || !(0.0..=1.0).contains(&cfg.tactical_max_step_share)
+    {
+        return Err("--tactical-max-step-share must be between 0 and 1".to_string());
+    }
+    if !cfg.skip_blind_deficit_penalty.is_finite() || cfg.skip_blind_deficit_penalty < 0.0 {
+        return Err("--skip-blind-deficit-penalty must be >= 0".to_string());
+    }
+    if !cfg.desperation_discard_boost.is_finite() || cfg.desperation_discard_boost < 0.0 {
+        return Err("--desperation-discard-boost must be >= 0".to_string());
+    }
+
     Ok(AutoplayCliOptions {
         locale: UiLocale::from_opt(locale_arg.as_deref()),
         use_mods,
@@ -1155,6 +1214,14 @@ fn default_trace_path(seed: u64, ext: &str) -> PathBuf {
     PathBuf::from("traces").join(format!("autoplay_{ts}_{seed}.{ext}"))
 }
 
+fn parse_bool_flag(value: &str) -> Option<bool> {
+    match value {
+        "1" | "true" | "True" | "TRUE" | "yes" | "on" => Some(true),
+        "0" | "false" | "False" | "FALSE" | "no" | "off" => Some(false),
+        _ => None,
+    }
+}
+
 fn print_autoplay_help() {
     println!("rulatro-cli autoplay options:");
     println!("  --seed <u64>");
@@ -1168,7 +1235,10 @@ fn print_autoplay_help() {
     println!("  --max-play-candidates <usize> --max-discard-candidates <usize>");
     println!("  --max-shop-candidates <usize> --rollout-depth <u32>");
     println!("  --exploration-c <f64> --rollout-top-k <usize> --action-retries <u32>");
-    println!("  --tactical-finish-margin <i64>");
+    println!("  --tactical-finish-margin <i64> --tactical-force-min-sims <u32>");
+    println!("  --tactical-max-step-share <f64> --skip-blind-deficit-penalty <f64>");
+    println!("  --endgame-exact-lookahead <bool> --no-endgame-exact-lookahead");
+    println!("  --desperation-discard-boost <f64>");
     println!("  --trace-json <path> --trace-text <path>");
     println!("  --keep-going-on-fail --no-mods");
 }
@@ -4595,6 +4665,7 @@ fn summarize_effect_op(locale: UiLocale, op: &EffectOp) -> String {
             locale.text("retrigger held", "重触发留手牌"),
             signed_int(*times)
         ),
+        EffectOp::Custom { name, .. } => format!("[{}]", name),
     }
     .replace("  ", " ")
     .trim()
@@ -4644,6 +4715,7 @@ fn hand_label_short(locale: UiLocale, hand: rulatro_core::HandKind) -> &'static 
             rulatro_core::HandKind::FiveOfAKind => "五条",
             rulatro_core::HandKind::FlushHouse => "同花葫芦",
             rulatro_core::HandKind::FlushFive => "同花五条",
+            rulatro_core::HandKind::Custom(_) => "自定义",
         }
     } else {
         match hand {
@@ -4660,6 +4732,7 @@ fn hand_label_short(locale: UiLocale, hand: rulatro_core::HandKind) -> &'static 
             rulatro_core::HandKind::FiveOfAKind => "FiveOfAKind",
             rulatro_core::HandKind::FlushHouse => "FlushHouse",
             rulatro_core::HandKind::FlushFive => "FlushFive",
+            rulatro_core::HandKind::Custom(_) => "Custom",
         }
     }
 }

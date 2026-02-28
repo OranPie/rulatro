@@ -1,7 +1,7 @@
 use anyhow::{anyhow, bail, Context, Result};
 use rulatro_core::{
-    Action, ActionOp, ActivationType, BinaryOp, BossDef, Expr, JokerDef, JokerEffect, JokerRarity,
-    TagDef, UnaryOp,
+    Action, ActionOp, ActionOpKind, ActivationType, BinaryOp, BossDef, Expr, JokerDef,
+    JokerEffect, JokerRarity, TagDef, UnaryOp,
 };
 use std::collections::HashMap;
 use std::fs;
@@ -32,6 +32,7 @@ pub fn load_bosses_dsl_with_locale(path: &Path, locale: Option<&str>) -> Result<
                 id: def.id,
                 name: def.name,
                 effects: def.effects,
+                weight: 1,
             })
             .collect()
     })
@@ -479,11 +480,17 @@ fn parse_actions(input: &str) -> Result<Vec<Action>> {
         }
         let mut iter = piece.splitn(2, char::is_whitespace);
         let op_str = iter.next().unwrap_or_default();
-        let op =
-            ActionOp::from_keyword(op_str).ok_or_else(|| anyhow!("unknown action '{}'", op_str))?;
-        let expr_str = iter.next().unwrap_or("1").trim();
-        if op.requires_target() {
-            let mut arg_iter = expr_str.splitn(2, char::is_whitespace);
+        let op = match ActionOp::from_keyword(op_str) {
+            Some(builtin) => ActionOpKind::Builtin(builtin),
+            None => ActionOpKind::Custom(op_str.to_string()),
+        };
+        let rest_str = iter.next().unwrap_or("1").trim();
+        let requires_target = match &op {
+            ActionOpKind::Builtin(builtin) => builtin.requires_target(),
+            ActionOpKind::Custom(_) => false,
+        };
+        if requires_target {
+            let mut arg_iter = rest_str.splitn(2, char::is_whitespace);
             let target_raw = arg_iter.next().unwrap_or_default().trim();
             if target_raw.is_empty() {
                 bail!("action '{}' requires a target name", op_str);
@@ -501,6 +508,7 @@ fn parse_actions(input: &str) -> Result<Vec<Action>> {
                 value,
             });
         } else {
+            let expr_str = rest_str;
             let value = if expr_str.is_empty() {
                 Expr::Number(1.0)
             } else {

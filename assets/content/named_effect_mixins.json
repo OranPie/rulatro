@@ -1,0 +1,20 @@
+[
+  {
+    "id": "shortcut_hand",
+    "kinds": ["joker"],
+    "requires": [],
+    "effects": ["on passive { set_rule shortcut 1 }"]
+  },
+  {
+    "id": "free_reroll_on_enter",
+    "kinds": ["joker"],
+    "requires": [],
+    "effects": ["on shop_enter { add_free_reroll 1 }"]
+  },
+  {
+    "id": "boss_reroll_on_sell",
+    "kinds": ["joker"],
+    "requires": [],
+    "effects": ["on any_sell { reroll_boss }"]
+  }
+]

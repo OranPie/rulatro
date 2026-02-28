@@ -1,6 +1,6 @@
 use crate::{
     target_reached, weighted_score, AutoAction, AutoplayConfig, AutoplayError, AutoplayResult,
-    FinalMetrics, ObjectiveWeights, RunStatus, Simulator, StepRecord, StepSearchStats,
+    EvalMetrics, FinalMetrics, ObjectiveWeights, RunStatus, Simulator, StepRecord, StepSearchStats,
     SummaryStats, TargetConfig,
 };
 use std::collections::HashSet;
@@ -91,14 +91,6 @@ impl SimpleRng {
         self.0
     }
 
-    fn gen_index(&mut self, len: usize) -> usize {
-        if len <= 1 {
-            0
-        } else {
-            (self.next_u64() as usize) % len
-        }
-    }
-
     fn gen_unit_f64(&mut self) -> f64 {
         let denom = u64::MAX as f64;
         if denom <= 0.0 {
@@ -107,6 +99,21 @@ impl SimpleRng {
             (self.next_u64() as f64) / denom
         }
     }
+}
+
+#[derive(Debug, Clone)]
+struct TacticalChoice {
+    action: AutoAction,
+    score: f64,
+    immediate_clear: bool,
+    skip_blind_penalty: f64,
+}
+
+#[derive(Debug, Clone)]
+struct SurvivalChoice {
+    action: AutoAction,
+    score: f64,
+    reason: String,
 }
 
 pub fn run_autoplay<F>(
@@ -122,6 +129,7 @@ where
     let mut history: Vec<AutoAction> = Vec::new();
     let mut records: Vec<StepRecord> = Vec::new();
     let mut total_simulations: u64 = 0;
+    let mut tactical_bypass_steps: u32 = 0;
     let mut status = None;
 
     for step in 0..request.config.max_steps {
@@ -150,8 +158,18 @@ where
             }
 
             let step_started = Instant::now();
-            let tactical_choice = if should_try_tactical_finish(&sim, &request.config) {
-                select_tactical_action(
+            let survival_choice = select_survival_guard_action(
+                factory,
+                &history,
+                step,
+                &sim,
+                &request.config,
+                request.targets,
+                request.weights,
+                &root_candidates,
+            )?;
+            let endgame_choice = if request.config.endgame_exact_lookahead {
+                select_endgame_exact_action(
                     factory,
                     &history,
                     step,
@@ -163,8 +181,44 @@ where
             } else {
                 None
             };
+            let tactical_trigger = tactical_trigger_reason(&sim, &request.config);
+            let tactical_choice = if endgame_choice.is_none() && survival_choice.is_none() {
+                if tactical_trigger.is_some() {
+                    select_tactical_action(
+                        factory,
+                        &history,
+                        step,
+                        before,
+                        &request.config,
+                        request.targets,
+                        request.weights,
+                        &root_candidates,
+                    )?
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
 
-            let (action, search_stats) = if let Some((choice, score)) = tactical_choice {
+            let (mut action, mut search_stats) = if let Some(survival) = survival_choice {
+                (
+                    survival.action.clone(),
+                    StepSearchStats {
+                        simulations: 0,
+                        elapsed_ms: step_started.elapsed().as_millis() as u64,
+                        root_children: root_candidates.len(),
+                        selected_visits: 0,
+                        selected_value: survival.score,
+                        decision_source: "survival_guard".to_string(),
+                        tactical_trigger: Some(survival.reason),
+                        tactical_candidate: Some(survival.action.short_label()),
+                        tactical_bypassed_mcts: true,
+                        forced_min_sims: 0,
+                        skip_blind_penalty: 0.0,
+                    },
+                )
+            } else if let Some((choice, score)) = endgame_choice {
                 (
                     choice,
                     StepSearchStats {
@@ -173,8 +227,85 @@ where
                         root_children: root_candidates.len(),
                         selected_visits: 0,
                         selected_value: score,
+                        decision_source: "endgame_exact".to_string(),
+                        tactical_trigger,
+                        tactical_candidate: None,
+                        tactical_bypassed_mcts: true,
+                        forced_min_sims: 0,
+                        skip_blind_penalty: 0.0,
                     },
                 )
+            } else if let Some(tactical) = tactical_choice {
+                let completed_steps = history.len() as u32;
+                let bypass_allowed = tactical.immediate_clear
+                    || (request.config.tactical_force_min_sims == 0
+                        && tactical_bypass_allowed(
+                            tactical_bypass_steps,
+                            completed_steps,
+                            request.config.tactical_max_step_share,
+                        ));
+                if bypass_allowed {
+                    tactical_bypass_steps = tactical_bypass_steps.saturating_add(1);
+                    (
+                        tactical.action.clone(),
+                        StepSearchStats {
+                            simulations: 0,
+                            elapsed_ms: step_started.elapsed().as_millis() as u64,
+                            root_children: root_candidates.len(),
+                            selected_visits: 0,
+                            selected_value: tactical.score,
+                            decision_source: "tactical".to_string(),
+                            tactical_trigger,
+                            tactical_candidate: Some(tactical.action.short_label()),
+                            tactical_bypassed_mcts: true,
+                            forced_min_sims: 0,
+                            skip_blind_penalty: tactical.skip_blind_penalty,
+                        },
+                    )
+                } else {
+                    let forced_min_sims = request
+                        .config
+                        .min_simulations_per_step
+                        .max(request.config.tactical_force_min_sims);
+                    match select_action_mcts(
+                        factory,
+                        &history,
+                        step,
+                        &request.config,
+                        request.targets,
+                        request.weights,
+                        &root_candidates,
+                        Some(forced_min_sims),
+                        Some(&tactical.action),
+                    ) {
+                        Ok((picked, mut stats)) => {
+                            stats.decision_source = "mcts+tactical".to_string();
+                            stats.tactical_trigger = tactical_trigger;
+                            stats.tactical_candidate = Some(tactical.action.short_label());
+                            stats.tactical_bypassed_mcts = false;
+                            stats.forced_min_sims = forced_min_sims;
+                            stats.skip_blind_penalty = tactical.skip_blind_penalty;
+                            (picked, stats)
+                        }
+                        Err(err) if is_recoverable_action_error(&err) => (
+                            tactical.action.clone(),
+                            StepSearchStats {
+                                simulations: 0,
+                                elapsed_ms: step_started.elapsed().as_millis() as u64,
+                                root_children: root_candidates.len(),
+                                selected_visits: 0,
+                                selected_value: tactical.score,
+                                decision_source: "tactical_fallback".to_string(),
+                                tactical_trigger,
+                                tactical_candidate: Some(tactical.action.short_label()),
+                                tactical_bypassed_mcts: true,
+                                forced_min_sims,
+                                skip_blind_penalty: tactical.skip_blind_penalty,
+                            },
+                        ),
+                        Err(err) => return Err(err),
+                    }
+                }
             } else {
                 match select_action_mcts(
                     factory,
@@ -184,15 +315,100 @@ where
                     request.targets,
                     request.weights,
                     &root_candidates,
+                    None,
+                    None,
                 ) {
-                    Ok(value) => value,
+                    Ok(mut value) => {
+                        value.1.decision_source = "mcts".to_string();
+                        (value.0, value.1)
+                    }
                     Err(err) if is_recoverable_action_error(&err) => {
-                        status = Some(RunStatus::NoLegalAction);
-                        break;
+                        match pick_non_failing_root_action(
+                            factory,
+                            &history,
+                            step,
+                            &request.config,
+                            request.targets,
+                            request.weights,
+                            &root_candidates,
+                        )? {
+                            Some((fallback, score)) => (
+                                fallback,
+                                StepSearchStats {
+                                    simulations: 0,
+                                    elapsed_ms: step_started.elapsed().as_millis() as u64,
+                                    root_children: root_candidates.len(),
+                                    selected_visits: 0,
+                                    selected_value: score,
+                                    decision_source: "fallback_safe_root".to_string(),
+                                    tactical_trigger: Some(
+                                        "recoverable_mcts_error_choose_safe_root".to_string(),
+                                    ),
+                                    tactical_candidate: None,
+                                    tactical_bypassed_mcts: true,
+                                    forced_min_sims: 0,
+                                    skip_blind_penalty: 0.0,
+                                },
+                            ),
+                            None => {
+                                status = Some(RunStatus::NoLegalAction);
+                                break;
+                            }
+                        }
                     }
                     Err(err) => return Err(err),
                 }
             };
+            if request.targets.stop_on_blind_failed {
+                let path = vec![action.clone()];
+                if let Ok((probe, _, _)) = materialize(
+                    factory,
+                    &history,
+                    &path,
+                    &request.config,
+                    request.targets,
+                    step,
+                ) {
+                    let after = probe.metrics();
+                    if after.blind_failed {
+                        if let Some((fallback, score)) = pick_non_failing_root_action(
+                            factory,
+                            &history,
+                            step,
+                            &request.config,
+                            request.targets,
+                            request.weights,
+                            &root_candidates,
+                        )? {
+                            action = fallback;
+                            search_stats.selected_value = score;
+                            search_stats.decision_source =
+                                format!("{}+avoid_fail", search_stats.decision_source);
+                            if search_stats.tactical_trigger.is_none() {
+                                search_stats.tactical_trigger =
+                                    Some("predicted_blind_failed_swap_action".to_string());
+                            }
+                        }
+                    }
+                }
+            }
+            if let Some((discard_action, discard_score, reason)) = prefer_discard_over_weak_play(
+                factory,
+                &history,
+                step,
+                &request.config,
+                request.targets,
+                request.weights,
+                &root_candidates,
+                &action,
+            )? {
+                action = discard_action;
+                search_stats.selected_value = discard_score;
+                search_stats.decision_source =
+                    format!("{}+discard_guard", search_stats.decision_source);
+                search_stats.tactical_candidate = Some(action.short_label());
+                search_stats.tactical_trigger = Some(reason);
+            }
             total_simulations = total_simulations.saturating_add(search_stats.simulations as u64);
 
             let phase_before = sim.phase_name();
@@ -293,33 +509,67 @@ where
     })
 }
 
-fn should_try_tactical_finish(sim: &Simulator, cfg: &AutoplayConfig) -> bool {
+fn tactical_trigger_reason(sim: &Simulator, cfg: &AutoplayConfig) -> Option<String> {
     if sim.run.state.target <= 0 {
-        return false;
+        return None;
     }
     let phase = sim.run.state.phase;
     if phase != rulatro_core::Phase::Play && phase != rulatro_core::Phase::Deal {
-        return false;
+        return None;
     }
     let deficit = (sim.run.state.target - sim.run.state.blind_score).max(0);
-    deficit <= cfg.tactical_finish_margin || sim.run.state.hands_left <= 1
+    let pressure_margin = if sim.run.state.hands_left <= 1 {
+        cfg.tactical_finish_margin.saturating_mul(2)
+    } else {
+        cfg.tactical_finish_margin
+    };
+    if deficit > pressure_margin {
+        return None;
+    }
+    let reason = if sim.run.state.hands_left <= 1 && deficit > cfg.tactical_finish_margin {
+        format!(
+            "last_hand_pressure deficit={deficit} margin={pressure_margin} hands_left={}",
+            sim.run.state.hands_left
+        )
+    } else {
+        format!(
+            "near_finish deficit={deficit} margin={} phase={phase:?}",
+            cfg.tactical_finish_margin
+        )
+    };
+    Some(reason)
+}
+
+fn tactical_bypass_allowed(bypass_steps: u32, completed_steps: u32, max_share: f64) -> bool {
+    if max_share <= 0.0 {
+        return false;
+    }
+    if !max_share.is_finite() {
+        return true;
+    }
+    let total = completed_steps.max(1) as f64;
+    let share = bypass_steps as f64 / total;
+    share < max_share
 }
 
 fn select_tactical_action<F>(
     factory: &F,
     history: &[AutoAction],
     step: u32,
+    baseline: EvalMetrics,
     cfg: &AutoplayConfig,
     targets: TargetConfig,
     weights: ObjectiveWeights,
     root_actions: &[AutoAction],
-) -> Result<Option<(AutoAction, f64)>, AutoplayError>
+) -> Result<Option<TacticalChoice>, AutoplayError>
 where
     F: Fn() -> Result<Simulator, AutoplayError>,
 {
     let candidates = dedup_actions(root_actions.to_vec());
     let mut best_action = None;
     let mut best_score = f64::NEG_INFINITY;
+    let mut best_immediate_clear = false;
+    let mut best_skip_penalty = 0.0f64;
     let mut best_key = String::new();
     let mut found_terminal_clear = false;
 
@@ -334,6 +584,11 @@ where
 
         let after = sim_after.metrics();
         let mut score = weighted_score(after, weights, step + 1);
+        let mut skip_penalty = 0.0;
+        if matches!(action, AutoAction::SkipBlind) {
+            skip_penalty = skip_blind_deficit_penalty(baseline, after, cfg);
+            score -= skip_penalty;
+        }
         let clears = after.blind_cleared || target_reached(after, targets);
         if clears {
             score += 20_000.0;
@@ -376,10 +631,17 @@ where
             best_score = score;
             best_key = key;
             best_action = Some(action);
+            best_immediate_clear = clears;
+            best_skip_penalty = skip_penalty;
         }
     }
 
-    Ok(best_action.map(|action| (action, best_score)))
+    Ok(best_action.map(|action| TacticalChoice {
+        action,
+        score: best_score,
+        immediate_clear: best_immediate_clear,
+        skip_blind_penalty: best_skip_penalty,
+    }))
 }
 
 fn prioritize_tactical_next_actions(actions: Vec<AutoAction>, cap: usize) -> Vec<AutoAction> {
@@ -392,6 +654,417 @@ fn prioritize_tactical_next_actions(actions: Vec<AutoAction>, cap: usize) -> Vec
     unique.into_iter().take(cap.max(1)).collect()
 }
 
+fn skip_blind_deficit_penalty(
+    before: EvalMetrics,
+    after: EvalMetrics,
+    cfg: &AutoplayConfig,
+) -> f64 {
+    let before_deficit = (before.blind_target - before.blind_score).max(0) as f64;
+    let after_deficit = (after.blind_target - after.blind_score).max(0) as f64;
+    let pressure = if before.blind_target > 0 {
+        (before_deficit / before.blind_target as f64).clamp(0.0, 1.0)
+    } else {
+        1.0
+    };
+    if after_deficit > before_deficit {
+        let scaled = cfg.skip_blind_deficit_penalty * (1.0 - 0.45 * pressure);
+        scaled.max(cfg.skip_blind_deficit_penalty * 0.35)
+    } else {
+        cfg.skip_blind_deficit_penalty * 0.2
+    }
+}
+
+fn pick_non_failing_root_action<F>(
+    factory: &F,
+    history: &[AutoAction],
+    step: u32,
+    cfg: &AutoplayConfig,
+    targets: TargetConfig,
+    weights: ObjectiveWeights,
+    root_actions: &[AutoAction],
+) -> Result<Option<(AutoAction, f64)>, AutoplayError>
+where
+    F: Fn() -> Result<Simulator, AutoplayError>,
+{
+    let mut best_action = None;
+    let mut best_score = f64::NEG_INFINITY;
+    let mut best_key = String::new();
+    for action in dedup_actions(root_actions.to_vec()) {
+        let path = vec![action.clone()];
+        let (sim_after, _, _) = match materialize(factory, history, &path, cfg, targets, step) {
+            Ok(value) => value,
+            Err(err) if is_recoverable_action_error(&err) => continue,
+            Err(err) => return Err(err),
+        };
+        let metrics = sim_after.metrics();
+        if metrics.blind_failed {
+            continue;
+        }
+        let mut score = weighted_score(metrics, weights, step + 1);
+        if metrics.blind_cleared || target_reached(metrics, targets) {
+            score += 12_000.0;
+        }
+        let key = action.stable_key();
+        if score > best_score || (score == best_score && key < best_key) {
+            best_score = score;
+            best_key = key;
+            best_action = Some(action);
+        }
+    }
+    Ok(best_action.map(|action| (action, best_score)))
+}
+
+fn prefer_discard_over_weak_play<F>(
+    factory: &F,
+    history: &[AutoAction],
+    step: u32,
+    cfg: &AutoplayConfig,
+    targets: TargetConfig,
+    weights: ObjectiveWeights,
+    root_actions: &[AutoAction],
+    chosen: &AutoAction,
+) -> Result<Option<(AutoAction, f64, String)>, AutoplayError>
+where
+    F: Fn() -> Result<Simulator, AutoplayError>,
+{
+    let AutoAction::Play { .. } = chosen else {
+        return Ok(None);
+    };
+
+    let root_sim = replay_history(factory, history)?;
+    if root_sim.run.state.phase != rulatro_core::Phase::Play
+        || root_sim.run.state.discards_left == 0
+    {
+        return Ok(None);
+    }
+    let before = root_sim.metrics();
+    let deficit_before = (before.blind_target - before.blind_score).max(0);
+    if deficit_before <= 0 {
+        return Ok(None);
+    }
+
+    let chosen_path = vec![chosen.clone()];
+    let (chosen_after_sim, _, _) =
+        match materialize(factory, history, &chosen_path, cfg, targets, step) {
+            Ok(value) => value,
+            Err(err) if is_recoverable_action_error(&err) => return Ok(None),
+            Err(err) => return Err(err),
+        };
+    let chosen_after = chosen_after_sim.metrics();
+    let play_gain = (chosen_after.blind_score - before.blind_score).max(0);
+    let mut chosen_score = weighted_score(chosen_after, weights, step + 1);
+    if chosen_after.blind_cleared || target_reached(chosen_after, targets) {
+        chosen_score += 10_000.0;
+    }
+    if chosen_after.blind_failed {
+        chosen_score -= 10_000.0;
+    }
+
+    let gain_ratio = play_gain as f64 / deficit_before as f64;
+    let urgent = root_sim.run.state.hands_left <= 2;
+    if !chosen_after.blind_failed && !urgent && gain_ratio >= 0.55 {
+        return Ok(None);
+    }
+
+    let discard_candidates = dedup_actions(root_actions.to_vec())
+        .into_iter()
+        .filter(|action| matches!(action, AutoAction::Discard { .. }))
+        .collect::<Vec<_>>();
+    if discard_candidates.is_empty() {
+        return Ok(None);
+    }
+
+    let mut best_discard = None;
+    let mut best_score = f64::NEG_INFINITY;
+    let mut best_key = String::new();
+    for discard in discard_candidates {
+        let path = vec![discard.clone()];
+        let (sim_after, terminal, next_legal) =
+            match materialize(factory, history, &path, cfg, targets, step) {
+                Ok(value) => value,
+                Err(err) if is_recoverable_action_error(&err) => continue,
+                Err(err) => return Err(err),
+            };
+        let after = sim_after.metrics();
+        if after.blind_failed {
+            continue;
+        }
+        let mut score = weighted_score(after, weights, step + 1);
+        if !terminal {
+            let follow_actions =
+                prioritize_tactical_next_actions(next_legal, cfg.rollout_top_k.max(1) * 2);
+            let mut follow_best = f64::NEG_INFINITY;
+            for next in follow_actions
+                .into_iter()
+                .filter(|next| matches!(next, AutoAction::Play { .. }))
+            {
+                let path2 = vec![discard.clone(), next];
+                let (sim2, _, _) = match materialize(factory, history, &path2, cfg, targets, step) {
+                    Ok(value) => value,
+                    Err(err) if is_recoverable_action_error(&err) => continue,
+                    Err(err) => return Err(err),
+                };
+                let metrics2 = sim2.metrics();
+                let mut s2 = weighted_score(metrics2, weights, step + 2);
+                if metrics2.blind_cleared || target_reached(metrics2, targets) {
+                    s2 += 8_000.0;
+                }
+                if metrics2.blind_failed {
+                    s2 -= 8_000.0;
+                }
+                if s2 > follow_best {
+                    follow_best = s2;
+                }
+            }
+            if follow_best.is_finite() {
+                score += follow_best * 0.45;
+            }
+        }
+
+        let key = discard.stable_key();
+        if score > best_score || (score == best_score && key < best_key) {
+            best_score = score;
+            best_key = key;
+            best_discard = Some(discard);
+        }
+    }
+
+    let threshold = if chosen_after.blind_failed { 0.0 } else { 0.3 };
+    if let Some(discard) = best_discard {
+        if best_score > chosen_score + threshold {
+            return Ok(Some((
+                discard,
+                best_score,
+                format!(
+                    "discard_guard deficit={} play_gain={} ratio={:.2}",
+                    deficit_before, play_gain, gain_ratio
+                ),
+            )));
+        }
+    }
+    Ok(None)
+}
+
+fn select_endgame_exact_action<F>(
+    factory: &F,
+    history: &[AutoAction],
+    step: u32,
+    cfg: &AutoplayConfig,
+    targets: TargetConfig,
+    weights: ObjectiveWeights,
+    root_actions: &[AutoAction],
+) -> Result<Option<(AutoAction, f64)>, AutoplayError>
+where
+    F: Fn() -> Result<Simulator, AutoplayError>,
+{
+    let root_sim = replay_history(factory, history)?;
+    if root_sim.run.state.phase != rulatro_core::Phase::Play || root_sim.run.state.hands_left > 1 {
+        return Ok(None);
+    }
+
+    let candidates = dedup_actions(root_actions.to_vec())
+        .into_iter()
+        .filter(|action| matches!(action, AutoAction::Play { .. } | AutoAction::Discard { .. }))
+        .collect::<Vec<_>>();
+    if candidates.is_empty() {
+        return Ok(None);
+    }
+
+    let mut best_action = None;
+    let mut best_score = f64::NEG_INFINITY;
+    let mut best_key = String::new();
+
+    for action in candidates {
+        let path = vec![action.clone()];
+        let (sim_after, terminal, next_legal) =
+            match materialize(factory, history, &path, cfg, targets, step) {
+                Ok(value) => value,
+                Err(err) if is_recoverable_action_error(&err) => continue,
+                Err(err) => return Err(err),
+            };
+        let mut score = endgame_action_score(sim_after.metrics(), targets, weights, step + 1);
+
+        if matches!(action, AutoAction::Discard { .. }) && !terminal {
+            let followups =
+                prioritize_tactical_next_actions(next_legal, cfg.rollout_top_k.max(1) * 2);
+            for next in followups
+                .into_iter()
+                .filter(|next| matches!(next, AutoAction::Play { .. } | AutoAction::Discard { .. }))
+            {
+                let path2 = vec![action.clone(), next];
+                let (sim2, _, _) = match materialize(factory, history, &path2, cfg, targets, step) {
+                    Ok(value) => value,
+                    Err(err) if is_recoverable_action_error(&err) => continue,
+                    Err(err) => return Err(err),
+                };
+                score = score.max(endgame_action_score(
+                    sim2.metrics(),
+                    targets,
+                    weights,
+                    step + 2,
+                ));
+            }
+        }
+
+        let key = action.stable_key();
+        if score > best_score || (score == best_score && key < best_key) {
+            best_score = score;
+            best_key = key;
+            best_action = Some(action);
+        }
+    }
+
+    Ok(best_action.map(|action| (action, best_score)))
+}
+
+fn endgame_action_score(
+    metrics: EvalMetrics,
+    targets: TargetConfig,
+    weights: ObjectiveWeights,
+    total_steps: u32,
+) -> f64 {
+    let mut score = weighted_score(metrics, weights, total_steps);
+    if metrics.blind_cleared || target_reached(metrics, targets) {
+        score += 30_000.0;
+    }
+    if metrics.blind_failed {
+        score -= 20_000.0;
+    }
+    let deficit = (metrics.blind_target - metrics.blind_score).max(0) as f64;
+    score - deficit * 0.35
+}
+
+fn select_survival_guard_action<F>(
+    factory: &F,
+    history: &[AutoAction],
+    step: u32,
+    sim: &Simulator,
+    cfg: &AutoplayConfig,
+    targets: TargetConfig,
+    weights: ObjectiveWeights,
+    root_actions: &[AutoAction],
+) -> Result<Option<SurvivalChoice>, AutoplayError>
+where
+    F: Fn() -> Result<Simulator, AutoplayError>,
+{
+    if sim.run.state.phase != rulatro_core::Phase::Play
+        || sim.run.state.discards_left == 0
+        || sim.run.state.hands_left == 0
+    {
+        return Ok(None);
+    }
+
+    let baseline = sim.metrics();
+    let deficit = (baseline.blind_target - baseline.blind_score).max(0);
+    if deficit <= 0 {
+        return Ok(None);
+    }
+
+    let candidates = dedup_actions(root_actions.to_vec());
+    let play_actions = candidates
+        .iter()
+        .filter(|action| matches!(action, AutoAction::Play { .. }))
+        .cloned()
+        .collect::<Vec<_>>();
+    let discard_actions = candidates
+        .iter()
+        .filter(|action| matches!(action, AutoAction::Discard { .. }))
+        .cloned()
+        .collect::<Vec<_>>();
+    if discard_actions.is_empty() {
+        return Ok(None);
+    }
+
+    let mut can_clear_now = false;
+    let mut best_play_gain = 0i64;
+    for play in play_actions {
+        let path = vec![play];
+        let (sim_after, _, _) = match materialize(factory, history, &path, cfg, targets, step) {
+            Ok(value) => value,
+            Err(err) if is_recoverable_action_error(&err) => continue,
+            Err(err) => return Err(err),
+        };
+        let after = sim_after.metrics();
+        if after.blind_cleared || target_reached(after, targets) {
+            can_clear_now = true;
+            break;
+        }
+        best_play_gain = best_play_gain.max((after.blind_score - baseline.blind_score).max(0));
+    }
+    if can_clear_now {
+        return Ok(None);
+    }
+
+    let hands_left = sim.run.state.hands_left;
+    let desperation =
+        hands_left <= 1 || (hands_left == 2 && (best_play_gain as f64) < (deficit as f64 * 0.45));
+    if !desperation {
+        return Ok(None);
+    }
+
+    let mut best_action = None;
+    let mut best_score = f64::NEG_INFINITY;
+    let mut best_key = String::new();
+    for discard in discard_actions {
+        let path = vec![discard.clone()];
+        let (sim_after, terminal, next_legal) =
+            match materialize(factory, history, &path, cfg, targets, step) {
+                Ok(value) => value,
+                Err(err) if is_recoverable_action_error(&err) => continue,
+                Err(err) => return Err(err),
+            };
+        let after = sim_after.metrics();
+        if after.blind_failed {
+            continue;
+        }
+
+        let mut score = weighted_score(after, weights, step + 1) + 6_000.0;
+        if !terminal {
+            let next_actions =
+                prioritize_tactical_next_actions(next_legal, cfg.rollout_top_k.max(1) * 2);
+            let mut follow_best = f64::NEG_INFINITY;
+            for next in next_actions {
+                let path2 = vec![discard.clone(), next];
+                let (sim2, _, _) = match materialize(factory, history, &path2, cfg, targets, step) {
+                    Ok(value) => value,
+                    Err(err) if is_recoverable_action_error(&err) => continue,
+                    Err(err) => return Err(err),
+                };
+                let metrics2 = sim2.metrics();
+                let mut follow_score = weighted_score(metrics2, weights, step + 2);
+                if metrics2.blind_cleared || target_reached(metrics2, targets) {
+                    follow_score += 15_000.0;
+                }
+                if metrics2.blind_failed {
+                    follow_score -= 15_000.0;
+                }
+                if follow_score > follow_best {
+                    follow_best = follow_score;
+                }
+            }
+            if follow_best.is_finite() {
+                score += follow_best * 0.38;
+            }
+        }
+
+        let key = discard.stable_key();
+        if score > best_score || (score == best_score && key < best_key) {
+            best_score = score;
+            best_key = key;
+            best_action = Some(discard);
+        }
+    }
+
+    Ok(best_action.map(|action| SurvivalChoice {
+        action,
+        score: best_score,
+        reason: format!(
+            "survival_guard deficit={} hands_left={} discards_left={}",
+            deficit, sim.run.state.hands_left, sim.run.state.discards_left
+        ),
+    }))
+}
+
 fn select_action_mcts<F>(
     factory: &F,
     history: &[AutoAction],
@@ -400,23 +1073,26 @@ fn select_action_mcts<F>(
     targets: TargetConfig,
     weights: ObjectiveWeights,
     root_candidates: &[AutoAction],
+    min_sims_override: Option<u32>,
+    preferred_root: Option<&AutoAction>,
 ) -> Result<(AutoAction, StepSearchStats), AutoplayError>
 where
     F: Fn() -> Result<Simulator, AutoplayError>,
 {
     let started_at = Instant::now();
-    let (_root_sim, root_terminal, root_legal) =
-        materialize(factory, history, &[], cfg, targets, step)?;
+    let root_sim = replay_history(factory, history)?;
+    let (root_terminal, root_legal) = evaluate_node_state(&root_sim, cfg, targets, step);
     if root_terminal {
         return Err(AutoplayError::InvalidAction("root is terminal".to_string()));
     }
 
-    let candidates = if root_candidates.is_empty() {
+    let mut candidates = if root_candidates.is_empty() {
         root_legal
     } else {
         root_candidates.to_vec()
     };
-    let root_actions = validate_actions(factory, history, &[], cfg, targets, step, &candidates)?;
+    candidates = dedup_actions(candidates);
+    let root_actions = candidates;
     if root_actions.is_empty() {
         return Err(AutoplayError::InvalidAction(
             "no valid root action".to_string(),
@@ -426,11 +1102,17 @@ where
     let mut nodes = vec![Node::new_root(root_actions.clone(), false)];
     let mut rng = SimpleRng::new(cfg.seed ^ (step as u64).wrapping_mul(0x9E3779B9));
     let mut simulations = 0u32;
-    let min_sims = cfg
+    let mut min_sims = cfg
         .min_simulations_per_step
         .min(cfg.per_step_max_simulations);
+    if let Some(override_value) = min_sims_override {
+        min_sims = min_sims
+            .max(override_value)
+            .min(cfg.per_step_max_simulations);
+    }
+    let preferred_root_key = preferred_root.map(|action| action.stable_key());
 
-    while simulations < cfg.per_step_max_simulations {
+    'simulation: while simulations < cfg.per_step_max_simulations {
         if cfg.per_step_time_ms > 0
             && simulations >= min_sims
             && started_at.elapsed().as_millis() as u64 >= cfg.per_step_time_ms
@@ -438,17 +1120,32 @@ where
             break;
         }
 
+        let mut sim = match replay_history(factory, history) {
+            Ok(value) => value,
+            Err(err) if is_recoverable_action_error(&err) => {
+                simulations = simulations.saturating_add(1);
+                continue;
+            }
+            Err(err) => return Err(err),
+        };
         let mut path: Vec<AutoAction> = Vec::new();
         let mut node_idx = 0usize;
-        let mut leaf_sim: Option<Simulator> = None;
 
         loop {
             if nodes[node_idx].terminal {
-                match materialize(factory, history, &path, cfg, targets, step) {
-                    Ok((sim, _, _)) => leaf_sim = Some(sim),
-                    Err(err) if is_recoverable_action_error(&err) => {}
-                    Err(err) => return Err(err),
-                }
+                break;
+            }
+
+            let depth_step = step.saturating_add(path.len() as u32);
+            let (state_terminal, legal_now) = evaluate_node_state(&sim, cfg, targets, depth_step);
+            if state_terminal {
+                nodes[node_idx].terminal = true;
+                nodes[node_idx].unexpanded.clear();
+                nodes[node_idx].children.clear();
+                break;
+            }
+            reconcile_node_with_legal(&mut nodes, node_idx, legal_now);
+            if nodes[node_idx].terminal {
                 break;
             }
 
@@ -456,34 +1153,40 @@ where
             if should_expand {
                 let pick = pick_unexpanded_index(&nodes[node_idx].unexpanded, &mut rng);
                 let action = nodes[node_idx].unexpanded.remove(pick);
-                path.push(action.clone());
-                match materialize(factory, history, &path, cfg, targets, step) {
-                    Ok((sim, terminal, legal)) => {
-                        let valid_legal = dedup_actions(legal);
+                match sim.apply_action(&action) {
+                    Ok(_) => {
+                        path.push(action.clone());
+                        let depth_after = step.saturating_add(path.len() as u32);
+                        let (child_terminal, child_legal) =
+                            evaluate_node_state(&sim, cfg, targets, depth_after);
                         let child_idx = nodes.len();
-                        let prior =
-                            action_prior_weight(&action, &sim, weights, step + path.len() as u32);
+                        let mut prior = action_prior_weight(&action, &sim, weights, depth_after);
+                        if node_idx == 0
+                            && preferred_root_key
+                                .as_ref()
+                                .is_some_and(|key| action.stable_key() == *key)
+                        {
+                            prior = (prior * 1.25).min(4.0);
+                        }
                         nodes.push(Node::new_child(
                             node_idx,
                             action,
-                            valid_legal.clone(),
-                            terminal || valid_legal.is_empty(),
+                            child_legal,
+                            child_terminal,
                             nodes[node_idx].depth + 1,
                             prior,
                         ));
                         nodes[node_idx].children.push(child_idx);
                         node_idx = child_idx;
-                        leaf_sim = Some(sim);
                         break;
                     }
                     Err(err) if is_recoverable_action_error(&err) => {
-                        path.pop();
                         if nodes[node_idx].unexpanded.is_empty()
                             && nodes[node_idx].children.is_empty()
                         {
                             nodes[node_idx].terminal = true;
                         }
-                        continue;
+                        continue 'simulation;
                     }
                     Err(err) => return Err(err),
                 }
@@ -503,7 +1206,8 @@ where
                     };
                     let explore = cfg.exploration_c
                         * child.prior
-                        * (parent_visits.sqrt() / (1.0 + child.visits as f64));
+                        * (((parent_visits + 1.0).ln() + 1.0).sqrt()
+                            / (1.0 + child.visits as f64).sqrt());
                     let score = mean + explore;
                     let key = child
                         .action
@@ -518,36 +1222,25 @@ where
                 }
                 node_idx = best;
                 if let Some(action) = nodes[node_idx].action.as_ref() {
-                    path.push(action.clone());
+                    match sim.apply_action(action) {
+                        Ok(_) => path.push(action.clone()),
+                        Err(err) if is_recoverable_action_error(&err) => {
+                            let parent_idx = nodes[node_idx].parent.unwrap_or(0);
+                            nodes[parent_idx]
+                                .children
+                                .retain(|value| *value != node_idx);
+                            continue 'simulation;
+                        }
+                        Err(err) => return Err(err),
+                    }
                 }
                 continue;
             }
 
-            if nodes[node_idx].children.is_empty() {
-                match materialize(factory, history, &path, cfg, targets, step) {
-                    Ok((sim, terminal, legal)) => {
-                        let valid_legal = dedup_actions(legal);
-                        nodes[node_idx].unexpanded = valid_legal.clone();
-                        nodes[node_idx].terminal = terminal || valid_legal.is_empty();
-                        if nodes[node_idx].terminal {
-                            leaf_sim = Some(sim);
-                            break;
-                        }
-                        continue;
-                    }
-                    Err(err) if is_recoverable_action_error(&err) => {
-                        nodes[node_idx].terminal = true;
-                        break;
-                    }
-                    Err(err) => return Err(err),
-                }
-            }
+            nodes[node_idx].terminal = true;
+            break;
         }
 
-        let Some(mut sim) = leaf_sim else {
-            simulations = simulations.saturating_add(1);
-            continue;
-        };
         let reward = rollout(
             &mut sim,
             step + path.len() as u32,
@@ -616,6 +1309,12 @@ where
             } else {
                 0.0
             },
+            decision_source: "mcts".to_string(),
+            tactical_trigger: None,
+            tactical_candidate: None,
+            tactical_bypassed_mcts: false,
+            forced_min_sims: min_sims_override.unwrap_or(0),
+            skip_blind_penalty: 0.0,
         },
     ))
 }
@@ -628,7 +1327,13 @@ fn should_expand_node(node: &Node) -> bool {
         return true;
     }
     let visits = node.visits.max(1) as f64;
-    let max_children = 1.5 * visits.powf(0.55) + 1.0;
+    let max_children = if node.depth == 0 {
+        4.0 + 2.0 * visits.powf(0.45)
+    } else if node.depth <= 2 {
+        2.2 + 1.4 * visits.powf(0.50)
+    } else {
+        1.5 * visits.powf(0.55) + 1.0
+    };
     (node.children.len() as f64) < max_children
 }
 
@@ -642,9 +1347,31 @@ fn pick_unexpanded_index(actions: &[AutoAction], rng: &mut SimpleRng) -> usize {
         .map(|(idx, action)| (action_expand_priority(action), action.stable_key(), idx))
         .collect();
     ranked.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
-    let top = ranked.len().min(3);
-    let pick = rng.gen_index(top);
-    ranked[pick].2
+    let top = ranked.len().min(6);
+    let min_priority = ranked
+        .iter()
+        .take(top)
+        .map(|item| item.0)
+        .min()
+        .unwrap_or(0);
+    let mut total = 0.0f64;
+    let mut weights = Vec::with_capacity(top);
+    for item in ranked.iter().take(top) {
+        let weight = ((item.0 - min_priority + 1).max(1) as f64).powf(1.35);
+        weights.push(weight);
+        total += weight;
+    }
+    if total <= 0.0 {
+        return ranked[0].2;
+    }
+    let mut pick = rng.gen_unit_f64() * total;
+    for (idx, weight) in weights.into_iter().enumerate() {
+        if pick <= weight {
+            return ranked[idx].2;
+        }
+        pick -= weight;
+    }
+    ranked[0].2
 }
 
 fn action_expand_priority(action: &AutoAction) -> i32 {
@@ -656,8 +1383,8 @@ fn action_expand_priority(action: &AutoAction) -> i32 {
         AutoAction::BuyCard { .. } => 92,
         AutoAction::BuyVoucher { .. } => 90,
         AutoAction::UseConsumable { .. } => 88,
+        AutoAction::Discard { .. } => 86,
         AutoAction::Deal => 82,
-        AutoAction::Discard { .. } => 72,
         AutoAction::RerollShop => 60,
         AutoAction::PickPack { .. } => 50,
         AutoAction::SkipPack => 38,
@@ -673,35 +1400,6 @@ fn dedup_actions(mut actions: Vec<AutoAction>) -> Vec<AutoAction> {
     actions
 }
 
-fn validate_actions<F>(
-    factory: &F,
-    history: &[AutoAction],
-    path: &[AutoAction],
-    cfg: &AutoplayConfig,
-    targets: TargetConfig,
-    step: u32,
-    actions: &[AutoAction],
-) -> Result<Vec<AutoAction>, AutoplayError>
-where
-    F: Fn() -> Result<Simulator, AutoplayError>,
-{
-    let mut unique = actions.to_vec();
-    unique.sort_by_key(|action| action.stable_key());
-    unique.dedup_by_key(|action| action.stable_key());
-
-    let mut valid = Vec::new();
-    for action in unique {
-        let mut candidate = path.to_vec();
-        candidate.push(action.clone());
-        match materialize(factory, history, &candidate, cfg, targets, step) {
-            Ok(_) => valid.push(action),
-            Err(err) if is_recoverable_action_error(&err) => {}
-            Err(err) => return Err(err),
-        }
-    }
-    Ok(valid)
-}
-
 fn materialize<F>(
     factory: &F,
     history: &[AutoAction],
@@ -713,23 +1411,64 @@ fn materialize<F>(
 where
     F: Fn() -> Result<Simulator, AutoplayError>,
 {
+    let mut sim = replay_history(factory, history)?;
+    for action in path {
+        sim.apply_action(action)?;
+    }
+    let (terminal, legal) =
+        evaluate_node_state(&sim, cfg, targets, step.saturating_add(path.len() as u32));
+    Ok((sim, terminal, legal))
+}
+
+fn replay_history<F>(factory: &F, history: &[AutoAction]) -> Result<Simulator, AutoplayError>
+where
+    F: Fn() -> Result<Simulator, AutoplayError>,
+{
     let mut sim = factory()?;
     for action in history {
         sim.apply_action(action)?;
     }
-    for action in path {
-        sim.apply_action(action)?;
-    }
+    Ok(sim)
+}
+
+fn evaluate_node_state(
+    sim: &Simulator,
+    cfg: &AutoplayConfig,
+    targets: TargetConfig,
+    step: u32,
+) -> (bool, Vec<AutoAction>) {
     let metrics = sim.metrics();
-    let done = target_reached(metrics, targets)
+    if target_reached(metrics, targets)
         || (targets.stop_on_blind_failed && metrics.blind_failed)
-        || step.saturating_add(path.len() as u32) >= cfg.max_steps;
-    if done {
-        return Ok((sim, true, Vec::new()));
+        || step >= cfg.max_steps
+    {
+        return (true, Vec::new());
     }
-    let legal = sim.legal_actions(cfg);
-    let terminal = legal.is_empty();
-    Ok((sim, terminal, legal))
+    let legal = dedup_actions(sim.legal_actions(cfg));
+    (legal.is_empty(), legal)
+}
+
+fn reconcile_node_with_legal(nodes: &mut [Node], node_idx: usize, legal: Vec<AutoAction>) {
+    let legal_keys: HashSet<String> = legal.iter().map(|action| action.stable_key()).collect();
+    let existing_children = nodes[node_idx].children.clone();
+    nodes[node_idx].children.clear();
+    for child_idx in existing_children {
+        let keep = match nodes[child_idx].action.as_ref() {
+            Some(action) => legal_keys.contains(&action.stable_key()),
+            None => false,
+        };
+        if keep {
+            nodes[node_idx].children.push(child_idx);
+        }
+    }
+    nodes[node_idx]
+        .unexpanded
+        .retain(|action| legal_keys.contains(&action.stable_key()));
+    if nodes[node_idx].children.is_empty() && nodes[node_idx].unexpanded.is_empty() {
+        nodes[node_idx].unexpanded = legal;
+    }
+    nodes[node_idx].terminal =
+        nodes[node_idx].children.is_empty() && nodes[node_idx].unexpanded.is_empty();
 }
 
 fn rollout(
@@ -760,7 +1499,7 @@ fn rollout(
 
         let mut applied = false;
         while !legal.is_empty() {
-            let action = select_rollout_action(&legal, sim, rng, cfg.rollout_top_k);
+            let action = select_rollout_action(&legal, sim, rng, cfg);
             match sim.apply_action(&action) {
                 Ok(_) => {
                     depth = depth.saturating_add(1);
@@ -802,19 +1541,19 @@ fn select_rollout_action(
     actions: &[AutoAction],
     sim: &Simulator,
     rng: &mut SimpleRng,
-    top_k: usize,
+    cfg: &AutoplayConfig,
 ) -> AutoAction {
     let mut scored: Vec<(f64, String, AutoAction)> = actions
         .iter()
         .cloned()
         .map(|action| {
             let key = action.stable_key();
-            let score = rollout_action_score(&action, sim);
+            let score = rollout_action_score(&action, sim, cfg);
             (score, key, action)
         })
         .collect();
     scored.sort_by(|a, b| b.0.total_cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
-    let limit = scored.len().min(top_k.max(1));
+    let limit = scored.len().min(cfg.rollout_top_k.max(1));
     if limit == 1 {
         return scored[0].2.clone();
     }
@@ -844,7 +1583,7 @@ fn select_rollout_action(
     scored[0].2.clone()
 }
 
-fn rollout_action_score(action: &AutoAction, sim: &Simulator) -> f64 {
+fn rollout_action_score(action: &AutoAction, sim: &Simulator, cfg: &AutoplayConfig) -> f64 {
     let deficit = (sim.run.state.target - sim.run.state.blind_score).max(0) as f64;
     let blind_cleared = sim.run.blind_outcome() == Some(rulatro_core::BlindOutcome::Cleared);
     let money = sim.run.state.money as f64;
@@ -861,13 +1600,39 @@ fn rollout_action_score(action: &AutoAction, sim: &Simulator) -> f64 {
 
     match action {
         AutoAction::Play { indices } => {
-            80.0 + estimate_play_strength(sim, indices) + deficit * 0.01 + indices.len() as f64
+            let estimate = estimate_play_strength(sim, indices);
+            let mut score = 80.0 + estimate + deficit * 0.01 + indices.len() as f64;
+            if sim.run.state.hands_left <= 1 && sim.run.state.discards_left > 0 {
+                let projected = estimate * 1.25;
+                if projected < deficit {
+                    score -= ((deficit - projected) * 0.5).min(120.0);
+                }
+            }
+            score
         }
         AutoAction::Discard { indices } => {
+            let desperation_bonus = if sim.run.state.hands_left <= 1 {
+                (deficit * cfg.desperation_discard_boost).min(180.0)
+            } else {
+                0.0
+            };
             42.0 + sim.run.state.discards_left as f64 * 4.0 - indices.len() as f64
+                + desperation_bonus
         }
         AutoAction::Deal => 72.0 + sim.run.state.hands_left as f64 * 1.2,
-        AutoAction::SkipBlind => 6.0,
+        AutoAction::SkipBlind => {
+            let pressure = if sim.run.state.target > 0 {
+                (deficit / sim.run.state.target as f64).clamp(0.0, 1.0)
+            } else {
+                1.0
+            };
+            let risk_penalty = if blind_cleared {
+                0.0
+            } else {
+                (cfg.skip_blind_deficit_penalty * 0.02 * (1.0 - 0.55 * pressure)).min(180.0)
+            };
+            6.0 - risk_penalty
+        }
         AutoAction::EnterShop => {
             if blind_cleared {
                 125.0
@@ -941,9 +1706,9 @@ fn action_prior_weight(
         AutoAction::BuyVoucher { .. } => 1.08,
         AutoAction::Play { .. } => 1.00,
         AutoAction::UseConsumable { .. } => 0.96,
+        AutoAction::Discard { .. } => 0.90,
         AutoAction::Deal => 0.92,
         AutoAction::RerollShop => 0.82,
-        AutoAction::Discard { .. } => 0.75,
         AutoAction::PickPack { .. } => 0.70,
         AutoAction::SkipPack => 0.55,
         AutoAction::SellJoker { .. } => 0.45,
@@ -955,4 +1720,76 @@ fn action_prior_weight(
 
 fn is_recoverable_action_error(err: &AutoplayError) -> bool {
     matches!(err, AutoplayError::Run(_) | AutoplayError::InvalidAction(_))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn skip_blind_penalty_is_larger_when_deficit_worsens() {
+        let cfg = AutoplayConfig::default();
+        let before = EvalMetrics {
+            ante: 1,
+            money: 0,
+            blind_score: 224,
+            blind_target: 450,
+            blind_failed: false,
+            blind_cleared: false,
+        };
+        let worse = EvalMetrics {
+            ante: 1,
+            money: 0,
+            blind_score: 0,
+            blind_target: 600,
+            blind_failed: false,
+            blind_cleared: false,
+        };
+        let better = EvalMetrics {
+            ante: 1,
+            money: 0,
+            blind_score: 595,
+            blind_target: 600,
+            blind_failed: false,
+            blind_cleared: false,
+        };
+        let strong = skip_blind_deficit_penalty(before, worse, &cfg);
+        let light = skip_blind_deficit_penalty(before, better, &cfg);
+        assert!(strong > light);
+        assert!(strong <= cfg.skip_blind_deficit_penalty);
+        assert!(strong >= cfg.skip_blind_deficit_penalty * 0.35);
+    }
+
+    #[test]
+    fn tactical_bypass_respects_share_cap() {
+        assert!(tactical_bypass_allowed(1, 8, 0.45));
+        assert!(!tactical_bypass_allowed(4, 8, 0.45));
+        assert!(!tactical_bypass_allowed(0, 0, 0.0));
+    }
+
+    #[test]
+    fn endgame_scoring_prefers_clear_over_fail() {
+        let targets = TargetConfig::default();
+        let weights = ObjectiveWeights::default();
+        let clear = EvalMetrics {
+            ante: 1,
+            money: 0,
+            blind_score: 500,
+            blind_target: 450,
+            blind_failed: false,
+            blind_cleared: true,
+        };
+        let fail = EvalMetrics {
+            ante: 1,
+            money: 0,
+            blind_score: 320,
+            blind_target: 450,
+            blind_failed: true,
+            blind_cleared: false,
+        };
+        assert!(
+            endgame_action_score(clear, targets, weights, 10)
+                > endgame_action_score(fail, targets, weights, 10)
+        );
+    }
 }

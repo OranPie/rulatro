@@ -18,6 +18,22 @@ pub struct StepSearchStats {
     pub root_children: usize,
     pub selected_visits: u32,
     pub selected_value: f64,
+    #[serde(default = "default_decision_source")]
+    pub decision_source: String,
+    #[serde(default)]
+    pub tactical_trigger: Option<String>,
+    #[serde(default)]
+    pub tactical_candidate: Option<String>,
+    #[serde(default)]
+    pub tactical_bypassed_mcts: bool,
+    #[serde(default)]
+    pub forced_min_sims: u32,
+    #[serde(default)]
+    pub skip_blind_penalty: f64,
+}
+
+fn default_decision_source() -> String {
+    "mcts".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -137,13 +153,35 @@ impl AutoplayResult {
                 step.money_after
             ));
             lines.push(format!(
-                "    search/搜索: sims/模拟={} elapsed/耗时={}ms children/子节点={} pick_visits/选择访问={} pick_value/选择值={:.2}",
+                "    search/搜索: source/来源={} sims/模拟={} elapsed/耗时={}ms children/子节点={} pick_visits/选择访问={} pick_value/选择值={:.2}",
+                step.mcts.decision_source,
                 step.mcts.simulations,
                 step.mcts.elapsed_ms,
                 step.mcts.root_children,
                 step.mcts.selected_visits,
                 step.mcts.selected_value
             ));
+            if let Some(trigger) = step.mcts.tactical_trigger.as_ref() {
+                lines.push(format!("    tactical/战术: trigger/触发={trigger}"));
+            }
+            if let Some(candidate) = step.mcts.tactical_candidate.as_ref() {
+                lines.push(format!("    tactical/战术: candidate/候选={candidate}"));
+            }
+            if step.mcts.tactical_bypassed_mcts {
+                lines.push("    tactical/战术: bypassed_mcts/跳过MCTS=true".to_string());
+            }
+            if step.mcts.forced_min_sims > 0 {
+                lines.push(format!(
+                    "    search/搜索: forced_min_sims/强制最小模拟={}",
+                    step.mcts.forced_min_sims
+                ));
+            }
+            if step.mcts.skip_blind_penalty > 0.0 {
+                lines.push(format!(
+                    "    tactical/战术: skip_blind_penalty/跳盲惩罚={:.2}",
+                    step.mcts.skip_blind_penalty
+                ));
+            }
             lines.push(format!("    events/事件: {}", step.event_count));
             if let Some(outcome) = step.outcome_after.as_ref() {
                 lines.push(format!("    outcome/结果: {outcome}"));

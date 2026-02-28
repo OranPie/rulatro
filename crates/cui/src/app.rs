@@ -1882,6 +1882,7 @@ fn summarize_effect_op(locale: UiLocale, op: &EffectOp) -> String {
             locale.text("retrigger held", "重触发留手牌"),
             signed_int(*times)
         ),
+        EffectOp::Custom { name, .. } => format!("[{}]", name),
     }
     .replace("  ", " ")
     .trim()
@@ -1904,6 +1905,7 @@ fn hand_label(locale: UiLocale, hand: rulatro_core::HandKind) -> &'static str {
             rulatro_core::HandKind::FiveOfAKind => "五条",
             rulatro_core::HandKind::FlushHouse => "同花葫芦",
             rulatro_core::HandKind::FlushFive => "同花五条",
+            rulatro_core::HandKind::Custom(_) => "自定义",
         }
     } else {
         match hand {
@@ -1920,6 +1922,7 @@ fn hand_label(locale: UiLocale, hand: rulatro_core::HandKind) -> &'static str {
             rulatro_core::HandKind::FiveOfAKind => "FiveOfAKind",
             rulatro_core::HandKind::FlushHouse => "FlushHouse",
             rulatro_core::HandKind::FlushFive => "FlushFive",
+            rulatro_core::HandKind::Custom(_) => "Custom",
         }
     }
 }

@@ -1,6 +1,6 @@
 use crate::{
-    BlindKind, Content, Deck, EffectOp, GameConfig, GameState, Inventory, InventoryError,
-    ModRuntime, Phase, RngState, ScoreTables, ScoreTraceStep, ShopState,
+    BlindKind, Content, CustomHandDef, Deck, EffectOp, GameConfig, GameState, Inventory,
+    InventoryError, ModRuntime, Phase, RngState, ScoreTables, ScoreTraceStep, ShopState,
 };
 use std::collections::HashMap;
 use std::fmt;
@@ -86,6 +86,9 @@ pub struct RunState {
     deferred_card_added: Vec<crate::Card>,
     mod_runtime: Option<Box<dyn ModRuntime>>,
     hooks: HookRegistry,
+    /// Custom hands registered by mods. The index into this Vec corresponds to
+    /// the `u32` in `HandKind::Custom(u32)`.
+    pub custom_hand_registry: Vec<CustomHandDef>,
 }
 
 impl fmt::Debug for RunState {

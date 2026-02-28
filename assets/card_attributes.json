@@ -1,0 +1,22 @@
+{
+  "enhancements": {
+    "bonus":  { "chips": 30 },
+    "mult":   { "mult_add": 4.0 },
+    "glass":  { "mult_mul": 2.0, "destroy_odds": 4 },
+    "steel":  { "mult_mul_held": 1.5 },
+    "stone":  { "chips": 50 },
+    "lucky":  { "prob_mult_odds": 5, "prob_mult_add": 20.0,
+                "prob_money_odds": 15, "prob_money_add": 20 }
+  },
+  "editions": {
+    "foil":         { "chips": 50 },
+    "holographic":  { "mult_add": 10.0 },
+    "polychrome":   { "mult_mul": 1.5 }
+  },
+  "seals": {
+    "gold":   { "money_scored": 3, "money_held": 3 },
+    "blue":   { "grant_planet": true },
+    "purple": { "grant_tarot_discard": true },
+    "red":    {}
+  }
+}
