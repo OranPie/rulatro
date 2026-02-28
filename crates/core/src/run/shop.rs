@@ -4,8 +4,21 @@ use crate::*;
 
 impl RunState {
     pub(super) fn shop_restrictions(&mut self) -> crate::ShopRestrictions {
+        // Apply Flow Kernel ShopParams patch (overrides rule_vars).
+        let shop_patch = if let Some(rt) = self.mod_runtime.as_mut() {
+            let ctx = FlowCtx::patch(FlowPoint::ShopParams, &self.state);
+            rt.flow_shop_params_patch(ShopParamsPatch::default(), &ctx)
+        } else {
+            ShopParamsPatch::default()
+        };
+        // Free rerolls granted by patch.
+        if shop_patch.free_rerolls > 0 {
+            self.state.shop_free_rerolls =
+                self.state.shop_free_rerolls.saturating_add(shop_patch.free_rerolls as u8);
+        }
         let mut restrictions = crate::ShopRestrictions::default();
-        restrictions.allow_duplicates = self.rule_flag("shop_allow_duplicates");
+        restrictions.allow_duplicates =
+            shop_patch.allow_duplicates.unwrap_or(self.rule_flag("shop_allow_duplicates"));
         restrictions.owned_jokers = self
             .inventory
             .jokers
@@ -30,7 +43,13 @@ impl RunState {
     }
 
     pub(super) fn default_joker_price(&mut self, rarity: crate::JokerRarity) -> i64 {
-        match rarity {
+        let price_delta = if let Some(rt) = self.mod_runtime.as_mut() {
+            let ctx = FlowCtx::patch(FlowPoint::ShopParams, &self.state);
+            rt.flow_shop_params_patch(ShopParamsPatch::default(), &ctx).joker_price_delta
+        } else {
+            0
+        };
+        let base = match rarity {
             crate::JokerRarity::Common => {
                 let range = &self.config.shop.prices.joker_common;
                 self.random_range_values(range.min, range.max)
@@ -44,7 +63,8 @@ impl RunState {
                 self.random_range_values(range.min, range.max)
             }
             crate::JokerRarity::Legendary => self.config.shop.prices.joker_legendary,
-        }
+        };
+        (base + price_delta).max(0)
     }
 
     pub(super) fn calc_joker_sell_value(&self, joker: &crate::JokerInstance) -> i64 {

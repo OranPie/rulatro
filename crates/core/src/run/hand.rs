@@ -592,15 +592,13 @@ impl RunState {
                 self.apply_rule_effect(score, crate::RuleEffect::AddMult(mult), "enhancement:mult")
             }
             Some(Enhancement::Glass) => {
-                let def = self.tables.card_attrs.enhancement("glass").clone();
-                let mul = if def.mult_mul != 0.0 { def.mult_mul } else { 2.0 };
+                let def = self.tables.card_attrs.enhancement("glass");
                 self.apply_rule_effect(
                     score,
-                    crate::RuleEffect::MultiplyMult(mul),
+                    crate::RuleEffect::MultiplyMult(def.mult_mul),
                     "enhancement:glass_mult",
                 );
-                let odds = if def.destroy_odds > 0 { def.destroy_odds } else { 4 };
-                if self.roll(odds.into()) {
+                if self.roll(def.destroy_odds.into()) {
                     if !destroyed.iter().any(|&existing| existing == idx) {
                         destroyed.push(idx);
                         destroyed_now = true;
@@ -609,25 +607,20 @@ impl RunState {
             }
             Some(Enhancement::Stone) => {
                 let chips = self.tables.card_attrs.enhancement("stone").chips;
-                let chips = if chips != 0 { chips } else { 50 };
                 self.apply_rule_effect(score, crate::RuleEffect::AddChips(chips), "enhancement:stone")
             }
             Some(Enhancement::Lucky) => {
-                let def = self.tables.card_attrs.enhancement("lucky").clone();
-                let mult_odds = if def.prob_mult_odds > 0 { def.prob_mult_odds } else { 5 };
-                let mult_add = if def.prob_mult_add != 0.0 { def.prob_mult_add } else { 20.0 };
-                let money_odds = if def.prob_money_odds > 0 { def.prob_money_odds } else { 15 };
-                let money_add = if def.prob_money_add != 0 { def.prob_money_add } else { 20 };
-                if self.roll(mult_odds.into()) {
+                let def = self.tables.card_attrs.enhancement("lucky");
+                if self.roll(def.prob_mult_odds.into()) {
                     self.apply_rule_effect(
                         score,
-                        crate::RuleEffect::AddMult(mult_add),
+                        crate::RuleEffect::AddMult(def.prob_mult_add),
                         "enhancement:lucky_mult",
                     );
                     lucky_triggers += 1;
                 }
-                if self.roll(money_odds.into()) {
-                    *money += money_add;
+                if self.roll(def.prob_money_odds.into()) {
+                    *money += def.prob_money_add;
                     lucky_triggers += 1;
                 }
             }
@@ -645,7 +638,6 @@ impl RunState {
         match card.enhancement {
             Some(Enhancement::Steel) => {
                 let mul = self.tables.card_attrs.enhancement("steel").mult_mul_held;
-                let mul = if mul != 0.0 { mul } else { 1.5 };
                 self.apply_rule_effect(score, crate::RuleEffect::MultiplyMult(mul), "enhancement:steel")
             }
             _ => {}
@@ -661,7 +653,7 @@ impl RunState {
     ) {
         if card.seal == Some(Seal::Gold) {
             let amount = self.tables.card_attrs.seal("gold").money_scored;
-            *money += if amount != 0 { amount } else { 3 };
+            *money += amount;
         }
     }
 
@@ -678,17 +670,14 @@ impl RunState {
         match card.edition {
             Some(Edition::Foil) => {
                 let chips = self.tables.card_attrs.edition("foil").chips;
-                let chips = if chips != 0 { chips } else { 50 };
                 self.apply_rule_effect(score, crate::RuleEffect::AddChips(chips), "edition:foil")
             }
             Some(Edition::Holographic) => {
                 let mult = self.tables.card_attrs.edition("holographic").mult_add;
-                let mult = if mult != 0.0 { mult } else { 10.0 };
                 self.apply_rule_effect(score, crate::RuleEffect::AddMult(mult), "edition:holographic")
             }
             Some(Edition::Polychrome) => {
                 let mul = self.tables.card_attrs.edition("polychrome").mult_mul;
-                let mul = if mul != 0.0 { mul } else { 1.5 };
                 self.apply_rule_effect(score, crate::RuleEffect::MultiplyMult(mul), "edition:polychrome")
             }
             _ => {}
@@ -774,7 +763,7 @@ impl RunState {
         for card in &hand {
             if card.enhancement == Some(Enhancement::Gold) {
                 let amount = self.tables.card_attrs.seal("gold").money_held;
-                self.state.money += if amount != 0 { amount } else { 3 };
+                self.state.money += amount;
             }
             if card.seal == Some(Seal::Blue) {
                 let seal_def = self.tables.card_attrs.seal("blue");

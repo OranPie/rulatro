@@ -14,6 +14,8 @@ impl RunState {
         deck.shuffle(&mut rng);
         let tables = ScoreTables::from_config(&config);
         let initial_hand_size = config.economy.initial_hand_size;
+        let joker_slots = config.economy.initial_joker_slots;
+        let consumable_slots = config.economy.initial_consumable_slots;
         let mut state = GameState::new();
         state.hand_size_base = initial_hand_size;
         state.hand_size = initial_hand_size;
@@ -21,7 +23,7 @@ impl RunState {
             config,
             tables,
             content,
-            inventory: Inventory::new(),
+            inventory: Inventory::with_slots(joker_slots, consumable_slots),
             rng,
             deck,
             hand: Vec::new(),

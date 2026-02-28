@@ -63,9 +63,14 @@ impl Inventory {
     }
 
     pub fn new() -> Self {
+        Self::with_slots(5, 2)
+    }
+
+    /// Create a new inventory with explicit initial slot counts.
+    pub fn with_slots(joker_slots: usize, consumable_slots: usize) -> Self {
         Self {
-            joker_slots: 5,
-            consumable_slots: 2,
+            joker_slots,
+            consumable_slots,
             jokers: Vec::new(),
             consumables: Vec::new(),
         }
