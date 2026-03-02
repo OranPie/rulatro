@@ -1,0 +1,129 @@
+[
+  {
+    "kind": "enhancement",
+    "id": "bonus",
+    "effects": [
+      {
+        "trigger": "on_scored",
+        "when": true,
+        "actions": [
+          { "op": "add_chips", "value": "enhancement.chips" }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "enhancement",
+    "id": "mult",
+    "effects": [
+      {
+        "trigger": "on_scored",
+        "when": true,
+        "actions": [
+          { "op": "add_mult", "value": "enhancement.mult" }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "enhancement",
+    "id": "glass",
+    "effects": [
+      {
+        "trigger": "on_scored",
+        "when": true,
+        "actions": [
+          { "op": "mul_mult", "value": "enhancement.x_mult" }
+        ]
+      }
+    ],
+    "destroy_odds": "enhancement.destroy_odds"
+  },
+  {
+    "kind": "enhancement",
+    "id": "stone",
+    "effects": [
+      {
+        "trigger": "on_scored",
+        "when": true,
+        "actions": [
+          { "op": "add_chips", "value": "enhancement.chips" }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "enhancement",
+    "id": "lucky",
+    "effects": [],
+    "lucky_mult_odds": "enhancement.lucky_mult_odds",
+    "lucky_mult_add": "enhancement.lucky_mult",
+    "lucky_money_odds": "enhancement.lucky_money_odds",
+    "lucky_money_add": "enhancement.lucky_money"
+  },
+  {
+    "kind": "enhancement",
+    "id": "steel",
+    "effects": [
+      {
+        "trigger": "on_held",
+        "when": true,
+        "actions": [
+          { "op": "mul_mult", "value": "enhancement.x_mult_held" }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "edition",
+    "id": "foil",
+    "effects": [
+      {
+        "trigger": "on_scored",
+        "when": true,
+        "actions": [
+          { "op": "add_chips", "value": "edition.chips" }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "edition",
+    "id": "holographic",
+    "effects": [
+      {
+        "trigger": "on_scored",
+        "when": true,
+        "actions": [
+          { "op": "add_mult", "value": "edition.mult" }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "edition",
+    "id": "polychrome",
+    "effects": [
+      {
+        "trigger": "on_scored",
+        "when": true,
+        "actions": [
+          { "op": "mul_mult", "value": "edition.x_mult" }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "seal",
+    "id": "gold",
+    "effects": [
+      {
+        "trigger": "on_scored",
+        "when": true,
+        "actions": [
+          { "op": "add_money", "value": "seal.money_scored" }
+        ]
+      }
+    ]
+  }
+]

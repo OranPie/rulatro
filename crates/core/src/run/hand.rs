@@ -413,15 +413,19 @@ impl RunState {
                 let mut results = TriggerResults::default();
                 let (destroyed_now, lucky_triggers) = if debuffed {
                     (false, 0)
-                } else {
-                    self.apply_card_enhancement_scored(
-                        &mut played[idx],
+                } else if let Some(enh) = played[idx].enhancement {
+                    self.apply_card_modifier_effects(
+                        CardModifierKind::Enhancement,
+                        Self::enhancement_to_id(enh),
+                        ActivationType::OnScored,
                         score,
                         money,
                         &mut results,
                         idx,
                         &mut destroyed_indices,
                     )
+                } else {
+                    (false, 0)
                 };
                 if !debuffed {
                     let mut played_view = played.to_vec();
@@ -460,8 +464,30 @@ impl RunState {
                             "card:bonus_chips",
                         );
                     }
-                    self.apply_card_seal_scored(card, score, money, &mut results);
-                    self.apply_card_edition_scored(card, score);
+                    if let Some(seal) = card.seal {
+                        self.apply_card_modifier_effects(
+                            CardModifierKind::Seal,
+                            Self::seal_to_id(seal),
+                            ActivationType::OnScored,
+                            score,
+                            money,
+                            &mut results,
+                            idx,
+                            &mut destroyed_indices,
+                        );
+                    }
+                    if let Some(ed) = card.edition {
+                        self.apply_card_modifier_effects(
+                            CardModifierKind::Edition,
+                            Self::edition_to_id(ed),
+                            ActivationType::OnScored,
+                            score,
+                            money,
+                            &mut results,
+                            idx,
+                            &mut destroyed_indices,
+                        );
+                    }
                     let mut played_view = played.to_vec();
                     let mut scoring_view = scoring_cards.clone();
                     let mut held_view = held_cards.to_vec();
@@ -550,8 +576,18 @@ impl RunState {
                 remaining -= 1;
                 let mut results = TriggerResults::default();
                 if !debuffed {
-                    self.apply_card_enhancement_held(card, score, money);
-                    self.apply_card_seal_held(card, score, money, &mut results);
+                    if let Some(enh) = card.enhancement {
+                        self.apply_card_modifier_effects(
+                            CardModifierKind::Enhancement,
+                            Self::enhancement_to_id(enh),
+                            ActivationType::OnHeld,
+                            score,
+                            money,
+                            &mut results,
+                            0,
+                            &mut Vec::new(),
+                        );
+                    }
                     let mut played_view = played_cards.to_vec();
                     let mut scoring_view = scoring_cards.to_vec();
                     let mut held_view = held_cards.to_vec();
@@ -582,136 +618,139 @@ impl RunState {
         }
     }
 
-    pub(super) fn apply_card_enhancement_scored(
+    /// Applies the data-driven scoring or held effects for a single card modifier
+    /// (Enhancement, Edition, or Seal) and returns `(destroyed_now, lucky_triggers)`.
+    ///
+    /// `idx` is the index of the card in the played slice; `destroyed` is the
+    /// accumulating list of cards queued for removal. Both are only used for
+    /// `OnScored` triggers; for `OnHeld` pass `0` and a throwaway `&mut Vec::new()`.
+    pub(super) fn apply_card_modifier_effects(
         &mut self,
-        card: &mut Card,
+        kind: CardModifierKind,
+        id: &str,
+        trigger: ActivationType,
         score: &mut Score,
         money: &mut i64,
         _results: &mut TriggerResults,
         idx: usize,
         destroyed: &mut Vec<usize>,
     ) -> (bool, i64) {
+        let def = self.content.modifier_def(kind, id).cloned();
+        let Some(def) = def else {
+            return (false, 0);
+        };
+
+        let kind_str = match kind {
+            CardModifierKind::Enhancement => "enhancement",
+            CardModifierKind::Edition => "edition",
+            CardModifierKind::Seal => "seal",
+        };
+        let source = format!("{kind_str}:{id}");
+
         let mut destroyed_now = false;
         let mut lucky_triggers = 0i64;
-        match card.enhancement {
-            Some(Enhancement::Bonus) => {
-                let chips = self.tables.card_attrs.enhancement("bonus").chips;
-                self.apply_rule_effect(
-                    score,
-                    crate::RuleEffect::AddChips(chips),
-                    "enhancement:bonus",
-                )
+
+        // Apply deterministic effects for the matching trigger.
+        for effect in &def.effects {
+            if effect.trigger != trigger {
+                continue;
             }
-            Some(Enhancement::Mult) => {
-                let mult = self.tables.card_attrs.enhancement("mult").mult_add;
-                self.apply_rule_effect(score, crate::RuleEffect::AddMult(mult), "enhancement:mult")
-            }
-            Some(Enhancement::Glass) => {
-                let def = self.tables.card_attrs.enhancement("glass");
-                self.apply_rule_effect(
-                    score,
-                    crate::RuleEffect::MultiplyMult(def.mult_mul),
-                    "enhancement:glass_mult",
-                );
-                if self.roll(def.destroy_odds.into()) {
-                    if !destroyed.iter().any(|&existing| existing == idx) {
-                        destroyed.push(idx);
-                        destroyed_now = true;
+            for action in &effect.actions {
+                let value = match &action.value {
+                    Expr::Number(v) => *v,
+                    _ => continue,
+                };
+                match &action.op {
+                    ActionOpKind::Builtin(ActionOp::AddChips) => {
+                        self.apply_rule_effect(
+                            score,
+                            crate::RuleEffect::AddChips(value.floor() as i64),
+                            &source,
+                        );
                     }
+                    ActionOpKind::Builtin(ActionOp::AddMult) => {
+                        self.apply_rule_effect(score, crate::RuleEffect::AddMult(value), &source);
+                    }
+                    ActionOpKind::Builtin(ActionOp::MultiplyMult) => {
+                        self.apply_rule_effect(
+                            score,
+                            crate::RuleEffect::MultiplyMult(value),
+                            &source,
+                        );
+                    }
+                    ActionOpKind::Builtin(ActionOp::AddMoney) => {
+                        *money += value.floor() as i64;
+                    }
+                    _ => {}
                 }
             }
-            Some(Enhancement::Stone) => {
-                let chips = self.tables.card_attrs.enhancement("stone").chips;
+        }
+
+        // Probabilistic destruction (Glass).
+        if def.destroy_odds > 0 {
+            if self.roll(def.destroy_odds.into()) {
+                if !destroyed.iter().any(|&existing| existing == idx) {
+                    destroyed.push(idx);
+                    destroyed_now = true;
+                }
+            }
+        }
+
+        // Probabilistic mult (Lucky).
+        if def.lucky_mult_odds > 0 {
+            if self.roll(def.lucky_mult_odds.into()) {
+                let lucky_source = format!("{kind_str}:{id}:lucky_mult");
                 self.apply_rule_effect(
                     score,
-                    crate::RuleEffect::AddChips(chips),
-                    "enhancement:stone",
-                )
+                    crate::RuleEffect::AddMult(def.lucky_mult_add),
+                    &lucky_source,
+                );
+                lucky_triggers += 1;
             }
-            Some(Enhancement::Lucky) => {
-                let def = self.tables.card_attrs.enhancement("lucky");
-                if self.roll(def.prob_mult_odds.into()) {
-                    self.apply_rule_effect(
-                        score,
-                        crate::RuleEffect::AddMult(def.prob_mult_add),
-                        "enhancement:lucky_mult",
-                    );
-                    lucky_triggers += 1;
-                }
-                if self.roll(def.prob_money_odds.into()) {
-                    *money += def.prob_money_add;
-                    lucky_triggers += 1;
-                }
-            }
-            _ => {}
         }
+
+        // Probabilistic money (Lucky).
+        if def.lucky_money_odds > 0 {
+            if self.roll(def.lucky_money_odds.into()) {
+                *money += def.lucky_money_add;
+                lucky_triggers += 1;
+            }
+        }
+
         (destroyed_now, lucky_triggers)
     }
 
-    pub(super) fn apply_card_enhancement_held(
-        &mut self,
-        card: Card,
-        score: &mut Score,
-        _money: &mut i64,
-    ) {
-        match card.enhancement {
-            Some(Enhancement::Steel) => {
-                let mul = self.tables.card_attrs.enhancement("steel").mult_mul_held;
-                self.apply_rule_effect(
-                    score,
-                    crate::RuleEffect::MultiplyMult(mul),
-                    "enhancement:steel",
-                )
-            }
-            _ => {}
+    /// Convert an [`Enhancement`] variant to its lowercase id string.
+    fn enhancement_to_id(enh: Enhancement) -> &'static str {
+        match enh {
+            Enhancement::Bonus => "bonus",
+            Enhancement::Mult => "mult",
+            Enhancement::Wild => "wild",
+            Enhancement::Glass => "glass",
+            Enhancement::Steel => "steel",
+            Enhancement::Stone => "stone",
+            Enhancement::Lucky => "lucky",
+            Enhancement::Gold => "gold",
         }
     }
 
-    pub(super) fn apply_card_seal_scored(
-        &mut self,
-        card: Card,
-        _score: &mut Score,
-        money: &mut i64,
-        _results: &mut TriggerResults,
-    ) {
-        if card.seal == Some(Seal::Gold) {
-            let amount = self.tables.card_attrs.seal("gold").money_scored;
-            *money += amount;
+    /// Convert an [`Edition`] variant to its lowercase id string.
+    fn edition_to_id(ed: Edition) -> &'static str {
+        match ed {
+            Edition::Foil => "foil",
+            Edition::Holographic => "holographic",
+            Edition::Polychrome => "polychrome",
+            Edition::Negative => "negative",
         }
     }
 
-    pub(super) fn apply_card_seal_held(
-        &mut self,
-        _card: Card,
-        _score: &mut Score,
-        _money: &mut i64,
-        _results: &mut TriggerResults,
-    ) {
-    }
-
-    pub(super) fn apply_card_edition_scored(&mut self, card: Card, score: &mut Score) {
-        match card.edition {
-            Some(Edition::Foil) => {
-                let chips = self.tables.card_attrs.edition("foil").chips;
-                self.apply_rule_effect(score, crate::RuleEffect::AddChips(chips), "edition:foil")
-            }
-            Some(Edition::Holographic) => {
-                let mult = self.tables.card_attrs.edition("holographic").mult_add;
-                self.apply_rule_effect(
-                    score,
-                    crate::RuleEffect::AddMult(mult),
-                    "edition:holographic",
-                )
-            }
-            Some(Edition::Polychrome) => {
-                let mul = self.tables.card_attrs.edition("polychrome").mult_mul;
-                self.apply_rule_effect(
-                    score,
-                    crate::RuleEffect::MultiplyMult(mul),
-                    "edition:polychrome",
-                )
-            }
-            _ => {}
+    /// Convert a [`Seal`] variant to its lowercase id string.
+    fn seal_to_id(seal: Seal) -> &'static str {
+        match seal {
+            Seal::Red => "red",
+            Seal::Blue => "blue",
+            Seal::Gold => "gold",
+            Seal::Purple => "purple",
         }
     }
 
