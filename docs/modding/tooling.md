@@ -55,12 +55,18 @@ Print compact load order/dependency summary.
 
 ## `hardcoded`
 
-Audit prioritized hardcoded behavior anchors in core runtime.
+Audit hardcoded behavior against the contract file:
+- `tools/hardcoded_behavior_contract.json`
 
 ```bash
 ./tools/python tools/moddev.py hardcoded --root .
 ./tools/python tools/moddev.py hardcoded --root . --strict
+./tools/python tools/moddev.py hardcoded --root . --contract tools/hardcoded_behavior_contract.json
 ```
+
+Notes:
+- `--strict` fails only on non-allowlisted findings.
+- Allowlist reasons live in the contract JSON and are treated as temporary migration debt.
 
 ## 2) Suggested Inner Loop
 

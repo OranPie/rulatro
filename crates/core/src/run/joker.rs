@@ -3,6 +3,48 @@ use super::*;
 use crate::*;
 use std::collections::HashMap;
 
+type BuiltinActionRegistryHandler = fn(&mut RunState, &crate::Action, Option<f64>);
+
+const BUILTIN_ACTION_REGISTRY: &[(ActionOp, BuiltinActionRegistryHandler)] = &[
+    (ActionOp::AddHandSize, RunState::registry_add_hand_size),
+    (ActionOp::AddHands, RunState::registry_add_hands),
+    (ActionOp::SetHands, RunState::registry_set_hands),
+    (ActionOp::AddDiscards, RunState::registry_add_discards),
+    (ActionOp::SetDiscards, RunState::registry_set_discards),
+    (ActionOp::AddFreeReroll, RunState::registry_add_free_reroll),
+    (ActionOp::SetShopPrice, RunState::registry_set_shop_price),
+    (ActionOp::DisableBoss, RunState::registry_disable_boss),
+    (ActionOp::AddTag, RunState::registry_add_tag),
+    (
+        ActionOp::DuplicateNextTag,
+        RunState::registry_duplicate_next_tag,
+    ),
+    (ActionOp::AddPack, RunState::registry_add_pack),
+    (ActionOp::AddShopJoker, RunState::registry_add_shop_joker),
+    (ActionOp::AddVoucher, RunState::registry_add_voucher),
+    (ActionOp::SetRerollCost, RunState::registry_set_reroll_cost),
+    (
+        ActionOp::SetShopJokerEdition,
+        RunState::registry_set_shop_joker_edition,
+    ),
+    (ActionOp::RerollBoss, RunState::registry_reroll_boss),
+    (
+        ActionOp::UpgradeRandomHand,
+        RunState::registry_upgrade_random_hand,
+    ),
+    (ActionOp::MultiplyTarget, RunState::registry_multiply_target),
+    (ActionOp::SetRule, RunState::registry_set_rule),
+    (ActionOp::AddRule, RunState::registry_add_rule),
+    (ActionOp::ClearRule, RunState::registry_clear_rule),
+];
+
+fn builtin_action_registry_handler(op: ActionOp) -> Option<BuiltinActionRegistryHandler> {
+    BUILTIN_ACTION_REGISTRY
+        .iter()
+        .find(|(registered, _)| *registered == op)
+        .map(|(_, handler)| *handler)
+}
+
 impl RunState {
     pub(super) fn build_joker_snapshot(&mut self) {
         self.current_joker_snapshot = self
@@ -368,7 +410,11 @@ impl RunState {
         match joker.edition {
             Some(Edition::Foil) => {
                 let chips = self.tables.card_attrs.edition("foil").chips;
-                self.apply_rule_effect(score, crate::RuleEffect::AddChips(chips), "joker_edition:foil")
+                self.apply_rule_effect(
+                    score,
+                    crate::RuleEffect::AddChips(chips),
+                    "joker_edition:foil",
+                )
             }
             Some(Edition::Holographic) => {
                 let mult = self.tables.card_attrs.edition("holographic").mult_add;
@@ -528,347 +574,376 @@ impl RunState {
                         self.apply_mod_action_result(&result, joker, score, money);
                     }
                 }
-                crate::ActionOpKind::Builtin(op) => match op {
-                    ActionOp::AddChips => {
-                        if let Some(value) = value {
-                            let source = format!("joker:{}:add_chips", joker.id);
-                            self.apply_rule_effect(
-                                score,
-                                crate::RuleEffect::AddChips(value.floor() as i64),
-                                &source,
-                            );
-                        }
+                crate::ActionOpKind::Builtin(op) => {
+                    if self.apply_registered_builtin_action(*op, action, value) {
+                        continue;
                     }
-                    ActionOp::AddMult => {
-                        if let Some(value) = value {
-                            let source = format!("joker:{}:add_mult", joker.id);
-                            self.apply_rule_effect(
-                                score,
-                                crate::RuleEffect::AddMult(value),
-                                &source,
-                            );
+                    match op {
+                        ActionOp::AddChips => {
+                            if let Some(value) = value {
+                                let source = format!("joker:{}:add_chips", joker.id);
+                                self.apply_rule_effect(
+                                    score,
+                                    crate::RuleEffect::AddChips(value.floor() as i64),
+                                    &source,
+                                );
+                            }
                         }
-                    }
-                    ActionOp::MultiplyMult => {
-                        if let Some(value) = value {
-                            let source = format!("joker:{}:mul_mult", joker.id);
-                            self.apply_rule_effect(
-                                score,
-                                crate::RuleEffect::MultiplyMult(value),
-                                &source,
-                            );
+                        ActionOp::AddMult => {
+                            if let Some(value) = value {
+                                let source = format!("joker:{}:add_mult", joker.id);
+                                self.apply_rule_effect(
+                                    score,
+                                    crate::RuleEffect::AddMult(value),
+                                    &source,
+                                );
+                            }
                         }
-                    }
-                    ActionOp::MultiplyChips => {
-                        if let Some(value) = value {
-                            let source = format!("joker:{}:mul_chips", joker.id);
-                            self.apply_rule_effect(
-                                score,
-                                crate::RuleEffect::MultiplyChips(value),
-                                &source,
-                            );
+                        ActionOp::MultiplyMult => {
+                            if let Some(value) = value {
+                                let source = format!("joker:{}:mul_mult", joker.id);
+                                self.apply_rule_effect(
+                                    score,
+                                    crate::RuleEffect::MultiplyMult(value),
+                                    &source,
+                                );
+                            }
                         }
-                    }
-                    ActionOp::AddMoney => {
-                        if let Some(value) = value {
-                            *money += value.floor() as i64;
+                        ActionOp::MultiplyChips => {
+                            if let Some(value) = value {
+                                let source = format!("joker:{}:mul_chips", joker.id);
+                                self.apply_rule_effect(
+                                    score,
+                                    crate::RuleEffect::MultiplyChips(value),
+                                    &source,
+                                );
+                            }
                         }
-                    }
-                    ActionOp::SetMoney => {
-                        if let Some(value) = value {
-                            *money = value.floor() as i64;
+                        ActionOp::AddMoney => {
+                            if let Some(value) = value {
+                                *money += value.floor() as i64;
+                            }
                         }
-                    }
-                    ActionOp::AddHandSize => {
-                        if let Some(value) = value {
-                            let next = (self.state.hand_size as f64 + value).max(0.0) as usize;
-                            self.state.hand_size = next;
+                        ActionOp::SetMoney => {
+                            if let Some(value) = value {
+                                *money = value.floor() as i64;
+                            }
                         }
-                    }
-                    ActionOp::AddHands => {
-                        if let Some(value) = value {
-                            let delta = value.floor() as i64;
-                            if delta != 0 {
-                                let next = (self.state.hands_left as i64 + delta).max(0) as u8;
+                        ActionOp::AddHandSize => {
+                            if let Some(value) = value {
+                                let next = (self.state.hand_size as f64 + value).max(0.0) as usize;
+                                self.state.hand_size = next;
+                            }
+                        }
+                        ActionOp::AddHands => {
+                            if let Some(value) = value {
+                                let delta = value.floor() as i64;
+                                if delta != 0 {
+                                    let next = (self.state.hands_left as i64 + delta).max(0) as u8;
+                                    self.state.hands_left = next;
+                                }
+                            }
+                        }
+                        ActionOp::SetHands => {
+                            if let Some(value) = value {
+                                let next = value.floor().max(0.0) as u8;
                                 self.state.hands_left = next;
                             }
                         }
-                    }
-                    ActionOp::SetHands => {
-                        if let Some(value) = value {
-                            let next = value.floor().max(0.0) as u8;
-                            self.state.hands_left = next;
+                        ActionOp::AddDiscards => {
+                            if let Some(value) = value {
+                                let delta = value.floor() as i64;
+                                if delta != 0 {
+                                    let next =
+                                        (self.state.discards_left as i64 + delta).max(0) as u8;
+                                    self.state.discards_left = next;
+                                }
+                            }
                         }
-                    }
-                    ActionOp::AddDiscards => {
-                        if let Some(value) = value {
-                            let delta = value.floor() as i64;
-                            if delta != 0 {
-                                let next = (self.state.discards_left as i64 + delta).max(0) as u8;
+                        ActionOp::SetDiscards => {
+                            if let Some(value) = value {
+                                let next = value.floor().max(0.0) as u8;
                                 self.state.discards_left = next;
                             }
                         }
-                    }
-                    ActionOp::SetDiscards => {
-                        if let Some(value) = value {
-                            let next = value.floor().max(0.0) as u8;
-                            self.state.discards_left = next;
-                        }
-                    }
-                    ActionOp::RetriggerScored => {
-                        if let Some(value) = value {
-                            results.scored_retriggers += value.floor() as i64;
-                        }
-                    }
-                    ActionOp::RetriggerHeld => {
-                        if let Some(value) = value {
-                            results.held_retriggers += value.floor() as i64;
-                        }
-                    }
-                    ActionOp::AddStoneCard => {
-                        let count = value.map(|v| v.floor() as i64).unwrap_or(1).max(0) as usize;
-                        if count == 0 {
-                            continue;
-                        }
-                        for _ in 0..count {
-                            let mut card = self.content.random_standard_card(&mut self.rng);
-                            card.enhancement = Some(Enhancement::Stone);
-                            self.assign_card_id(&mut card);
-                            self.deck.draw.push(card);
-                            self.trigger_on_card_added(card);
-                        }
-                        self.deck.shuffle(&mut self.rng);
-                    }
-                    ActionOp::AddCardBonus => {
-                        if let (Some(card), Some(value)) = (card_mut.as_deref_mut(), value) {
-                            card.bonus_chips =
-                                card.bonus_chips.saturating_add(value.floor() as i64);
-                        }
-                    }
-                    ActionOp::SetCardEnhancement => {
-                        let Some(card) = card_mut.as_deref_mut() else {
-                            continue;
-                        };
-                        let Some(target) = action.target.as_deref() else {
-                            continue;
-                        };
-                        let norm = normalize(target);
-                        if norm == "none" || norm == "clear" {
-                            card.enhancement = None;
-                        } else if let Some(kind) = enhancement_from_str(&norm) {
-                            card.enhancement = Some(kind);
-                        }
-                    }
-                    ActionOp::ClearCardEnhancement => {
-                        if let Some(card) = card_mut.as_deref_mut() {
-                            card.enhancement = None;
-                        }
-                    }
-                    ActionOp::DestroyCard => {
-                        results.destroyed_current = true;
-                    }
-                    ActionOp::CopyPlayedCard => {
-                        let card = if let Some(card) = ctx.card {
-                            Some(card)
-                        } else if ctx.played_cards.len() == 1 {
-                            ctx.played_cards.first().copied()
-                        } else {
-                            None
-                        };
-                        if let Some(card) = card {
-                            let mut copy = card;
-                            copy.face_down = false;
-                            self.assign_card_id(&mut copy);
-                            self.hand.push(copy);
-                            self.trigger_on_card_added(copy);
-                        }
-                    }
-                    ActionOp::AddTarot => {
-                        let count = value.map(|v| v.floor() as i64).unwrap_or(1).max(0) as usize;
-                        for _ in 0..count {
-                            if let Some(card) = self
-                                .content
-                                .pick_consumable(crate::ConsumableKind::Tarot, &mut self.rng)
-                            {
-                                let _ = self
-                                    .inventory
-                                    .add_consumable(card.id.clone(), crate::ConsumableKind::Tarot);
+                        ActionOp::RetriggerScored => {
+                            if let Some(value) = value {
+                                results.scored_retriggers += value.floor() as i64;
                             }
                         }
-                    }
-                    ActionOp::AddPlanet => {
-                        let count = value.map(|v| v.floor() as i64).unwrap_or(1).max(0) as usize;
-                        for _ in 0..count {
-                            if let Some(card) = self
-                                .content
-                                .pick_consumable(crate::ConsumableKind::Planet, &mut self.rng)
-                            {
-                                let _ = self
-                                    .inventory
-                                    .add_consumable(card.id.clone(), crate::ConsumableKind::Planet);
+                        ActionOp::RetriggerHeld => {
+                            if let Some(value) = value {
+                                results.held_retriggers += value.floor() as i64;
                             }
                         }
-                    }
-                    ActionOp::AddSpectral => {
-                        let count = value.map(|v| v.floor() as i64).unwrap_or(1).max(0) as usize;
-                        for _ in 0..count {
-                            if let Some(card) = self
-                                .content
-                                .pick_consumable(crate::ConsumableKind::Spectral, &mut self.rng)
-                            {
-                                let _ = self.inventory.add_consumable(
-                                    card.id.clone(),
-                                    crate::ConsumableKind::Spectral,
-                                );
+                        ActionOp::AddStoneCard => {
+                            let count =
+                                value.map(|v| v.floor() as i64).unwrap_or(1).max(0) as usize;
+                            if count == 0 {
+                                continue;
+                            }
+                            for _ in 0..count {
+                                let mut card = self.content.random_standard_card(&mut self.rng);
+                                card.enhancement = Some(Enhancement::Stone);
+                                self.assign_card_id(&mut card);
+                                self.deck.draw.push(card);
+                                self.trigger_on_card_added(card);
+                            }
+                            self.deck.shuffle(&mut self.rng);
+                        }
+                        ActionOp::AddCardBonus => {
+                            if let (Some(card), Some(value)) = (card_mut.as_deref_mut(), value) {
+                                card.bonus_chips =
+                                    card.bonus_chips.saturating_add(value.floor() as i64);
                             }
                         }
-                    }
-                    ActionOp::AddFreeReroll => {
-                        if let Some(value) = value {
-                            let delta = value.floor() as i64;
-                            if delta >= 0 {
-                                let added = delta.min(u8::MAX as i64) as u8;
-                                self.state.shop_free_rerolls =
-                                    self.state.shop_free_rerolls.saturating_add(added);
+                        ActionOp::SetCardEnhancement => {
+                            let Some(card) = card_mut.as_deref_mut() else {
+                                continue;
+                            };
+                            let Some(target) = action.target.as_deref() else {
+                                continue;
+                            };
+                            let norm = normalize(target);
+                            if norm == "none" || norm == "clear" {
+                                card.enhancement = None;
+                            } else if let Some(kind) = enhancement_from_str(&norm) {
+                                card.enhancement = Some(kind);
+                            }
+                        }
+                        ActionOp::ClearCardEnhancement => {
+                            if let Some(card) = card_mut.as_deref_mut() {
+                                card.enhancement = None;
+                            }
+                        }
+                        ActionOp::DestroyCard => {
+                            results.destroyed_current = true;
+                        }
+                        ActionOp::CopyPlayedCard => {
+                            let card = if let Some(card) = ctx.card {
+                                Some(card)
+                            } else if ctx.played_cards.len() == 1 {
+                                ctx.played_cards.first().copied()
                             } else {
-                                let sub = (-delta).min(self.state.shop_free_rerolls as i64) as u8;
-                                self.state.shop_free_rerolls =
-                                    self.state.shop_free_rerolls.saturating_sub(sub);
+                                None
+                            };
+                            if let Some(card) = card {
+                                let mut copy = card;
+                                copy.face_down = false;
+                                self.assign_card_id(&mut copy);
+                                self.hand.push(copy);
+                                self.trigger_on_card_added(copy);
                             }
                         }
-                    }
-                    ActionOp::SetShopPrice => {
-                        if let (Some(target), Some(value)) = (action.target.as_deref(), value) {
-                            let price = value.floor().max(0.0) as i64;
-                            self.apply_shop_price_override(target, price);
-                        }
-                    }
-                    ActionOp::AddJoker => {
-                        if let Some(target) = action.target.as_deref() {
+                        ActionOp::AddTarot => {
                             let count =
                                 value.map(|v| v.floor() as i64).unwrap_or(1).max(0) as usize;
                             for _ in 0..count {
-                                if let Some(joker) = self.spawn_joker_from_target(target) {
-                                    self.pending_joker_additions.push(joker);
+                                if let Some(card) = self
+                                    .content
+                                    .pick_consumable(crate::ConsumableKind::Tarot, &mut self.rng)
+                                {
+                                    let _ = self.inventory.add_consumable(
+                                        card.id.clone(),
+                                        crate::ConsumableKind::Tarot,
+                                    );
                                 }
                             }
                         }
-                    }
-                    ActionOp::DestroyRandomJoker => {
-                        self.queue_destroy_random(ctx.joker_index);
-                    }
-                    ActionOp::DestroyJokerRight => {
-                        if let Some(index) = ctx.joker_index {
-                            self.queue_destroy_neighbor(index, 1);
-                        }
-                    }
-                    ActionOp::DestroyJokerLeft => {
-                        if let Some(index) = ctx.joker_index {
-                            self.queue_destroy_neighbor(index, -1);
-                        }
-                    }
-                    ActionOp::DestroySelf => {
-                        if let Some(index) = ctx.joker_index {
-                            self.queue_joker_removal(index);
-                        }
-                    }
-                    ActionOp::UpgradeHand => {
-                        if let Some(hand_str) = evaluated.as_string() {
-                            let norm = normalize(hand_str);
-                            if norm == "all" || norm == "any" {
-                                self.upgrade_all_hands(1);
-                            } else if let Some(hand) = hand_kind_from_str(&norm) {
-                                self.upgrade_hand_level(hand, 1);
-                            }
-                        } else if let Some(levels) = evaluated.as_number() {
-                            let amount = levels.floor().max(0.0) as u32;
-                            self.upgrade_hand_level(ctx.hand_kind, amount);
-                        }
-                    }
-                    ActionOp::DuplicateRandomJoker => {
-                        let count = value.map(|v| v.floor() as i64).unwrap_or(1).max(0) as usize;
-                        for _ in 0..count {
-                            if self.inventory.jokers.len() >= self.inventory.joker_capacity() {
-                                break;
-                            }
-                            if self.inventory.jokers.is_empty() {
-                                break;
-                            }
-                            let idx =
-                                (self.rng.next_u64() % self.inventory.jokers.len() as u64) as usize;
-                            let mut copy = self.inventory.jokers[idx].clone();
-                            if copy.edition == Some(Edition::Negative) {
-                                copy.edition = None;
-                            }
-                            self.inventory.jokers.push(copy);
-                            self.mark_rules_dirty();
-                        }
-                    }
-                    ActionOp::DuplicateRandomConsumable => {
-                        let count = value.map(|v| v.floor() as i64).unwrap_or(1).max(0) as usize;
-                        for _ in 0..count {
-                            if self.inventory.consumables.is_empty() {
-                                break;
-                            }
-                            let idx = (self.rng.next_u64()
-                                % self.inventory.consumables.len() as u64)
-                                as usize;
-                            if let Some(existing) = self.inventory.consumables.get(idx).cloned() {
-                                let _ = self.inventory.add_consumable_with_edition(
-                                    existing.id,
-                                    existing.kind,
-                                    Some(Edition::Negative),
-                                    existing.sell_bonus,
-                                );
-                            }
-                        }
-                    }
-                    ActionOp::AddSellBonus => {
-                        if let (Some(target), Some(value)) = (action.target.as_deref(), value) {
-                            let delta = value;
-                            let target = normalize(target);
-                            if target == "all" || target == "everything" || target == "jokers" {
-                                for joker in &mut self.inventory.jokers {
-                                    let entry =
-                                        joker.vars.entry("sell_bonus".into()).or_insert(0.0);
-                                    *entry += delta;
-                                }
-                            }
-                            if target == "all" || target == "everything" || target == "consumables"
-                            {
-                                for consumable in &mut self.inventory.consumables {
-                                    consumable.sell_bonus += delta;
+                        ActionOp::AddPlanet => {
+                            let count =
+                                value.map(|v| v.floor() as i64).unwrap_or(1).max(0) as usize;
+                            for _ in 0..count {
+                                if let Some(card) = self
+                                    .content
+                                    .pick_consumable(crate::ConsumableKind::Planet, &mut self.rng)
+                                {
+                                    let _ = self.inventory.add_consumable(
+                                        card.id.clone(),
+                                        crate::ConsumableKind::Planet,
+                                    );
                                 }
                             }
                         }
-                    }
-                    ActionOp::DisableBoss => {
-                        if self.state.phase == Phase::Shop {
-                            self.boss_disable_pending = true;
-                        } else {
-                            self.boss_disabled = true;
+                        ActionOp::AddSpectral => {
+                            let count =
+                                value.map(|v| v.floor() as i64).unwrap_or(1).max(0) as usize;
+                            for _ in 0..count {
+                                if let Some(card) = self
+                                    .content
+                                    .pick_consumable(crate::ConsumableKind::Spectral, &mut self.rng)
+                                {
+                                    let _ = self.inventory.add_consumable(
+                                        card.id.clone(),
+                                        crate::ConsumableKind::Spectral,
+                                    );
+                                }
+                            }
                         }
-                    }
-                    ActionOp::AddRandomHandCard => {
-                        let count = value.map(|v| v.floor() as i64).unwrap_or(1).max(0) as usize;
-                        for _ in 0..count {
-                            let mut card = self.content.random_standard_card(&mut self.rng);
-                            let roll = self.rng.next_u64() % 4;
-                            card.seal = match roll {
-                                0 => Some(Seal::Red),
-                                1 => Some(Seal::Blue),
-                                2 => Some(Seal::Gold),
-                                _ => Some(Seal::Purple),
-                            };
-                            self.assign_card_id(&mut card);
-                            self.hand.push(card);
-                            self.trigger_on_card_added(card);
+                        ActionOp::AddFreeReroll => {
+                            if let Some(value) = value {
+                                let delta = value.floor() as i64;
+                                if delta >= 0 {
+                                    let added = delta.min(u8::MAX as i64) as u8;
+                                    self.state.shop_free_rerolls =
+                                        self.state.shop_free_rerolls.saturating_add(added);
+                                } else {
+                                    let sub =
+                                        (-delta).min(self.state.shop_free_rerolls as i64) as u8;
+                                    self.state.shop_free_rerolls =
+                                        self.state.shop_free_rerolls.saturating_sub(sub);
+                                }
+                            }
                         }
-                    }
-                    ActionOp::CopyJokerRight => {
-                        if let Some(index) = ctx.joker_index {
-                            if let Some(target) = self.neighbor_index(index, 1) {
-                                if target != index {
+                        ActionOp::SetShopPrice => {
+                            if let (Some(target), Some(value)) = (action.target.as_deref(), value) {
+                                let price = value.floor().max(0.0) as i64;
+                                self.apply_shop_price_override(target, price);
+                            }
+                        }
+                        ActionOp::AddJoker => {
+                            if let Some(target) = action.target.as_deref() {
+                                let count =
+                                    value.map(|v| v.floor() as i64).unwrap_or(1).max(0) as usize;
+                                for _ in 0..count {
+                                    if let Some(joker) = self.spawn_joker_from_target(target) {
+                                        self.pending_joker_additions.push(joker);
+                                    }
+                                }
+                            }
+                        }
+                        ActionOp::DestroyRandomJoker => {
+                            self.queue_destroy_random(ctx.joker_index);
+                        }
+                        ActionOp::DestroyJokerRight => {
+                            if let Some(index) = ctx.joker_index {
+                                self.queue_destroy_neighbor(index, 1);
+                            }
+                        }
+                        ActionOp::DestroyJokerLeft => {
+                            if let Some(index) = ctx.joker_index {
+                                self.queue_destroy_neighbor(index, -1);
+                            }
+                        }
+                        ActionOp::DestroySelf => {
+                            if let Some(index) = ctx.joker_index {
+                                self.queue_joker_removal(index);
+                            }
+                        }
+                        ActionOp::UpgradeHand => {
+                            if let Some(hand_str) = evaluated.as_string() {
+                                let norm = normalize(hand_str);
+                                if norm == "all" || norm == "any" {
+                                    self.upgrade_all_hands(1);
+                                } else if let Some(hand) = hand_kind_from_str(&norm) {
+                                    self.upgrade_hand_level(hand, 1);
+                                }
+                            } else if let Some(levels) = evaluated.as_number() {
+                                let amount = levels.floor().max(0.0) as u32;
+                                self.upgrade_hand_level(ctx.hand_kind, amount);
+                            }
+                        }
+                        ActionOp::DuplicateRandomJoker => {
+                            let count =
+                                value.map(|v| v.floor() as i64).unwrap_or(1).max(0) as usize;
+                            for _ in 0..count {
+                                if self.inventory.jokers.len() >= self.inventory.joker_capacity() {
+                                    break;
+                                }
+                                if self.inventory.jokers.is_empty() {
+                                    break;
+                                }
+                                let idx = (self.rng.next_u64() % self.inventory.jokers.len() as u64)
+                                    as usize;
+                                let mut copy = self.inventory.jokers[idx].clone();
+                                if copy.edition == Some(Edition::Negative) {
+                                    copy.edition = None;
+                                }
+                                self.inventory.jokers.push(copy);
+                                self.mark_rules_dirty();
+                            }
+                        }
+                        ActionOp::DuplicateRandomConsumable => {
+                            let count =
+                                value.map(|v| v.floor() as i64).unwrap_or(1).max(0) as usize;
+                            for _ in 0..count {
+                                if self.inventory.consumables.is_empty() {
+                                    break;
+                                }
+                                let idx = (self.rng.next_u64()
+                                    % self.inventory.consumables.len() as u64)
+                                    as usize;
+                                if let Some(existing) = self.inventory.consumables.get(idx).cloned()
+                                {
+                                    let _ = self.inventory.add_consumable_with_edition(
+                                        existing.id,
+                                        existing.kind,
+                                        Some(Edition::Negative),
+                                        existing.sell_bonus,
+                                    );
+                                }
+                            }
+                        }
+                        ActionOp::AddSellBonus => {
+                            if let (Some(target), Some(value)) = (action.target.as_deref(), value) {
+                                let delta = value;
+                                let target = normalize(target);
+                                if target == "all" || target == "everything" || target == "jokers" {
+                                    for joker in &mut self.inventory.jokers {
+                                        let entry =
+                                            joker.vars.entry("sell_bonus".into()).or_insert(0.0);
+                                        *entry += delta;
+                                    }
+                                }
+                                if target == "all"
+                                    || target == "everything"
+                                    || target == "consumables"
+                                {
+                                    for consumable in &mut self.inventory.consumables {
+                                        consumable.sell_bonus += delta;
+                                    }
+                                }
+                            }
+                        }
+                        ActionOp::DisableBoss => {
+                            if self.state.phase == Phase::Shop {
+                                self.boss_disable_pending = true;
+                            } else {
+                                self.boss_disabled = true;
+                            }
+                        }
+                        ActionOp::AddRandomHandCard => {
+                            let count =
+                                value.map(|v| v.floor() as i64).unwrap_or(1).max(0) as usize;
+                            for _ in 0..count {
+                                let mut card = self.content.random_standard_card(&mut self.rng);
+                                let roll = self.rng.next_u64() % 4;
+                                card.seal = match roll {
+                                    0 => Some(Seal::Red),
+                                    1 => Some(Seal::Blue),
+                                    2 => Some(Seal::Gold),
+                                    _ => Some(Seal::Purple),
+                                };
+                                self.assign_card_id(&mut card);
+                                self.hand.push(card);
+                                self.trigger_on_card_added(card);
+                            }
+                        }
+                        ActionOp::CopyJokerRight => {
+                            if let Some(index) = ctx.joker_index {
+                                if let Some(target) = self.neighbor_index(index, 1) {
+                                    if target != index {
+                                        let card_mut = card_mut.as_deref_mut();
+                                        self.apply_joker_copy_from(
+                                            target, trigger, ctx, card_mut, score, money, results,
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                        ActionOp::CopyJokerLeftmost => {
+                            if let Some(target) = self.leftmost_joker_index() {
+                                if Some(target) != ctx.joker_index {
                                     let card_mut = card_mut.as_deref_mut();
                                     self.apply_joker_copy_from(
                                         target, trigger, ctx, card_mut, score, money, results,
@@ -876,134 +951,316 @@ impl RunState {
                                 }
                             }
                         }
-                    }
-                    ActionOp::CopyJokerLeftmost => {
-                        if let Some(target) = self.leftmost_joker_index() {
-                            if Some(target) != ctx.joker_index {
-                                let card_mut = card_mut.as_deref_mut();
-                                self.apply_joker_copy_from(
-                                    target, trigger, ctx, card_mut, score, money, results,
-                                );
+                        ActionOp::PreventDeath => {
+                            if value.unwrap_or(1.0) != 0.0 {
+                                self.prevent_death = true;
                             }
                         }
-                    }
-                    ActionOp::PreventDeath => {
-                        if value.unwrap_or(1.0) != 0.0 {
-                            self.prevent_death = true;
-                        }
-                    }
-                    ActionOp::AddTag => {
-                        if let Some(target) = action.target.as_deref() {
-                            let count =
-                                value.map(|v| v.floor() as i64).unwrap_or(1).max(0) as usize;
-                            for _ in 0..count {
-                                let tag_id = normalize(target);
-                                let should_duplicate = self.state.duplicate_next_tag
-                                    && self
-                                        .state
-                                        .duplicate_tag_exclude
-                                        .as_deref()
-                                        .map(|ex| ex != tag_id)
-                                        .unwrap_or(true);
-                                if should_duplicate {
-                                    self.state.tags.push(tag_id.clone());
-                                    self.state.tags.push(tag_id.clone());
-                                    self.state.duplicate_next_tag = false;
-                                    self.state.duplicate_tag_exclude = None;
-                                } else {
-                                    self.state.tags.push(tag_id);
+                        ActionOp::AddTag => {
+                            if let Some(target) = action.target.as_deref() {
+                                let count =
+                                    value.map(|v| v.floor() as i64).unwrap_or(1).max(0) as usize;
+                                for _ in 0..count {
+                                    let tag_id = normalize(target);
+                                    let should_duplicate = self.state.duplicate_next_tag
+                                        && self
+                                            .state
+                                            .duplicate_tag_exclude
+                                            .as_deref()
+                                            .map(|ex| ex != tag_id)
+                                            .unwrap_or(true);
+                                    if should_duplicate {
+                                        self.state.tags.push(tag_id.clone());
+                                        self.state.tags.push(tag_id.clone());
+                                        self.state.duplicate_next_tag = false;
+                                        self.state.duplicate_tag_exclude = None;
+                                    } else {
+                                        self.state.tags.push(tag_id);
+                                    }
                                 }
+                                self.mark_rules_dirty();
+                                self.trigger_on_acquire();
                             }
-                            self.mark_rules_dirty();
-                            self.trigger_on_acquire();
                         }
-                    }
-                    ActionOp::DuplicateNextTag => {
-                        if let Some(target) = action.target.as_deref() {
-                            self.state.duplicate_next_tag = true;
-                            self.state.duplicate_tag_exclude = Some(normalize(target));
-                        } else {
-                            self.state.duplicate_next_tag = true;
-                            self.state.duplicate_tag_exclude = None;
+                        ActionOp::DuplicateNextTag => {
+                            if let Some(target) = action.target.as_deref() {
+                                self.state.duplicate_next_tag = true;
+                                self.state.duplicate_tag_exclude = Some(normalize(target));
+                            } else {
+                                self.state.duplicate_next_tag = true;
+                                self.state.duplicate_tag_exclude = None;
+                            }
                         }
-                    }
-                    ActionOp::AddPack => {
-                        if let Some(target) = action.target.as_deref() {
-                            let price = value.map(|v| v.floor() as i64);
-                            self.add_pack_offer_from_target(target, price);
+                        ActionOp::AddPack => {
+                            if let Some(target) = action.target.as_deref() {
+                                let price = value.map(|v| v.floor() as i64);
+                                self.add_pack_offer_from_target(target, price);
+                            }
                         }
-                    }
-                    ActionOp::AddShopJoker => {
-                        if let Some(target) = action.target.as_deref() {
-                            let price = value.map(|v| v.floor() as i64);
-                            self.add_shop_joker_offer(target, price);
+                        ActionOp::AddShopJoker => {
+                            if let Some(target) = action.target.as_deref() {
+                                let price = value.map(|v| v.floor() as i64);
+                                self.add_shop_joker_offer(target, price);
+                            }
                         }
-                    }
-                    ActionOp::AddVoucher => {
-                        if self.shop.is_some() {
-                            let delta =
-                                value.map(|v| v.floor() as i64).unwrap_or(1).max(0) as usize;
-                            for _ in 0..delta {
-                                let offer = self.voucher_offer_for_shop();
-                                if let Some(shop) = self.shop.as_mut() {
-                                    shop.add_voucher_offer(offer);
+                        ActionOp::AddVoucher => {
+                            if self.shop.is_some() {
+                                let delta =
+                                    value.map(|v| v.floor() as i64).unwrap_or(1).max(0) as usize;
+                                for _ in 0..delta {
+                                    let offer = self.voucher_offer_for_shop();
+                                    if let Some(shop) = self.shop.as_mut() {
+                                        shop.add_voucher_offer(offer);
+                                    }
                                 }
                             }
                         }
-                    }
-                    ActionOp::SetRerollCost => {
-                        if let Some(shop) = self.shop.as_mut() {
-                            let next = value.map(|v| v.floor() as i64).unwrap_or(0).max(0);
-                            shop.reroll_cost = next;
+                        ActionOp::SetRerollCost => {
+                            if let Some(shop) = self.shop.as_mut() {
+                                let next = value.map(|v| v.floor() as i64).unwrap_or(0).max(0);
+                                shop.reroll_cost = next;
+                            }
+                        }
+                        ActionOp::SetShopJokerEdition => {
+                            if let Some(target) = action.target.as_deref() {
+                                let price = value.map(|v| v.floor() as i64);
+                                self.set_shop_joker_edition(target, price);
+                            }
+                        }
+                        ActionOp::RerollBoss => {
+                            self.reroll_boss();
+                        }
+                        ActionOp::UpgradeRandomHand => {
+                            let amount = value.map(|v| v.floor().max(0.0) as u32).unwrap_or(1);
+                            self.upgrade_random_hand(amount);
+                        }
+                        ActionOp::MultiplyTarget => {
+                            if let Some(value) = value {
+                                let scaled = (self.state.target as f64 * value).floor() as i64;
+                                self.state.target = scaled.max(0);
+                            }
+                        }
+                        ActionOp::SetRule => {
+                            if let (Some(key), Some(value)) = (action.target.as_deref(), value) {
+                                self.set_rule_var(key, value);
+                            }
+                        }
+                        ActionOp::AddRule => {
+                            if let (Some(key), Some(value)) = (action.target.as_deref(), value) {
+                                self.add_rule_var(key, value);
+                            }
+                        }
+                        ActionOp::ClearRule => {
+                            if let Some(key) = action.target.as_deref() {
+                                self.set_rule_var(key, 0.0);
+                            }
+                        }
+                        ActionOp::SetVar => {
+                            if let (Some(key), Some(value)) = (action.target.as_deref(), value) {
+                                joker.vars.insert(normalize(key), value);
+                            }
+                        }
+                        ActionOp::AddVar => {
+                            if let (Some(key), Some(value)) = (action.target.as_deref(), value) {
+                                let entry = joker.vars.entry(normalize(key)).or_insert(0.0);
+                                *entry += value;
+                            }
                         }
                     }
-                    ActionOp::SetShopJokerEdition => {
-                        if let Some(target) = action.target.as_deref() {
-                            let price = value.map(|v| v.floor() as i64);
-                            self.set_shop_joker_edition(target, price);
-                        }
-                    }
-                    ActionOp::RerollBoss => {
-                        self.reroll_boss();
-                    }
-                    ActionOp::UpgradeRandomHand => {
-                        let amount = value.map(|v| v.floor().max(0.0) as u32).unwrap_or(1);
-                        self.upgrade_random_hand(amount);
-                    }
-                    ActionOp::MultiplyTarget => {
-                        if let Some(value) = value {
-                            let scaled = (self.state.target as f64 * value).floor() as i64;
-                            self.state.target = scaled.max(0);
-                        }
-                    }
-                    ActionOp::SetRule => {
-                        if let (Some(key), Some(value)) = (action.target.as_deref(), value) {
-                            self.set_rule_var(key, value);
-                        }
-                    }
-                    ActionOp::AddRule => {
-                        if let (Some(key), Some(value)) = (action.target.as_deref(), value) {
-                            self.add_rule_var(key, value);
-                        }
-                    }
-                    ActionOp::ClearRule => {
-                        if let Some(key) = action.target.as_deref() {
-                            self.set_rule_var(key, 0.0);
-                        }
-                    }
-                    ActionOp::SetVar => {
-                        if let (Some(key), Some(value)) = (action.target.as_deref(), value) {
-                            joker.vars.insert(normalize(key), value);
-                        }
-                    }
-                    ActionOp::AddVar => {
-                        if let (Some(key), Some(value)) = (action.target.as_deref(), value) {
-                            let entry = joker.vars.entry(normalize(key)).or_insert(0.0);
-                            *entry += value;
-                        }
-                    }
-                }, // end Builtin match
+                } // end Builtin match
             } // end ActionOpKind match
+        }
+    }
+
+    fn apply_registered_builtin_action(
+        &mut self,
+        op: ActionOp,
+        action: &crate::Action,
+        value: Option<f64>,
+    ) -> bool {
+        let Some(handler) = builtin_action_registry_handler(op) else {
+            return false;
+        };
+        handler(self, action, value);
+        true
+    }
+
+    fn registry_add_hand_size(&mut self, _action: &crate::Action, value: Option<f64>) {
+        if let Some(value) = value {
+            let next = (self.state.hand_size as f64 + value).max(0.0) as usize;
+            self.state.hand_size = next;
+        }
+    }
+
+    fn registry_add_hands(&mut self, _action: &crate::Action, value: Option<f64>) {
+        if let Some(value) = value {
+            let delta = value.floor() as i64;
+            if delta != 0 {
+                let next = (self.state.hands_left as i64 + delta).max(0) as u8;
+                self.state.hands_left = next;
+            }
+        }
+    }
+
+    fn registry_set_hands(&mut self, _action: &crate::Action, value: Option<f64>) {
+        if let Some(value) = value {
+            let next = value.floor().max(0.0) as u8;
+            self.state.hands_left = next;
+        }
+    }
+
+    fn registry_add_discards(&mut self, _action: &crate::Action, value: Option<f64>) {
+        if let Some(value) = value {
+            let delta = value.floor() as i64;
+            if delta != 0 {
+                let next = (self.state.discards_left as i64 + delta).max(0) as u8;
+                self.state.discards_left = next;
+            }
+        }
+    }
+
+    fn registry_set_discards(&mut self, _action: &crate::Action, value: Option<f64>) {
+        if let Some(value) = value {
+            let next = value.floor().max(0.0) as u8;
+            self.state.discards_left = next;
+        }
+    }
+
+    fn registry_add_free_reroll(&mut self, _action: &crate::Action, value: Option<f64>) {
+        if let Some(value) = value {
+            let delta = value.floor() as i64;
+            if delta >= 0 {
+                let added = delta.min(u8::MAX as i64) as u8;
+                self.state.shop_free_rerolls = self.state.shop_free_rerolls.saturating_add(added);
+            } else {
+                let sub = (-delta).min(self.state.shop_free_rerolls as i64) as u8;
+                self.state.shop_free_rerolls = self.state.shop_free_rerolls.saturating_sub(sub);
+            }
+        }
+    }
+
+    fn registry_set_shop_price(&mut self, action: &crate::Action, value: Option<f64>) {
+        if let (Some(target), Some(value)) = (action.target.as_deref(), value) {
+            let price = value.floor().max(0.0) as i64;
+            self.apply_shop_price_override(target, price);
+        }
+    }
+
+    fn registry_disable_boss(&mut self, _action: &crate::Action, _value: Option<f64>) {
+        if self.state.phase == Phase::Shop {
+            self.boss_disable_pending = true;
+        } else {
+            self.boss_disabled = true;
+        }
+    }
+
+    fn registry_add_tag(&mut self, action: &crate::Action, value: Option<f64>) {
+        if let Some(target) = action.target.as_deref() {
+            let count = value.map(|v| v.floor() as i64).unwrap_or(1).max(0) as usize;
+            for _ in 0..count {
+                let tag_id = normalize(target);
+                let should_duplicate = self.state.duplicate_next_tag
+                    && self
+                        .state
+                        .duplicate_tag_exclude
+                        .as_deref()
+                        .map(|ex| ex != tag_id)
+                        .unwrap_or(true);
+                if should_duplicate {
+                    self.state.tags.push(tag_id.clone());
+                    self.state.tags.push(tag_id.clone());
+                    self.state.duplicate_next_tag = false;
+                    self.state.duplicate_tag_exclude = None;
+                } else {
+                    self.state.tags.push(tag_id);
+                }
+            }
+            self.mark_rules_dirty();
+            self.trigger_on_acquire();
+        }
+    }
+
+    fn registry_duplicate_next_tag(&mut self, action: &crate::Action, _value: Option<f64>) {
+        if let Some(target) = action.target.as_deref() {
+            self.state.duplicate_next_tag = true;
+            self.state.duplicate_tag_exclude = Some(normalize(target));
+        } else {
+            self.state.duplicate_next_tag = true;
+            self.state.duplicate_tag_exclude = None;
+        }
+    }
+
+    fn registry_add_pack(&mut self, action: &crate::Action, value: Option<f64>) {
+        if let Some(target) = action.target.as_deref() {
+            let price = value.map(|v| v.floor() as i64);
+            self.add_pack_offer_from_target(target, price);
+        }
+    }
+
+    fn registry_add_shop_joker(&mut self, action: &crate::Action, value: Option<f64>) {
+        if let Some(target) = action.target.as_deref() {
+            let price = value.map(|v| v.floor() as i64);
+            self.add_shop_joker_offer(target, price);
+        }
+    }
+
+    fn registry_add_voucher(&mut self, _action: &crate::Action, value: Option<f64>) {
+        if self.shop.is_some() {
+            let delta = value.map(|v| v.floor() as i64).unwrap_or(1).max(0) as usize;
+            for _ in 0..delta {
+                let offer = self.voucher_offer_for_shop();
+                if let Some(shop) = self.shop.as_mut() {
+                    shop.add_voucher_offer(offer);
+                }
+            }
+        }
+    }
+
+    fn registry_set_reroll_cost(&mut self, _action: &crate::Action, value: Option<f64>) {
+        if let Some(shop) = self.shop.as_mut() {
+            let next = value.map(|v| v.floor() as i64).unwrap_or(0).max(0);
+            shop.reroll_cost = next;
+        }
+    }
+
+    fn registry_set_shop_joker_edition(&mut self, action: &crate::Action, value: Option<f64>) {
+        if let Some(target) = action.target.as_deref() {
+            let price = value.map(|v| v.floor() as i64);
+            self.set_shop_joker_edition(target, price);
+        }
+    }
+
+    fn registry_reroll_boss(&mut self, _action: &crate::Action, _value: Option<f64>) {
+        self.reroll_boss();
+    }
+
+    fn registry_upgrade_random_hand(&mut self, _action: &crate::Action, value: Option<f64>) {
+        let amount = value.map(|v| v.floor().max(0.0) as u32).unwrap_or(1);
+        self.upgrade_random_hand(amount);
+    }
+
+    fn registry_multiply_target(&mut self, _action: &crate::Action, value: Option<f64>) {
+        if let Some(value) = value {
+            let scaled = (self.state.target as f64 * value).floor() as i64;
+            self.state.target = scaled.max(0);
+        }
+    }
+
+    fn registry_set_rule(&mut self, action: &crate::Action, value: Option<f64>) {
+        if let (Some(key), Some(value)) = (action.target.as_deref(), value) {
+            self.set_rule_var(key, value);
+        }
+    }
+
+    fn registry_add_rule(&mut self, action: &crate::Action, value: Option<f64>) {
+        if let (Some(key), Some(value)) = (action.target.as_deref(), value) {
+            self.add_rule_var(key, value);
+        }
+    }
+
+    fn registry_clear_rule(&mut self, action: &crate::Action, _value: Option<f64>) {
+        if let Some(key) = action.target.as_deref() {
+            self.set_rule_var(key, 0.0);
         }
     }
 
@@ -1145,12 +1402,12 @@ impl RunState {
     }
 
     pub(super) fn add_pack_offer_from_target(&mut self, target: &str, price: Option<i64>) {
-        let Some(shop) = self.shop.as_mut() else {
-            return;
-        };
-        let (kind, size) = match parse_pack_target(target) {
+        let (kind, size) = match parse_pack_target(target, &self.config.shop.pack_weights) {
             Some(pair) => pair,
             None => return,
+        };
+        let Some(shop) = self.shop.as_mut() else {
+            return;
         };
         let options = self
             .config
@@ -1262,19 +1519,22 @@ impl RunState {
     }
 }
 
-fn parse_pack_target(target: &str) -> Option<(crate::PackKind, crate::PackSize)> {
+fn parse_pack_target(
+    target: &str,
+    pack_weights: &[crate::PackWeight],
+) -> Option<(crate::PackKind, crate::PackSize)> {
     let norm = normalize(target);
     let mut parts = norm.split('_');
     let kind_part = parts.next().unwrap_or("");
     let size_part = parts.next().unwrap_or("normal");
-    let kind = match kind_part {
-        "arcana" => crate::PackKind::Arcana,
-        "buffoon" => crate::PackKind::Buffoon,
-        "celestial" => crate::PackKind::Celestial,
-        "spectral" => crate::PackKind::Spectral,
-        "standard" => crate::PackKind::Standard,
-        _ => return None,
-    };
+    let kind = pack_weights.iter().find_map(|pack| {
+        let pack_kind = normalize(&format!("{:?}", pack.kind));
+        if pack_kind == kind_part {
+            Some(pack.kind)
+        } else {
+            None
+        }
+    })?;
     let size = match size_part {
         "normal" | "base" => crate::PackSize::Normal,
         "jumbo" => crate::PackSize::Jumbo,
@@ -1282,4 +1542,53 @@ fn parse_pack_target(target: &str) -> Option<(crate::PackKind, crate::PackSize)>
         _ => crate::PackSize::Normal,
     };
     Some((kind, size))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_pack_target_uses_configured_pack_weights_for_kind() {
+        let weights = vec![
+            crate::PackWeight {
+                kind: crate::PackKind::Arcana,
+                size: crate::PackSize::Normal,
+                weight: 1,
+                options: 1,
+                picks: 1,
+            },
+            crate::PackWeight {
+                kind: crate::PackKind::Buffoon,
+                size: crate::PackSize::Mega,
+                weight: 1,
+                options: 1,
+                picks: 1,
+            },
+        ];
+        assert_eq!(
+            parse_pack_target("buffoon_mega", &weights),
+            Some((crate::PackKind::Buffoon, crate::PackSize::Mega))
+        );
+        assert_eq!(parse_pack_target("celestial_mega", &weights), None);
+    }
+
+    #[test]
+    fn builtin_action_registry_covers_state_rule_slice() {
+        let required = [
+            ActionOp::AddHands,
+            ActionOp::SetHands,
+            ActionOp::AddDiscards,
+            ActionOp::SetDiscards,
+            ActionOp::SetRule,
+            ActionOp::AddRule,
+            ActionOp::ClearRule,
+        ];
+        for op in required {
+            assert!(
+                builtin_action_registry_handler(op).is_some(),
+                "missing registry handler for {op:?}"
+            );
+        }
+    }
 }

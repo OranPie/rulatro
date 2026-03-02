@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "contract": {
+    "forbidden_in_core": [
+      "Gameplay ID or name special-cases in runtime logic",
+      "Gameplay-tuning constants embedded in runtime code",
+      "Keyword or alias mapping tables encoded directly in runtime handlers",
+      "Feature-specific branch families that bypass data/mod composition"
+    ],
+    "allowed_in_core": [
+      "Deterministic engine primitives and generic state transitions",
+      "Generic operation dispatch scaffolding",
+      "Schema/version compatibility defaults that do not tune gameplay"
+    ]
+  },
+  "checks": [
+    {
+      "id": "last_consumable_the_fool",
+      "severity": "high",
+      "path": "crates/core/src/run/hand.rs",
+      "pattern": "!def.id.eq_ignore_ascii_case(\"the_fool\")",
+      "message": "special-case ID gate: the_fool bypasses last_consumable tracking"
+    },
+    {
+      "id": "effectop_runtime_match",
+      "severity": "high",
+      "path": "crates/core/src/run/hand.rs",
+      "pattern": "match effect {",
+      "message": "EffectOp execution is still branch-based in core runtime"
+    },
+    {
+      "id": "actionop_runtime_match",
+      "severity": "high",
+      "path": "crates/core/src/run/joker.rs",
+      "pattern": "ActionOpKind::Builtin(op) => match op {",
+      "message": "ActionOp execution is still branch-based in core runtime"
+    },
+    {
+      "id": "hookpoint_runtime_match",
+      "severity": "medium",
+      "path": "crates/core/src/run/hooks.rs",
+      "pattern": "fn activation_for(point: HookPoint)",
+      "message": "hook dispatch still uses explicit core mapping"
+    },
+    {
+      "id": "pack_kind_keyword_mapping",
+      "severity": "medium",
+      "path": "crates/core/src/run/joker.rs",
+      "pattern": "let kind = match kind_part {",
+      "message": "pack kind parsing uses hardcoded keywords"
+    }
+  ],
+  "allowlist": [
+    {
+      "id": "effectop_runtime_match",
+      "reason": "Temporary during migration to data-driven operation registry; keep covered by effects matrix tests."
+    }
+  ]
+}

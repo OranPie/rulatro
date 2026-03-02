@@ -43,6 +43,7 @@ Rules:
 - No asset path assumptions in `core`.
 - No hardcoded gameplay IDs in host frontends.
 - Prefer data-defined behavior + mixin composition over Rust branch growth.
+- Enforce hardcode policy via `tools/hardcoded_behavior_contract.json` + `moddev.py hardcoded`.
 
 ## 5) Related Docs
 

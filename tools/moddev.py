@@ -33,43 +33,7 @@ NAMED_DSL_FILES = {
     "bosses.dsl": "boss",
 }
 SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2}
-HARDCODED_CHECKS = [
-    {
-        "id": "last_consumable_the_fool",
-        "severity": "high",
-        "path": "crates/core/src/run/hand.rs",
-        "pattern": '!def.id.eq_ignore_ascii_case("the_fool")',
-        "message": "special-case ID gate: the_fool bypasses last_consumable tracking",
-    },
-    {
-        "id": "effectop_runtime_match",
-        "severity": "high",
-        "path": "crates/core/src/run/hand.rs",
-        "pattern": "match effect {",
-        "message": "EffectOp execution is still branch-based in core runtime",
-    },
-    {
-        "id": "actionop_runtime_match",
-        "severity": "high",
-        "path": "crates/core/src/run/joker.rs",
-        "pattern": "match action.op {",
-        "message": "ActionOp execution is still branch-based in core runtime",
-    },
-    {
-        "id": "hookpoint_runtime_match",
-        "severity": "medium",
-        "path": "crates/core/src/run/hooks.rs",
-        "pattern": "fn activation_for(point: HookPoint)",
-        "message": "hook dispatch still uses explicit core mapping",
-    },
-    {
-        "id": "pack_kind_keyword_mapping",
-        "severity": "medium",
-        "path": "crates/core/src/run/joker.rs",
-        "pattern": "fn parse_pack_target",
-        "message": "pack kind parsing uses hardcoded keywords",
-    },
-]
+HARDCODED_CONTRACT_DEFAULT = "tools/hardcoded_behavior_contract.json"
 
 
 @dataclass
@@ -280,6 +244,52 @@ def find_pattern_lines(path: Path, pattern: str) -> Tuple[Optional[List[int]], O
         if pattern in line:
             lines.append(idx)
     return lines, None
+
+
+def load_hardcoded_contract(
+    path: Path,
+) -> Tuple[Optional[List[Dict[str, str]]], Optional[Dict[str, str]], Optional[str]]:
+    raw, err = load_json(path)
+    if err:
+        return None, None, err
+    if not isinstance(raw, dict):
+        return None, None, "contract root must be a JSON object"
+
+    checks_raw = raw.get("checks")
+    if not isinstance(checks_raw, list):
+        return None, None, "checks must be an array"
+
+    checks: List[Dict[str, str]] = []
+    for idx, item in enumerate(checks_raw):
+        if not isinstance(item, dict):
+            return None, None, f"checks[{idx}] must be an object"
+        out: Dict[str, str] = {}
+        for field_name in ("id", "severity", "path", "pattern", "message"):
+            value = item.get(field_name)
+            if not isinstance(value, str) or not value.strip():
+                return None, None, f"checks[{idx}].{field_name} must be a non-empty string"
+            out[field_name] = value.strip()
+        checks.append(out)
+
+    allow_raw = raw.get("allowlist", [])
+    if allow_raw is None:
+        allow_raw = []
+    if not isinstance(allow_raw, list):
+        return None, None, "allowlist must be an array"
+
+    allowlist: Dict[str, str] = {}
+    for idx, item in enumerate(allow_raw):
+        if not isinstance(item, dict):
+            return None, None, f"allowlist[{idx}] must be an object"
+        check_id = item.get("id")
+        reason = item.get("reason")
+        if not isinstance(check_id, str) or not check_id.strip():
+            return None, None, f"allowlist[{idx}].id must be a non-empty string"
+        if not isinstance(reason, str) or not reason.strip():
+            return None, None, f"allowlist[{idx}].reason must be a non-empty string"
+        allowlist[check_id.strip()] = reason.strip()
+
+    return checks, allowlist, None
 
 
 def validate_manifest(mod_dir: Path) -> ValidationResult:
@@ -750,11 +760,19 @@ def cmd_inspect(args: argparse.Namespace) -> int:
 
 def cmd_hardcoded(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
+    contract_path = Path(args.contract)
+    if not contract_path.is_absolute():
+        contract_path = root / contract_path
+    checks_raw, allowlist, contract_err = load_hardcoded_contract(contract_path)
+    if contract_err is not None or checks_raw is None or allowlist is None:
+        print(f"contract load error: {contract_err} ({contract_path})", file=sys.stderr)
+        return 2
     checks = sorted(
-        HARDCODED_CHECKS,
+        checks_raw,
         key=lambda item: (SEVERITY_ORDER.get(str(item["severity"]), 99), str(item["id"])),
     )
-    found = 0
+    allowlisted_found = 0
+    blocking_found = 0
     missing = 0
     errors = 0
 
@@ -775,14 +793,22 @@ def cmd_hardcoded(args: argparse.Namespace) -> int:
         line_str = ", ".join(str(value) for value in lines[:3])
         if len(lines) > 3:
             line_str += ", ..."
+        allow_reason = allowlist.get(str(item["id"]))
+        if allow_reason is not None:
+            print(f"- [{severity}] {item['id']}: allowlisted")
+            print(f"  {item['message']}")
+            print(f"  {file_path}:{line_str}")
+            print(f"  reason: {allow_reason}")
+            allowlisted_found += 1
+            continue
         print(f"- [{severity}] {item['id']}: {item['message']}")
         print(f"  {file_path}:{line_str}")
-        found += 1
+        blocking_found += 1
 
     print(
-        f"\naudit complete: {found} found, {missing} missing, {errors} read error(s), {len(checks)} rule(s)"
+        f"\naudit complete: {blocking_found} blocking found, {allowlisted_found} allowlisted found, {missing} missing, {errors} read error(s), {len(checks)} rule(s)"
     )
-    if args.strict and found > 0:
+    if args.strict and blocking_found > 0:
         return 1
     if errors > 0:
         return 2
@@ -918,9 +944,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="repository root used for file lookup (default: current directory)",
     )
     hardcoded_p.add_argument(
+        "--contract",
+        default=HARDCODED_CONTRACT_DEFAULT,
+        help="hardcoded contract JSON path (default: tools/hardcoded_behavior_contract.json)",
+    )
+    hardcoded_p.add_argument(
         "--strict",
         action="store_true",
-        help="return exit code 1 when hardcoded anchors are found",
+        help="return exit code 1 when non-allowlisted hardcoded anchors are found",
     )
     hardcoded_p.set_defaults(func=cmd_hardcoded)
 

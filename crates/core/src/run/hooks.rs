@@ -31,6 +31,62 @@ pub(super) enum HookPoint {
     Passive,
 }
 
+impl HookPoint {
+    const ALL: [Self; 24] = [
+        Self::Played,
+        Self::ScoredPre,
+        Self::Scored,
+        Self::Held,
+        Self::Independent,
+        Self::Discard,
+        Self::DiscardBatch,
+        Self::CardDestroyed,
+        Self::CardAdded,
+        Self::RoundEnd,
+        Self::HandEnd,
+        Self::BlindStart,
+        Self::BlindFailed,
+        Self::ShopEnter,
+        Self::ShopReroll,
+        Self::ShopExit,
+        Self::PackOpened,
+        Self::PackSkipped,
+        Self::UseConsumable,
+        Self::Sell,
+        Self::AnySell,
+        Self::Acquire,
+        Self::OtherJokers,
+        Self::Passive,
+    ];
+}
+
+const HOOK_ACTIVATION_BINDINGS: &[(HookPoint, ActivationType)] = &[
+    (HookPoint::Played, ActivationType::OnPlayed),
+    (HookPoint::ScoredPre, ActivationType::OnScoredPre),
+    (HookPoint::Scored, ActivationType::OnScored),
+    (HookPoint::Held, ActivationType::OnHeld),
+    (HookPoint::Independent, ActivationType::Independent),
+    (HookPoint::Discard, ActivationType::OnDiscard),
+    (HookPoint::DiscardBatch, ActivationType::OnDiscardBatch),
+    (HookPoint::CardDestroyed, ActivationType::OnCardDestroyed),
+    (HookPoint::CardAdded, ActivationType::OnCardAdded),
+    (HookPoint::RoundEnd, ActivationType::OnRoundEnd),
+    (HookPoint::HandEnd, ActivationType::OnHandEnd),
+    (HookPoint::BlindStart, ActivationType::OnBlindStart),
+    (HookPoint::BlindFailed, ActivationType::OnBlindFailed),
+    (HookPoint::ShopEnter, ActivationType::OnShopEnter),
+    (HookPoint::ShopReroll, ActivationType::OnShopReroll),
+    (HookPoint::ShopExit, ActivationType::OnShopExit),
+    (HookPoint::PackOpened, ActivationType::OnPackOpened),
+    (HookPoint::PackSkipped, ActivationType::OnPackSkipped),
+    (HookPoint::UseConsumable, ActivationType::OnUse),
+    (HookPoint::Sell, ActivationType::OnSell),
+    (HookPoint::AnySell, ActivationType::OnAnySell),
+    (HookPoint::Acquire, ActivationType::OnAcquire),
+    (HookPoint::OtherJokers, ActivationType::OnOtherJokers),
+    (HookPoint::Passive, ActivationType::Passive),
+];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) enum HookPriority {
     CoreRules = 0,
@@ -418,6 +474,10 @@ impl HookRegistry {
     }
 
     pub(super) fn with_defaults() -> Self {
+        assert!(
+            hook_activation_bindings_valid(),
+            "invalid HookPoint -> ActivationType bindings"
+        );
         let mut registry = Self::new();
         // TODO: expose hook registration to mod runtime (mixin injection).
         registry.register(Box::new(ModRuntimeHook::new(crate::ModHookPhase::Pre)));
@@ -525,7 +585,7 @@ impl RuleHook for ModRuntimeHook {
         let Some(runtime) = run.mod_runtime.as_mut() else {
             return HookResult::Continue;
         };
-        let Some(trigger) = activation_for(point) else {
+        let Some(trigger) = hook_trigger_for(point) else {
             return HookResult::Continue;
         };
         let inject = std::mem::replace(&mut args.inject, HookInject::none());
@@ -640,7 +700,7 @@ impl RuleHook for JokerDslHook {
             args.inject = inject;
             return HookResult::Continue;
         }
-        let Some(trigger) = activation_for(point) else {
+        let Some(trigger) = hook_trigger_for(point) else {
             args.inject = inject;
             return HookResult::Continue;
         };
@@ -696,7 +756,7 @@ impl RuleHook for BossHook {
         if run.boss_disabled() {
             return HookResult::Continue;
         }
-        let Some(trigger) = activation_for(point) else {
+        let Some(trigger) = hook_trigger_for(point) else {
             return HookResult::Continue;
         };
         let inject = std::mem::replace(&mut args.inject, HookInject::none());
@@ -759,7 +819,7 @@ impl RuleHook for TagHook {
         if run.state.tags.is_empty() {
             return HookResult::Continue;
         }
-        let Some(trigger) = activation_for(point) else {
+        let Some(trigger) = hook_trigger_for(point) else {
             return HookResult::Continue;
         };
         let inject = std::mem::replace(&mut args.inject, HookInject::none());
@@ -807,33 +867,31 @@ impl RuleHook for TagHook {
     }
 }
 
-fn activation_for(point: HookPoint) -> Option<ActivationType> {
-    match point {
-        HookPoint::Played => Some(ActivationType::OnPlayed),
-        HookPoint::ScoredPre => Some(ActivationType::OnScoredPre),
-        HookPoint::Scored => Some(ActivationType::OnScored),
-        HookPoint::Held => Some(ActivationType::OnHeld),
-        HookPoint::Independent => Some(ActivationType::Independent),
-        HookPoint::Discard => Some(ActivationType::OnDiscard),
-        HookPoint::DiscardBatch => Some(ActivationType::OnDiscardBatch),
-        HookPoint::CardDestroyed => Some(ActivationType::OnCardDestroyed),
-        HookPoint::CardAdded => Some(ActivationType::OnCardAdded),
-        HookPoint::RoundEnd => Some(ActivationType::OnRoundEnd),
-        HookPoint::HandEnd => Some(ActivationType::OnHandEnd),
-        HookPoint::BlindStart => Some(ActivationType::OnBlindStart),
-        HookPoint::BlindFailed => Some(ActivationType::OnBlindFailed),
-        HookPoint::ShopEnter => Some(ActivationType::OnShopEnter),
-        HookPoint::ShopReroll => Some(ActivationType::OnShopReroll),
-        HookPoint::ShopExit => Some(ActivationType::OnShopExit),
-        HookPoint::PackOpened => Some(ActivationType::OnPackOpened),
-        HookPoint::PackSkipped => Some(ActivationType::OnPackSkipped),
-        HookPoint::UseConsumable => Some(ActivationType::OnUse),
-        HookPoint::Sell => Some(ActivationType::OnSell),
-        HookPoint::AnySell => Some(ActivationType::OnAnySell),
-        HookPoint::Acquire => Some(ActivationType::OnAcquire),
-        HookPoint::OtherJokers => Some(ActivationType::OnOtherJokers),
-        HookPoint::Passive => Some(ActivationType::Passive),
+fn hook_activation_bindings_valid() -> bool {
+    for (idx, (point, _)) in HOOK_ACTIVATION_BINDINGS.iter().enumerate() {
+        if !HookPoint::ALL.contains(point) {
+            return false;
+        }
+        if HOOK_ACTIVATION_BINDINGS
+            .iter()
+            .skip(idx + 1)
+            .any(|(other, _)| other == point)
+        {
+            return false;
+        }
     }
+    HookPoint::ALL.iter().all(|point| {
+        HOOK_ACTIVATION_BINDINGS
+            .iter()
+            .any(|(other, _)| other == point)
+    })
+}
+
+fn hook_trigger_for(point: HookPoint) -> Option<ActivationType> {
+    HOOK_ACTIVATION_BINDINGS
+        .iter()
+        .find(|(hook_point, _)| *hook_point == point)
+        .map(|(_, trigger)| *trigger)
 }
 
 fn build_eval_context<'a>(point: HookPoint, run: &RunState, view: HookView<'a>) -> EvalContext<'a> {
@@ -1051,4 +1109,32 @@ fn apply_effect_list(
     }
 
     triggered
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hook_activation_bindings_cover_all_points() {
+        assert!(hook_activation_bindings_valid());
+        for point in HookPoint::ALL {
+            assert!(
+                hook_trigger_for(point).is_some(),
+                "missing trigger for {point:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn hook_activation_bindings_keep_sell_semantics() {
+        assert_eq!(
+            hook_trigger_for(HookPoint::Sell),
+            Some(ActivationType::OnSell)
+        );
+        assert_eq!(
+            hook_trigger_for(HookPoint::AnySell),
+            Some(ActivationType::OnAnySell)
+        );
+    }
 }

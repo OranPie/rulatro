@@ -17,7 +17,7 @@ Use this checklist before tagging or announcing a release.
 ## 2) Modding / Content Validation
 
 - [ ] `./tools/python tools/moddev.py validate mods`
-- [ ] `./tools/python tools/moddev.py hardcoded --root .`
+- [ ] `./tools/python tools/moddev.py hardcoded --root . --strict`
 - [ ] verify mixin and hook behavior changes are documented
 
 ## 3) Frontend Smoke Checks

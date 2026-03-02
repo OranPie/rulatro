@@ -1,28 +1,30 @@
-# Hardcoded Behavior Audit (List First)
+# Hardcoded Behavior Audit Contract
 
 > Status: Active
 > Audience: Engine contributors
-> Last Reviewed: 2026-02-15
+> Last Reviewed: 2026-03-02
 > Doc Type: Runbook
 
-This list tracks behavior still fixed in `core` instead of fully data-defined paths.
-Priority is ordered High -> Medium.
+This runbook defines the contract for what must not be encoded in `core`, and how to track temporary exceptions during migration.
 
-## 1) High
+## 1) Contract Source of Truth
 
-1. `the_fool` special-case in last-consumable tracking  
-   - `crates/core/src/run/hand.rs`
-2. `EffectOp` runtime execution uses explicit match branches  
-   - `crates/core/src/run/hand.rs`
-3. `ActionOp` runtime execution uses explicit match branches  
-   - `crates/core/src/run/joker.rs`
+- Contract file: `tools/hardcoded_behavior_contract.json`
+- It defines:
+  - forbidden behavior categories in `core`,
+  - allowed exception categories (engine scaffolding only),
+  - concrete audit checks (`id`, `severity`, `path`, `pattern`, `message`),
+  - temporary allowlist entries with mandatory reasons.
 
-## 2) Medium
+## 2) Current Anchors and Allowlist Policy
 
-1. Hook dispatch mapping is explicit in runtime  
-   - `crates/core/src/run/hooks.rs`
-2. Pack kind parsing uses hardcoded keywords  
-   - `crates/core/src/run/joker.rs`
+- `last_consumable_the_fool` is expected to stay **missing** (resolved regression guard).
+- `actionop_runtime_match` is expected to stay **missing** (shop-related builtin actions now use registry dispatch).
+- `hookpoint_runtime_match` is expected to stay **missing** (hookpoint mapping now uses declarative binding table + validation).
+- The following anchors are currently allowlisted debt and must be removed over time:
+  - `effectop_runtime_match`
+- `pack_kind_keyword_mapping` is expected to stay **missing** (pack kind keyword mapping extracted from hardcoded match logic).
+- Rule: add allowlist entries only for migration debt that already has test coverage and a tracked extraction todo.
 
 ## 3) How To Check
 
@@ -32,14 +34,20 @@ Run:
 ./tools/python tools/moddev.py hardcoded --root .
 ```
 
-Strict mode (non-zero exit when anchors are found):
+Strict mode fails only on non-allowlisted findings:
 
 ```bash
 ./tools/python tools/moddev.py hardcoded --root . --strict
 ```
 
+Optional explicit contract path:
+
+```bash
+./tools/python tools/moddev.py hardcoded --root . --contract tools/hardcoded_behavior_contract.json
+```
+
 ## 4) Migration Direction
 
-- Prefer data package composition (`mixins`, DSL effects, content rules).
-- Keep `core` focused on generic execution engine APIs.
-- Convert one hardcoded branch family at a time, with tests per slice.
+- Keep `core` as deterministic, generic execution infrastructure.
+- Move gameplay identifiers, keyword aliases, and tuning constants into content/config/mod definitions.
+- Remove allowlist entries one slice at a time, with parity tests per slice.

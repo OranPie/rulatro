@@ -1,0 +1,21 @@
+name: Hardcoded Behavior Audit
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  hardcoded-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify Python wrapper
+        run: ./tools/python --version
+
+      - name: Enforce hardcoded contract
+        run: ./tools/python tools/moddev.py hardcoded --root . --strict
