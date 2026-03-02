@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::fmt;
 use thiserror::Error;
 
+mod action_handlers;
 mod blind;
 mod context;
 mod eval;
