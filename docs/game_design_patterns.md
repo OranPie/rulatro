@@ -2,7 +2,7 @@
 
 > Status: Active
 > Audience: Gameplay designers, content tuners, engine developers
-> Last Reviewed: 2026-02-17
+> Last Reviewed: 2026-03-02
 > Doc Type: Guide
 
 This guide captures repeatable design patterns for balancing run variety, player agency, and deterministic simulation.
@@ -33,7 +33,7 @@ This guide captures repeatable design patterns for balancing run variety, player
 
 - **Intent**: reward committing to a strategy while allowing late pivots.
 - **Tuning knobs**: joker pool breadth, consumable frequency, voucher/shop slot mix.
-- **Typical levers**: `assets/content/jokers.dsl`, `assets/content/planets.json`, `assets/shop.json`.
+- **Typical levers**: `assets/content/jokers.dsl`, `assets/content/planets.json`, `assets/shop.json`, `assets/vouchers.json`.
 - **Failure mode**: early RNG lock-in that makes the rest of the run scripted.
 
 ### C) Controlled Randomness

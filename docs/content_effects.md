@@ -2,7 +2,7 @@
 
 > Status: Active
 > Audience: Engine developers, content authors, mod authors
-> Last Reviewed: 2026-02-15
+> Last Reviewed: 2026-03-02
 > Doc Type: Reference
 
 This document summarizes enhancement data/effects, Joker DSL conditions, and
@@ -206,3 +206,84 @@ Selection-required effects:
 - ConvertLeftIntoRight (requires exactly 2 cards)
 
 See `crates/core/src/effects.rs` and `crates/core/src/run/hand.rs` for full details.
+
+## 4) Vouchers (JSON)
+
+Vouchers are defined in `assets/vouchers.json` and loaded into `Content.vouchers` by
+`rulatro-data`. Use `Content::voucher_by_id(id)` at runtime; do not access any static array.
+
+### Schema
+
+```json
+{
+  "id": "overstock_norm",
+  "name_en": "Overstock",
+  "name_zh": "过量库存",
+  "effect_en": "+1 card slot in shop",
+  "effect_zh": "商店增加1个卡位",
+  "effect": { "AddShopCardSlots": 1 }
+}
+```
+
+### VoucherEffect variants
+
+- `None`
+- `AddShopCardSlots(u8)` — extra card offer slots
+- `AddConsumableSlots(u8)` — extra consumable inventory slots
+- `AddJokerSlots(u8)` — extra joker inventory slots
+- `AddHandsPerRound(u8)` — extra hands per blind
+- `AddDiscardsPerRound(u8)` — extra discards per blind
+- `AddHandSizeBase(u8)` — larger starting hand size
+- `AddTarotWeight(u32)` — increased tarot offer weight
+- `AddPlanetWeight(u32)` — increased planet offer weight
+- `ReduceRerollBase(i64)` — cheaper base reroll cost
+- `SetShopDiscountPercent(u8)` — percentage discount on all shop items
+
+### Extending vouchers
+
+To add a new voucher using an existing `VoucherEffect` variant, only edit `assets/vouchers.json`.
+To add a new *kind* of voucher effect, add a variant to `VoucherEffect` in `vouchers.rs` and
+handle it in the relevant `run/shop.rs` methods.
+
+## 5) Card Conditional Rules
+
+Two data tables drive per-card flag + predicate checks without hardcoded Rust branches.
+Both are loaded into `Content` and evaluated via `CardConditionalRule::condition.matches()`.
+
+### `assets/card_debuff_rules.json`
+
+Controls which cards are debuffed when a boss rule flag is set.
+Loaded into `Content.debuff_rules`. Evaluated in `is_card_debuffed()`.
+
+```json
+[
+  { "key": "debuff_face",          "condition": "is_face" },
+  { "key": "debuff_suit_spades",   "condition": { "is_suit": "Spades" } },
+  { "key": "debuff_suit_hearts",   "condition": { "is_suit": "Hearts" } },
+  { "key": "debuff_suit_clubs",    "condition": { "is_suit": "Clubs" } },
+  { "key": "debuff_suit_diamonds", "condition": { "is_suit": "Diamonds" } },
+  { "key": "debuff_played_ante",   "condition": "played_this_ante" }
+]
+```
+
+### `assets/card_draw_facedown_rules.json`
+
+Controls which cards are drawn face-down via a rule flag + card predicate.
+Loaded into `Content.draw_facedown_rules`. Evaluated in `should_draw_face_down()`.
+
+```json
+[
+  { "key": "draw_face_down_face", "condition": "is_face" }
+]
+```
+
+### `CardCondition` variants
+
+- `"is_face"` — card rank is Jack, Queen, or King
+- `{ "is_suit": "<Suit>" }` — card suit equals Spades/Hearts/Clubs/Diamonds
+- `"played_this_ante"` — card ID appears in `state.played_card_ids_ante`
+
+To add a new debuff type (e.g. debuff Aces), add an entry to `card_debuff_rules.json` and a
+matching `set_rule debuff_ace 1` in the relevant boss DSL block. No Rust change is needed
+unless the condition type itself is new — in which case add a `CardCondition` variant.
+
