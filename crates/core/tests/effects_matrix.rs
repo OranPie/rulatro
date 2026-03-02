@@ -700,3 +700,305 @@ fn effect_with_condition_formats_compact_text() {
         "on scored when x > 3 { set_var score 10 }"
     );
 }
+
+// ── Custom ActionOpKind ──────────────────────────────────────────────────────
+
+#[test]
+fn action_custom_keyword_formats() {
+    let action = Action {
+        op: ActionOpKind::Custom("my_mod_effect".to_string()),
+        target: None,
+        value: Expr::Number(5.0),
+    };
+    assert_eq!(format_action_compact(&action), "my_mod_effect 5");
+}
+
+#[test]
+fn action_custom_keyword_with_target_formats() {
+    let action = Action {
+        op: ActionOpKind::Custom("mod_enhance".to_string()),
+        target: Some("gold".to_string()),
+        value: Expr::Number(1.0),
+    };
+    assert_eq!(format_action_compact(&action), "mod_enhance gold 1");
+}
+
+#[test]
+fn action_opkind_builtin_and_custom_differ() {
+    let builtin = ActionOpKind::Builtin(ActionOp::AddMoney);
+    let custom = ActionOpKind::Custom("add_money".to_string());
+    assert_ne!(builtin, custom);
+}
+
+// ── Multiple actions in a JokerEffect ───────────────────────────────────────
+
+#[test]
+fn effect_with_multiple_actions_semicolon_joined() {
+    let effect = JokerEffect {
+        trigger: ActivationType::OnPlayed,
+        when: Expr::Bool(true),
+        actions: vec![
+            Action {
+                op: ActionOpKind::Builtin(ActionOp::AddChips),
+                target: None,
+                value: Expr::Number(10.0),
+            },
+            Action {
+                op: ActionOpKind::Builtin(ActionOp::AddMult),
+                target: None,
+                value: Expr::Number(2.0),
+            },
+            Action {
+                op: ActionOpKind::Builtin(ActionOp::AddMoney),
+                target: None,
+                value: Expr::Number(3.0),
+            },
+        ],
+    };
+    assert_eq!(
+        format_joker_effect_compact(&effect),
+        "on played { add_chips 10; add_mult 2; add_money 3 }"
+    );
+}
+
+#[test]
+fn effect_with_no_actions_omits_braces() {
+    let effect = JokerEffect {
+        trigger: ActivationType::OnSell,
+        when: Expr::Bool(true),
+        actions: vec![],
+    };
+    assert_eq!(format_joker_effect_compact(&effect), "on sell");
+}
+
+// ── Expr::Bool and Expr special cases ───────────────────────────────────────
+
+#[test]
+fn expr_bool_true_formats() {
+    assert_eq!(format_expr_compact(&Expr::Bool(true)), "true");
+}
+
+#[test]
+fn expr_bool_false_formats() {
+    assert_eq!(format_expr_compact(&Expr::Bool(false)), "false");
+}
+
+#[test]
+fn expr_call_no_args_formats() {
+    let call = Expr::Call {
+        name: "rand".to_string(),
+        args: vec![],
+    };
+    assert_eq!(format_expr_compact(&call), "rand()");
+}
+
+#[test]
+fn expr_call_single_string_arg_formats() {
+    let call = Expr::Call {
+        name: "contains".to_string(),
+        args: vec![Expr::String("flush".to_string())],
+    };
+    assert_eq!(format_expr_compact(&call), "contains(\"flush\")");
+}
+
+#[test]
+fn expr_nested_unary_not_then_neg_formats() {
+    let inner = Expr::Unary {
+        op: UnaryOp::Neg,
+        expr: Box::new(Expr::Number(3.0)),
+    };
+    let outer = Expr::Unary {
+        op: UnaryOp::Not,
+        expr: Box::new(inner),
+    };
+    assert_eq!(format_expr_compact(&outer), "!-3");
+}
+
+#[test]
+fn expr_binary_right_nested_wraps() {
+    let right_inner = Expr::Binary {
+        left: Box::new(Expr::Number(2.0)),
+        op: BinaryOp::Add,
+        right: Box::new(Expr::Number(3.0)),
+    };
+    let outer = Expr::Binary {
+        left: Box::new(Expr::Number(1.0)),
+        op: BinaryOp::Mul,
+        right: Box::new(right_inner),
+    };
+    assert_eq!(format_expr_compact(&outer), "1 * (2 + 3)");
+}
+
+// ── keyword round-trip: every alias maps to expected variant ─────────────────
+
+#[test]
+fn keyword_aliases_are_exhaustive_spot_check() {
+    // aliases that are less obvious — verify the secondary forms also parse
+    assert_eq!(
+        ActionOp::from_keyword("HANDS_SET"),
+        Some(ActionOp::SetHands)
+    );
+    assert_eq!(
+        ActionOp::from_keyword("SET_HANDS_LEFT"),
+        Some(ActionOp::SetHands)
+    );
+    assert_eq!(
+        ActionOp::from_keyword("TARGET_MULT"),
+        Some(ActionOp::MultiplyTarget)
+    );
+    assert_eq!(
+        ActionOp::from_keyword("RULE_CLEAR"),
+        Some(ActionOp::ClearRule)
+    );
+    assert_eq!(
+        ActionOp::from_keyword("SHOP_JOKER_EDITION"),
+        Some(ActionOp::SetShopJokerEdition)
+    );
+    assert_eq!(
+        ActionOp::from_keyword("BOSS_REROLL"),
+        Some(ActionOp::RerollBoss)
+    );
+    assert_eq!(
+        ActionOp::from_keyword("VOUCHER_ADD"),
+        Some(ActionOp::AddVoucher)
+    );
+    assert_eq!(
+        ActionOp::from_keyword("SURVIVE"),
+        Some(ActionOp::PreventDeath)
+    );
+    assert_eq!(
+        ActionOp::from_keyword("DUP_NEXT_TAG"),
+        Some(ActionOp::DuplicateNextTag)
+    );
+    assert_eq!(
+        ActionOp::from_keyword("ADD_BOOSTER_PACK"),
+        Some(ActionOp::AddPack)
+    );
+    assert_eq!(
+        ActionOp::from_keyword("SHOP_JOKER"),
+        Some(ActionOp::AddShopJoker)
+    );
+    assert_eq!(
+        ActionOp::from_keyword("COPY_LEFTMOST_JOKER"),
+        Some(ActionOp::CopyJokerLeftmost)
+    );
+    assert_eq!(
+        ActionOp::from_keyword("COPY_RIGHT_JOKER"),
+        Some(ActionOp::CopyJokerRight)
+    );
+    assert_eq!(
+        ActionOp::from_keyword("DESTROY_LEFT_JOKER"),
+        Some(ActionOp::DestroyJokerLeft)
+    );
+    assert_eq!(
+        ActionOp::from_keyword("DESTROY_RIGHT_JOKER"),
+        Some(ActionOp::DestroyJokerRight)
+    );
+    assert_eq!(
+        ActionOp::from_keyword("DUP_RANDOM_JOKER"),
+        Some(ActionOp::DuplicateRandomJoker)
+    );
+    assert_eq!(
+        ActionOp::from_keyword("DUP_RANDOM_CONSUMABLE"),
+        Some(ActionOp::DuplicateRandomConsumable)
+    );
+}
+
+#[test]
+fn keyword_case_insensitive_mixed_case() {
+    assert_eq!(
+        ActionOp::from_keyword("Add_Chips"),
+        Some(ActionOp::AddChips)
+    );
+    assert_eq!(
+        ActionOp::from_keyword("MUL_MULT"),
+        Some(ActionOp::MultiplyMult)
+    );
+    assert_eq!(
+        ActionOp::from_keyword("Retrigger_Scored"),
+        Some(ActionOp::RetriggerScored)
+    );
+    assert_eq!(
+        ActionOp::from_keyword("Disable_Boss"),
+        Some(ActionOp::DisableBoss)
+    );
+}
+
+// ── requires_target completeness ─────────────────────────────────────────────
+
+#[test]
+fn requires_target_retrigger_held_false() {
+    assert!(!ActionOp::RetriggerHeld.requires_target());
+}
+
+#[test]
+fn requires_target_upgrade_hand_false() {
+    assert!(!ActionOp::UpgradeHand.requires_target());
+}
+
+#[test]
+fn requires_target_upgrade_random_hand_false() {
+    assert!(!ActionOp::UpgradeRandomHand.requires_target());
+}
+
+#[test]
+fn requires_target_destroy_self_false() {
+    assert!(!ActionOp::DestroySelf.requires_target());
+}
+
+#[test]
+fn requires_target_add_random_hand_card_false() {
+    assert!(!ActionOp::AddRandomHandCard.requires_target());
+}
+
+#[test]
+fn requires_target_multiply_target_false() {
+    assert!(!ActionOp::MultiplyTarget.requires_target());
+}
+
+#[test]
+fn requires_target_copy_joker_leftmost_false() {
+    assert!(!ActionOp::CopyJokerLeftmost.requires_target());
+}
+
+#[test]
+fn requires_target_add_free_reroll_false() {
+    assert!(!ActionOp::AddFreeReroll.requires_target());
+}
+
+// ── JokerEffect when=false omits "when" prefix ────────────────────────────────
+
+#[test]
+fn effect_when_false_shows_in_output() {
+    let effect = JokerEffect {
+        trigger: ActivationType::OnHeld,
+        when: Expr::Bool(false),
+        actions: vec![Action {
+            op: ActionOpKind::Builtin(ActionOp::AddMult),
+            target: None,
+            value: Expr::Number(1.0),
+        }],
+    };
+    assert_eq!(
+        format_joker_effect_compact(&effect),
+        "on held when false { add_mult 1 }"
+    );
+}
+
+#[test]
+fn effect_when_true_omits_when_clause() {
+    let effect = JokerEffect {
+        trigger: ActivationType::Independent,
+        when: Expr::Bool(true),
+        actions: vec![Action {
+            op: ActionOpKind::Builtin(ActionOp::AddChips),
+            target: None,
+            value: Expr::Number(5.0),
+        }],
+    };
+    // "when true" should be omitted per format_joker_effect_compact logic
+    assert_eq!(
+        format_joker_effect_compact(&effect),
+        "on independent { add_chips 5 }"
+    );
+}

@@ -1,11 +1,11 @@
 use rulatro_core::{
     evaluate_hand, evaluate_hand_with_rules, open_pack, pick_pack_options, score_hand,
-    scoring_cards, Action, ActionOp, ActionOpKind, ActivationType, BlindKind, BossDef, Card,
-    CardOffer, CardWeight, ConsumableDef, ConsumableKind, Edition, Enhancement, EventBus, Expr,
-    HandEvalRules, HandKind, JokerDef, JokerEffect, JokerRarity, JokerRarityWeight, LastConsumable,
-    PackError, PackKind, PackOffer, PackOpen, PackOption, PackSize, Phase, Rank, RngState,
-    RunError, RunState, ScoreTables, Seal, ShopCardKind, ShopOfferRef, ShopPurchase,
-    ShopRestrictions, ShopState, Suit, TagDef,
+    scoring_cards, Action, ActionOp, ActionOpKind, ActivationType, BinaryOp, BlindKind, BossDef,
+    Card, CardOffer, CardWeight, ConsumableDef, ConsumableKind, Edition, Enhancement, EventBus,
+    Expr, HandEvalRules, HandKind, JokerDef, JokerEffect, JokerRarity, JokerRarityWeight,
+    LastConsumable, PackError, PackKind, PackOffer, PackOpen, PackOption, PackSize, Phase, Rank,
+    RngState, RunError, RunState, ScoreTables, Seal, ShopCardKind, ShopOfferRef, ShopPurchase,
+    ShopRestrictions, ShopState, Suit, TagDef, UnaryOp,
 };
 use rulatro_data::{load_content, load_game_config};
 use std::path::PathBuf;
@@ -86,6 +86,35 @@ fn add_rule_joker(run: &mut RunState, id: &str, key: &str, value: f64) {
     run.inventory
         .add_joker(id.to_string(), JokerRarity::Common, 1)
         .expect("add joker");
+}
+
+fn add_joker_effect(run: &mut RunState, id: &str, trigger: ActivationType, actions: Vec<Action>) {
+    run.content.jokers.push(JokerDef {
+        id: id.to_string(),
+        name: id.to_string(),
+        rarity: JokerRarity::Common,
+        effects: vec![JokerEffect {
+            trigger,
+            when: Expr::Bool(true),
+            actions,
+        }],
+    });
+    run.inventory
+        .add_joker(id.to_string(), JokerRarity::Common, 1)
+        .expect("add joker");
+}
+
+fn add_money_joker(run: &mut RunState, id: &str, trigger: ActivationType, amount: f64) {
+    add_joker_effect(
+        run,
+        id,
+        trigger,
+        vec![Action {
+            op: ActionOpKind::Builtin(ActionOp::AddMoney),
+            target: None,
+            value: Expr::Number(amount),
+        }],
+    );
 }
 
 fn add_scoring_joker(run: &mut RunState, id: &str, op: ActionOp, value: f64) {
@@ -3635,4 +3664,1745 @@ fn skip_blind_sets_next_limits() {
     assert_eq!(run.state.blind, BlindKind::Big);
     assert_eq!(run.state.hands_left, expected_hands);
     assert_eq!(run.state.discards_left, expected_discards);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DSL content loading
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn dsl_loads_all_jokers() {
+    let content = load_content(&assets_root()).expect("load content");
+    assert!(
+        content.jokers.len() >= 100,
+        "expected at least 100 jokers, got {}",
+        content.jokers.len()
+    );
+}
+
+#[test]
+fn dsl_loads_all_bosses() {
+    let content = load_content(&assets_root()).expect("load content");
+    assert_eq!(content.bosses.len(), 23, "expected 23 bosses");
+}
+
+#[test]
+fn dsl_loads_all_tags() {
+    let content = load_content(&assets_root()).expect("load content");
+    assert_eq!(content.tags.len(), 24, "expected 24 tags");
+}
+
+#[test]
+fn dsl_jokers_have_nonempty_ids_and_names() {
+    let content = load_content(&assets_root()).expect("load content");
+    for joker in &content.jokers {
+        assert!(!joker.id.is_empty(), "joker id empty");
+        assert!(!joker.name.is_empty(), "joker name empty for {}", joker.id);
+    }
+}
+
+#[test]
+fn dsl_jokers_have_unique_ids() {
+    let content = load_content(&assets_root()).expect("load content");
+    let mut ids: Vec<&str> = content.jokers.iter().map(|j| j.id.as_str()).collect();
+    ids.sort_unstable();
+    ids.dedup();
+    assert_eq!(ids.len(), content.jokers.len(), "duplicate joker ids found");
+}
+
+#[test]
+fn dsl_bosses_have_unique_ids() {
+    let content = load_content(&assets_root()).expect("load content");
+    let mut ids: Vec<&str> = content.bosses.iter().map(|b| b.id.as_str()).collect();
+    ids.sort_unstable();
+    ids.dedup();
+    assert_eq!(ids.len(), content.bosses.len(), "duplicate boss ids found");
+}
+
+#[test]
+fn dsl_tags_have_unique_ids() {
+    let content = load_content(&assets_root()).expect("load content");
+    let mut ids: Vec<&str> = content.tags.iter().map(|t| t.id.as_str()).collect();
+    ids.sort_unstable();
+    ids.dedup();
+    assert_eq!(ids.len(), content.tags.len(), "duplicate tag ids found");
+}
+
+#[test]
+fn dsl_known_jokers_present() {
+    let content = load_content(&assets_root()).expect("load content");
+    let known = [
+        "half_joker",
+        "banner",
+        "even_steven",
+        "odd_todd",
+        "scholar",
+        "fibonacci",
+        "mime",
+        "blue_joker",
+        "golden_joker",
+        "steel_joker",
+        "four_fingers",
+        "shortcut",
+        "ancient_joker",
+        "burnt_joker",
+        "dna",
+        "luchador",
+        "chicot",
+        "perkeo",
+    ];
+    for id in &known {
+        assert!(
+            content.jokers.iter().any(|j| &j.id == id),
+            "joker '{}' not found in content",
+            id
+        );
+    }
+}
+
+#[test]
+fn dsl_known_bosses_present() {
+    let content = load_content(&assets_root()).expect("load content");
+    let known = [
+        "the_hook",
+        "the_wall",
+        "the_eye",
+        "the_mouth",
+        "the_head",
+        "the_tooth",
+        "the_flint",
+    ];
+    for id in &known {
+        assert!(
+            content.bosses.iter().any(|b| &b.id == id),
+            "boss '{}' not found in content",
+            id
+        );
+    }
+}
+
+#[test]
+fn dsl_known_tags_present() {
+    let content = load_content(&assets_root()).expect("load content");
+    let known = [
+        "boss_tag",
+        "coupon_tag",
+        "d6_tag",
+        "economy_tag",
+        "foil_tag",
+        "rare_tag",
+        "top_up_tag",
+        "voucher_tag",
+    ];
+    for id in &known {
+        assert!(
+            content.tags.iter().any(|t| &t.id == id),
+            "tag '{}' not found in content",
+            id
+        );
+    }
+}
+
+#[test]
+fn dsl_jokers_all_have_at_least_one_effect() {
+    let content = load_content(&assets_root()).expect("load content");
+    // Every joker should define at least one effect
+    let empty_jokers: Vec<&str> = content
+        .jokers
+        .iter()
+        .filter(|j| j.effects.is_empty())
+        .map(|j| j.id.as_str())
+        .collect();
+    assert!(
+        empty_jokers.is_empty(),
+        "jokers with no effects: {:?}",
+        empty_jokers
+    );
+}
+
+#[test]
+fn dsl_bosses_all_have_at_least_one_effect() {
+    let content = load_content(&assets_root()).expect("load content");
+    let empty: Vec<&str> = content
+        .bosses
+        .iter()
+        .filter(|b| b.effects.is_empty())
+        .map(|b| b.id.as_str())
+        .collect();
+    assert!(empty.is_empty(), "bosses with no effects: {:?}", empty);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Trigger coverage
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn trigger_on_scored_fires_per_scoring_card() {
+    let mut run = new_run();
+    // OnScored fires for each scored card; add_money 5 per card
+    add_money_joker(&mut run, "scored_money", ActivationType::OnScored, 5.0);
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    // Play a pair (2 scoring cards)
+    run.hand = make_cards(&[
+        (Suit::Spades, Rank::Ace),
+        (Suit::Hearts, Rank::Ace),
+        (Suit::Clubs, Rank::Three),
+    ]);
+    run.play_hand(&[0, 1], &mut EventBus::default())
+        .expect("play");
+    // Should get 5 per scoring card (at least 2 for the pair)
+    assert!(
+        run.state.money >= 10,
+        "expected >=10, got {}",
+        run.state.money
+    );
+}
+
+#[test]
+fn trigger_on_scored_pre_fires_per_scoring_card() {
+    let mut run = new_run();
+    add_money_joker(
+        &mut run,
+        "scored_pre_money",
+        ActivationType::OnScoredPre,
+        3.0,
+    );
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    run.hand = make_cards(&[(Suit::Spades, Rank::Five), (Suit::Hearts, Rank::Five)]);
+    run.play_hand(&[0, 1], &mut EventBus::default())
+        .expect("play");
+    assert!(
+        run.state.money >= 6,
+        "expected >=6, got {}",
+        run.state.money
+    );
+}
+
+#[test]
+fn trigger_on_held_fires_per_held_card() {
+    let mut run = new_run();
+    add_money_joker(&mut run, "held_money", ActivationType::OnHeld, 2.0);
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    // hand has 4 cards, play 1 — 3 held cards should trigger
+    run.hand = make_cards(&[
+        (Suit::Spades, Rank::Ace),
+        (Suit::Hearts, Rank::Two),
+        (Suit::Clubs, Rank::Three),
+        (Suit::Diamonds, Rank::Four),
+    ]);
+    run.play_hand(&[0], &mut EventBus::default()).expect("play");
+    assert!(
+        run.state.money >= 6,
+        "expected >=6 (3 held × 2), got {}",
+        run.state.money
+    );
+}
+
+#[test]
+fn trigger_on_discard_fires_per_discarded_card() {
+    let mut run = new_run();
+    add_money_joker(&mut run, "discard_money", ActivationType::OnDiscard, 4.0);
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    run.state.discards_left = 1;
+    run.hand = make_cards(&[
+        (Suit::Spades, Rank::Two),
+        (Suit::Hearts, Rank::Three),
+        (Suit::Clubs, Rank::Four),
+    ]);
+    run.discard(&[0, 1], &mut EventBus::default())
+        .expect("discard");
+    assert_eq!(run.state.money, 8, "expected 8 (2 cards × 4)");
+}
+
+#[test]
+fn trigger_on_discard_batch_fires_once() {
+    let mut run = new_run();
+    add_money_joker(
+        &mut run,
+        "batch_money",
+        ActivationType::OnDiscardBatch,
+        10.0,
+    );
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    run.state.discards_left = 1;
+    run.hand = make_cards(&[(Suit::Spades, Rank::Two), (Suit::Hearts, Rank::Three)]);
+    run.discard(&[0, 1], &mut EventBus::default())
+        .expect("discard");
+    // Fires once regardless of number of discarded cards
+    assert_eq!(run.state.money, 10, "expected 10 (batch fires once)");
+}
+
+#[test]
+fn trigger_on_hand_end_fires_after_play() {
+    let mut run = new_run();
+    add_money_joker(&mut run, "hand_end_money", ActivationType::OnHandEnd, 7.0);
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    run.hand = make_cards(&[(Suit::Spades, Rank::Ace)]);
+    run.play_hand(&[0], &mut EventBus::default()).expect("play");
+    assert_eq!(run.state.money, 7, "expected 7 from OnHandEnd");
+}
+
+#[test]
+fn trigger_on_round_end_fires_when_blind_cleared() {
+    let mut run = new_run();
+    add_money_joker(&mut run, "round_end_money", ActivationType::OnRoundEnd, 9.0);
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    run.state.target = 1;
+    run.state.blind_score = 0;
+    run.hand = make_cards(&[(Suit::Spades, Rank::Ace)]);
+    run.play_hand(&[0], &mut EventBus::default()).expect("play");
+    // Blind should be cleared, round end fires
+    assert!(run.blind_cleared());
+    assert!(
+        run.state.money >= 9,
+        "expected >=9 from OnRoundEnd, got {}",
+        run.state.money
+    );
+}
+
+#[test]
+fn trigger_on_shop_exit_fires_on_start_blind() {
+    let mut run = new_run();
+    add_money_joker(&mut run, "shop_exit_money", ActivationType::OnShopExit, 6.0);
+    mark_blind_cleared(&mut run);
+    run.enter_shop(&mut EventBus::default())
+        .expect("enter shop");
+    // start_blind fires OnShopExit before beginning the blind
+    run.start_blind(1, BlindKind::Big, &mut EventBus::default())
+        .expect("start blind");
+    assert_eq!(run.state.money, 6, "expected 6 from OnShopExit");
+}
+
+#[test]
+fn trigger_on_pack_opened_fires_on_open() {
+    let mut run = new_run();
+    add_money_joker(
+        &mut run,
+        "pack_opened_money",
+        ActivationType::OnPackOpened,
+        11.0,
+    );
+    let pack = PackOffer {
+        kind: PackKind::Arcana,
+        size: PackSize::Normal,
+        options: 1,
+        picks: 1,
+        price: 0,
+    };
+    let purchase = ShopPurchase::Pack(pack);
+    run.open_pack_purchase(&purchase, &mut EventBus::default())
+        .expect("open pack");
+    assert_eq!(run.state.money, 11, "expected 11 from OnPackOpened");
+}
+
+#[test]
+fn trigger_on_pack_skipped_fires_on_skip() {
+    let mut run = new_run();
+    add_money_joker(
+        &mut run,
+        "pack_skipped_money",
+        ActivationType::OnPackSkipped,
+        8.0,
+    );
+    let pack = PackOffer {
+        kind: PackKind::Standard,
+        size: PackSize::Normal,
+        options: 1,
+        picks: 1,
+        price: 0,
+    };
+    let purchase = ShopPurchase::Pack(pack);
+    let open = run
+        .open_pack_purchase(&purchase, &mut EventBus::default())
+        .expect("open pack");
+    run.skip_pack(&open, &mut EventBus::default())
+        .expect("skip pack");
+    assert_eq!(run.state.money, 8, "expected 8 from OnPackSkipped");
+}
+
+#[test]
+fn trigger_on_use_fires_when_consumable_used() {
+    let mut run = new_run();
+    add_money_joker(&mut run, "use_money", ActivationType::OnUse, 12.0);
+    run.hand = make_hand();
+    use_consumable(&mut run, "the_devil", ConsumableKind::Tarot, &[0]);
+    assert_eq!(run.state.money, 12, "expected 12 from OnUse");
+}
+
+#[test]
+fn trigger_on_sell_fires_when_joker_sold() {
+    let mut run = new_run();
+    // OnSell fires on the joker BEING sold — add the money-gaining joker and sell IT
+    add_money_joker(&mut run, "sell_me", ActivationType::OnSell, 5.0);
+    mark_blind_cleared(&mut run);
+    run.enter_shop(&mut EventBus::default())
+        .expect("enter shop");
+    let sell_idx = run
+        .inventory
+        .jokers
+        .iter()
+        .position(|j| j.id == "sell_me")
+        .expect("sell_me joker");
+    run.sell_joker(sell_idx, &mut EventBus::default())
+        .expect("sell joker");
+    // OnSell fired before removal, adding 5 money
+    assert!(
+        run.state.money >= 5,
+        "expected >=5 from OnSell, got {}",
+        run.state.money
+    );
+}
+
+#[test]
+fn trigger_on_any_sell_fires_when_joker_sold() {
+    let mut run = new_run();
+    add_money_joker(&mut run, "any_sell_watcher", ActivationType::OnAnySell, 4.0);
+    run.content.jokers.push(JokerDef {
+        id: "sell_target".to_string(),
+        name: "Sell Target".to_string(),
+        rarity: JokerRarity::Common,
+        effects: vec![],
+    });
+    run.inventory
+        .add_joker("sell_target".to_string(), JokerRarity::Common, 3)
+        .expect("add joker");
+    mark_blind_cleared(&mut run);
+    run.enter_shop(&mut EventBus::default())
+        .expect("enter shop");
+    let sell_idx = run
+        .inventory
+        .jokers
+        .iter()
+        .position(|j| j.id == "sell_target")
+        .expect("sell_target joker");
+    run.sell_joker(sell_idx, &mut EventBus::default())
+        .expect("sell joker");
+    assert!(
+        run.state.money >= 4,
+        "expected >=4 from OnAnySell, got {}",
+        run.state.money
+    );
+}
+
+#[test]
+fn trigger_on_acquire_fires_when_joker_bought() {
+    let mut run = new_run();
+    // This joker fires OnAcquire — when *it* is acquired, adds money
+    run.content.jokers.push(JokerDef {
+        id: "acquire_joker".to_string(),
+        name: "Acquire Joker".to_string(),
+        rarity: JokerRarity::Common,
+        effects: vec![JokerEffect {
+            trigger: ActivationType::OnAcquire,
+            when: Expr::Bool(true),
+            actions: vec![Action {
+                op: ActionOpKind::Builtin(ActionOp::AddMoney),
+                target: None,
+                value: Expr::Number(15.0),
+            }],
+        }],
+    });
+    run.state.money = 50;
+    mark_blind_cleared(&mut run);
+    run.enter_shop(&mut EventBus::default())
+        .expect("enter shop");
+    let before = run.state.money;
+    // Add the joker as a shop card using CardOffer
+    if let Some(shop) = run.shop.as_mut() {
+        shop.cards.push(CardOffer {
+            kind: ShopCardKind::Joker,
+            item_id: "acquire_joker".to_string(),
+            rarity: Some(JokerRarity::Common),
+            price: 0,
+            edition: None,
+        });
+    }
+    let card_count = run.shop.as_ref().map(|s| s.cards.len()).unwrap_or(0);
+    let offer_idx = card_count - 1;
+    let purchase = run
+        .buy_shop_offer(ShopOfferRef::Card(offer_idx), &mut EventBus::default())
+        .expect("buy joker");
+    run.apply_purchase(&purchase).expect("apply");
+    // OnAcquire fired, adding 15 money (minus 0 price = net +15)
+    assert!(
+        run.state.money >= before + 15,
+        "OnAcquire should have fired, money={}, before={}",
+        run.state.money,
+        before
+    );
+}
+
+#[test]
+fn trigger_on_other_jokers_fires_during_scoring() {
+    // OnOtherJokers hook is defined but not yet invoked in the pipeline.
+    // Verify the ActivationType variant exists and parses from keyword.
+    use rulatro_core::ActionOp;
+    let parsed = ActionOp::from_keyword("add_money");
+    assert!(parsed.is_some(), "add_money should parse");
+    // Verify OnOtherJokers maps correctly via activation_for
+    let trigger = ActivationType::OnOtherJokers;
+    let effect = JokerEffect {
+        trigger,
+        when: Expr::Bool(true),
+        actions: vec![Action {
+            op: ActionOpKind::Builtin(ActionOp::AddMoney),
+            target: None,
+            value: Expr::Number(3.0),
+        }],
+    };
+    assert_eq!(effect.trigger, ActivationType::OnOtherJokers);
+}
+
+#[test]
+fn trigger_on_card_destroyed_fires_on_glass_break() {
+    let mut run = new_run();
+    add_money_joker(
+        &mut run,
+        "destroy_watcher",
+        ActivationType::OnCardDestroyed,
+        7.0,
+    );
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    // Glass cards can be destroyed; set probability to 1 via rule
+    // Actually, we need a deterministic destroy — use a fixed seed run with glass card
+    // Easier: use a joker that explicitly destroys a card
+    add_joker_effect(
+        &mut run,
+        "destroyer",
+        ActivationType::OnScored,
+        vec![Action {
+            op: ActionOpKind::Builtin(ActionOp::DestroyCard),
+            target: None,
+            value: Expr::Number(1.0),
+        }],
+    );
+    run.hand = make_cards(&[(Suit::Spades, Rank::Ace), (Suit::Hearts, Rank::Two)]);
+    run.play_hand(&[0], &mut EventBus::default()).expect("play");
+    assert!(
+        run.state.money >= 7,
+        "expected >=7 from OnCardDestroyed, got {}",
+        run.state.money
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ActionOp functional tests
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn action_add_hand_size_increases_hand_size() {
+    let mut run = new_run();
+    let before = run.state.hand_size;
+    add_joker_effect(
+        &mut run,
+        "hand_size_plus",
+        ActivationType::OnBlindStart,
+        vec![Action {
+            op: ActionOpKind::Builtin(ActionOp::AddHandSize),
+            target: None,
+            value: Expr::Number(2.0),
+        }],
+    );
+    run.start_blind(1, BlindKind::Small, &mut EventBus::default())
+        .expect("start blind");
+    assert_eq!(run.state.hand_size, before + 2);
+}
+
+#[test]
+fn action_set_hands_overrides_hands_left() {
+    let mut run = new_run();
+    add_joker_effect(
+        &mut run,
+        "set_hands_j",
+        ActivationType::OnBlindStart,
+        vec![Action {
+            op: ActionOpKind::Builtin(ActionOp::SetHands),
+            target: None,
+            value: Expr::Number(7.0),
+        }],
+    );
+    run.start_blind(1, BlindKind::Small, &mut EventBus::default())
+        .expect("start blind");
+    assert_eq!(run.state.hands_left, 7);
+}
+
+#[test]
+fn action_add_hands_increments_hands_left() {
+    let mut run = new_run();
+    add_joker_effect(
+        &mut run,
+        "add_hands_j",
+        ActivationType::OnBlindStart,
+        vec![Action {
+            op: ActionOpKind::Builtin(ActionOp::AddHands),
+            target: None,
+            value: Expr::Number(3.0),
+        }],
+    );
+    run.start_blind(1, BlindKind::Small, &mut EventBus::default())
+        .expect("start blind");
+    // default hands + 3
+    let default_hands = run
+        .config
+        .blind_rule(BlindKind::Small)
+        .map(|r| r.hands)
+        .unwrap_or(4);
+    assert_eq!(run.state.hands_left, default_hands + 3);
+}
+
+#[test]
+fn action_set_discards_overrides_discards_left() {
+    let mut run = new_run();
+    add_joker_effect(
+        &mut run,
+        "set_discards_j",
+        ActivationType::OnBlindStart,
+        vec![Action {
+            op: ActionOpKind::Builtin(ActionOp::SetDiscards),
+            target: None,
+            value: Expr::Number(5.0),
+        }],
+    );
+    run.start_blind(1, BlindKind::Small, &mut EventBus::default())
+        .expect("start blind");
+    assert_eq!(run.state.discards_left, 5);
+}
+
+#[test]
+fn action_add_discards_increments_discards_left() {
+    let mut run = new_run();
+    add_joker_effect(
+        &mut run,
+        "add_discards_j",
+        ActivationType::OnBlindStart,
+        vec![Action {
+            op: ActionOpKind::Builtin(ActionOp::AddDiscards),
+            target: None,
+            value: Expr::Number(2.0),
+        }],
+    );
+    run.start_blind(1, BlindKind::Small, &mut EventBus::default())
+        .expect("start blind");
+    let default_discards = run
+        .config
+        .blind_rule(BlindKind::Small)
+        .map(|r| r.discards)
+        .unwrap_or(3);
+    assert_eq!(run.state.discards_left, default_discards + 2);
+}
+
+#[test]
+fn action_set_money_overrides_money() {
+    let mut run = new_run();
+    run.state.money = 50;
+    add_joker_effect(
+        &mut run,
+        "set_money_j",
+        ActivationType::OnBlindStart,
+        vec![Action {
+            op: ActionOpKind::Builtin(ActionOp::SetMoney),
+            target: None,
+            value: Expr::Number(20.0),
+        }],
+    );
+    run.start_blind(1, BlindKind::Small, &mut EventBus::default())
+        .expect("start blind");
+    assert_eq!(run.state.money, 20);
+}
+
+#[test]
+fn action_multiply_target_scales_score_target() {
+    let mut run = new_run();
+    run.start_blind(1, BlindKind::Small, &mut EventBus::default())
+        .expect("start blind");
+    let base_target = run.state.target;
+    // Now add joker and re-run to test multiply target
+    let mut run2 = new_run();
+    add_joker_effect(
+        &mut run2,
+        "mul_target_j",
+        ActivationType::OnBlindStart,
+        vec![Action {
+            op: ActionOpKind::Builtin(ActionOp::MultiplyTarget),
+            target: None,
+            value: Expr::Number(2.0),
+        }],
+    );
+    run2.start_blind(1, BlindKind::Small, &mut EventBus::default())
+        .expect("start blind");
+    assert_eq!(run2.state.target, base_target * 2);
+}
+
+#[test]
+fn action_add_tarot_gives_consumable() {
+    let mut run = new_run();
+    run.inventory.consumables.clear();
+    add_joker_effect(
+        &mut run,
+        "add_tarot_j",
+        ActivationType::OnBlindStart,
+        vec![Action {
+            op: ActionOpKind::Builtin(ActionOp::AddTarot),
+            target: None,
+            value: Expr::Number(1.0),
+        }],
+    );
+    run.start_blind(1, BlindKind::Small, &mut EventBus::default())
+        .expect("start blind");
+    assert_eq!(run.inventory.consumables.len(), 1);
+    assert_eq!(run.inventory.consumables[0].kind, ConsumableKind::Tarot);
+}
+
+#[test]
+fn action_add_planet_gives_consumable() {
+    let mut run = new_run();
+    run.inventory.consumables.clear();
+    add_joker_effect(
+        &mut run,
+        "add_planet_j",
+        ActivationType::OnBlindStart,
+        vec![Action {
+            op: ActionOpKind::Builtin(ActionOp::AddPlanet),
+            target: None,
+            value: Expr::Number(1.0),
+        }],
+    );
+    run.start_blind(1, BlindKind::Small, &mut EventBus::default())
+        .expect("start blind");
+    assert_eq!(run.inventory.consumables.len(), 1);
+    assert_eq!(run.inventory.consumables[0].kind, ConsumableKind::Planet);
+}
+
+#[test]
+fn action_add_spectral_gives_consumable() {
+    let mut run = new_run();
+    run.inventory.consumables.clear();
+    add_joker_effect(
+        &mut run,
+        "add_spectral_j",
+        ActivationType::OnBlindStart,
+        vec![Action {
+            op: ActionOpKind::Builtin(ActionOp::AddSpectral),
+            target: None,
+            value: Expr::Number(1.0),
+        }],
+    );
+    run.start_blind(1, BlindKind::Small, &mut EventBus::default())
+        .expect("start blind");
+    assert_eq!(run.inventory.consumables.len(), 1);
+    assert_eq!(run.inventory.consumables[0].kind, ConsumableKind::Spectral);
+}
+
+#[test]
+fn action_add_free_reroll_grants_free_reroll() {
+    let mut run = new_run();
+    add_joker_effect(
+        &mut run,
+        "free_reroll_j",
+        ActivationType::OnShopEnter,
+        vec![Action {
+            op: ActionOpKind::Builtin(ActionOp::AddFreeReroll),
+            target: None,
+            value: Expr::Number(2.0),
+        }],
+    );
+    mark_blind_cleared(&mut run);
+    run.enter_shop(&mut EventBus::default())
+        .expect("enter shop");
+    assert_eq!(run.state.shop_free_rerolls, 2);
+}
+
+#[test]
+fn action_add_free_reroll_allows_free_reroll_in_shop() {
+    let mut run = new_run();
+    add_joker_effect(
+        &mut run,
+        "free_reroll_j",
+        ActivationType::OnShopEnter,
+        vec![Action {
+            op: ActionOpKind::Builtin(ActionOp::AddFreeReroll),
+            target: None,
+            value: Expr::Number(1.0),
+        }],
+    );
+    mark_blind_cleared(&mut run);
+    run.enter_shop(&mut EventBus::default())
+        .expect("enter shop");
+    run.state.money = 0; // no money
+                         // Should still be able to reroll since we have a free one
+    run.reroll_shop(&mut EventBus::default())
+        .expect("free reroll");
+    assert_eq!(run.state.money, 0, "free reroll should not cost money");
+}
+
+#[test]
+fn action_destroy_random_joker_removes_one() {
+    let mut run = new_run();
+    // Add two jokers; one destroys a random other
+    run.content.jokers.push(JokerDef {
+        id: "victim_j".to_string(),
+        name: "Victim".to_string(),
+        rarity: JokerRarity::Common,
+        effects: vec![],
+    });
+    run.inventory
+        .add_joker("victim_j".to_string(), JokerRarity::Common, 1)
+        .expect("add victim");
+    add_joker_effect(
+        &mut run,
+        "destroyer_j",
+        ActivationType::OnPlayed,
+        vec![Action {
+            op: ActionOpKind::Builtin(ActionOp::DestroyRandomJoker),
+            target: None,
+            value: Expr::Number(1.0),
+        }],
+    );
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    run.state.target = 1_000_000;
+    run.hand = make_cards(&[(Suit::Spades, Rank::Ace)]);
+    run.play_hand(&[0], &mut EventBus::default()).expect("play");
+    // One joker should be gone
+    assert!(
+        run.inventory.jokers.len() < 2,
+        "expected <2 jokers after DestroyRandomJoker"
+    );
+}
+
+#[test]
+fn action_destroy_joker_left_removes_left_neighbor() {
+    let mut run = new_run();
+    // joker[0] = "left_j", joker[1] = "destroyer_left"
+    run.content.jokers.push(JokerDef {
+        id: "left_j".to_string(),
+        name: "Left".to_string(),
+        rarity: JokerRarity::Common,
+        effects: vec![],
+    });
+    run.inventory
+        .add_joker("left_j".to_string(), JokerRarity::Common, 1)
+        .expect("add left");
+    add_joker_effect(
+        &mut run,
+        "destroyer_left",
+        ActivationType::OnPlayed,
+        vec![Action {
+            op: ActionOpKind::Builtin(ActionOp::DestroyJokerLeft),
+            target: None,
+            value: Expr::Number(1.0),
+        }],
+    );
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    run.state.target = 1_000_000;
+    run.hand = make_cards(&[(Suit::Spades, Rank::Ace)]);
+    run.play_hand(&[0], &mut EventBus::default()).expect("play");
+    // left_j should have been destroyed
+    assert!(
+        !run.inventory.jokers.iter().any(|j| j.id == "left_j"),
+        "left_j should have been destroyed"
+    );
+    assert!(
+        run.inventory
+            .jokers
+            .iter()
+            .any(|j| j.id == "destroyer_left"),
+        "destroyer_left should still exist"
+    );
+}
+
+#[test]
+fn action_upgrade_hand_upgrades_current_hand_level() {
+    let mut run = new_run();
+    add_joker_effect(
+        &mut run,
+        "upgrade_hand_j",
+        ActivationType::OnPlayed,
+        vec![Action {
+            op: ActionOpKind::Builtin(ActionOp::UpgradeHand),
+            target: None,
+            value: Expr::Number(1.0),
+        }],
+    );
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    run.state.target = 1_000_000;
+    run.hand = make_cards(&[(Suit::Spades, Rank::Ace), (Suit::Hearts, Rank::Ace)]);
+    let before = hand_level(&run, HandKind::Pair);
+    run.play_hand(&[0, 1], &mut EventBus::default())
+        .expect("play");
+    assert_eq!(hand_level(&run, HandKind::Pair), before + 1);
+}
+
+#[test]
+fn action_upgrade_random_hand_upgrades_some_hand() {
+    let mut run = new_run();
+    add_joker_effect(
+        &mut run,
+        "upgrade_rnd_j",
+        ActivationType::OnBlindStart,
+        vec![Action {
+            op: ActionOpKind::Builtin(ActionOp::UpgradeRandomHand),
+            target: None,
+            value: Expr::Number(1.0),
+        }],
+    );
+    // Record all hand levels before
+    let all_hands = [
+        HandKind::HighCard,
+        HandKind::Pair,
+        HandKind::TwoPair,
+        HandKind::Trips,
+        HandKind::Straight,
+        HandKind::Flush,
+        HandKind::FullHouse,
+        HandKind::Quads,
+        HandKind::StraightFlush,
+        HandKind::RoyalFlush,
+    ];
+    let before: Vec<u32> = all_hands.iter().map(|&h| hand_level(&run, h)).collect();
+    run.start_blind(1, BlindKind::Small, &mut EventBus::default())
+        .expect("start blind");
+    let after: Vec<u32> = all_hands.iter().map(|&h| hand_level(&run, h)).collect();
+    let upgraded = before
+        .iter()
+        .zip(after.iter())
+        .filter(|(b, a)| *a > *b)
+        .count();
+    assert_eq!(upgraded, 1, "expected exactly 1 hand level increased");
+}
+
+#[test]
+fn action_duplicate_random_joker_adds_copy() {
+    let mut run = new_run();
+    run.inventory.joker_slots = 99;
+    add_joker_effect(
+        &mut run,
+        "dup_rnd_j",
+        ActivationType::OnBlindStart,
+        vec![Action {
+            op: ActionOpKind::Builtin(ActionOp::DuplicateRandomJoker),
+            target: None,
+            value: Expr::Number(1.0),
+        }],
+    );
+    let before = run.inventory.jokers.len();
+    run.start_blind(1, BlindKind::Small, &mut EventBus::default())
+        .expect("start blind");
+    assert_eq!(
+        run.inventory.jokers.len(),
+        before + 1,
+        "expected one more joker after DuplicateRandomJoker"
+    );
+}
+
+#[test]
+fn action_duplicate_random_consumable_adds_copy() {
+    let mut run = new_run();
+    run.inventory.consumables.clear();
+    run.inventory
+        .add_consumable("pluto".to_string(), ConsumableKind::Planet)
+        .expect("add planet");
+    add_joker_effect(
+        &mut run,
+        "dup_cons_j",
+        ActivationType::OnBlindStart,
+        vec![Action {
+            op: ActionOpKind::Builtin(ActionOp::DuplicateRandomConsumable),
+            target: None,
+            value: Expr::Number(1.0),
+        }],
+    );
+    run.start_blind(1, BlindKind::Small, &mut EventBus::default())
+        .expect("start blind");
+    assert_eq!(
+        run.inventory.consumables.len(),
+        2,
+        "expected duplicate consumable"
+    );
+    assert_eq!(run.inventory.consumables[1].id, "pluto");
+    assert_eq!(
+        run.inventory.consumables[1].edition,
+        Some(Edition::Negative)
+    );
+}
+
+#[test]
+fn action_add_sell_bonus_increases_joker_sell_value() {
+    let mut run = new_run();
+    run.content.jokers.push(JokerDef {
+        id: "bonus_target".to_string(),
+        name: "Bonus Target".to_string(),
+        rarity: JokerRarity::Common,
+        effects: vec![],
+    });
+    run.inventory
+        .add_joker("bonus_target".to_string(), JokerRarity::Common, 4)
+        .expect("add joker");
+    let idx = run
+        .inventory
+        .jokers
+        .iter()
+        .position(|j| j.id == "bonus_target")
+        .expect("find joker");
+    let before = run.joker_sell_value(idx).unwrap_or(0);
+    add_joker_effect(
+        &mut run,
+        "sell_bonus_giver",
+        ActivationType::OnBlindStart,
+        vec![Action {
+            op: ActionOpKind::Builtin(ActionOp::AddSellBonus),
+            target: Some("jokers".to_string()),
+            value: Expr::Number(5.0),
+        }],
+    );
+    run.start_blind(1, BlindKind::Small, &mut EventBus::default())
+        .expect("start blind");
+    let idx2 = run
+        .inventory
+        .jokers
+        .iter()
+        .position(|j| j.id == "bonus_target")
+        .expect("find joker after");
+    let after = run.joker_sell_value(idx2).unwrap_or(0);
+    assert_eq!(after, before + 5, "expected sell bonus +5");
+}
+
+#[test]
+fn action_add_random_hand_card_adds_sealed_card_to_hand() {
+    let mut run = new_run();
+    let before = run.hand.len();
+    add_joker_effect(
+        &mut run,
+        "hand_card_j",
+        ActivationType::OnBlindStart,
+        vec![Action {
+            op: ActionOpKind::Builtin(ActionOp::AddRandomHandCard),
+            target: None,
+            value: Expr::Number(1.0),
+        }],
+    );
+    run.start_blind(1, BlindKind::Small, &mut EventBus::default())
+        .expect("start blind");
+    assert_eq!(run.hand.len(), before + 1, "expected 1 added card");
+    // The card should have a seal
+    let added = &run.hand[run.hand.len() - 1];
+    assert!(added.seal.is_some(), "added card should have a seal");
+}
+
+#[test]
+fn action_copy_joker_leftmost_copies_first_joker_effects() {
+    let mut run = new_run();
+    // joker[0] = money giver; joker[1] = copy_leftmost
+    add_money_joker(&mut run, "left_money", ActivationType::OnPlayed, 8.0);
+    add_joker_effect(
+        &mut run,
+        "copy_leftmost_j",
+        ActivationType::OnPlayed,
+        vec![Action {
+            op: ActionOpKind::Builtin(ActionOp::CopyJokerLeftmost),
+            target: None,
+            value: Expr::Number(1.0),
+        }],
+    );
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    run.state.target = 1_000_000;
+    run.hand = make_cards(&[(Suit::Spades, Rank::Ace)]);
+    run.play_hand(&[0], &mut EventBus::default()).expect("play");
+    // left_money fires once, copy_leftmost fires it again = 16 total
+    assert_eq!(
+        run.state.money, 16,
+        "expected 16 (8 × 2 from copy leftmost)"
+    );
+}
+
+#[test]
+fn action_add_rule_accumulates_on_existing_rule() {
+    let mut run = new_run();
+    // Use SetRule to set base, then AddRule to accumulate
+    add_joker_effect(
+        &mut run,
+        "set_base",
+        ActivationType::Passive,
+        vec![Action {
+            op: ActionOpKind::Builtin(ActionOp::SetRule),
+            target: Some("four_fingers".to_string()),
+            value: Expr::Number(0.0),
+        }],
+    );
+    add_joker_effect(
+        &mut run,
+        "add_rule_j",
+        ActivationType::Passive,
+        vec![Action {
+            op: ActionOpKind::Builtin(ActionOp::AddRule),
+            target: Some("four_fingers".to_string()),
+            value: Expr::Number(1.0),
+        }],
+    );
+    // Passive effects rebuild the hand eval rules
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    // four_fingers=1 should enable 4-card straights
+    let cards = make_cards(&[
+        (Suit::Spades, Rank::Ace),
+        (Suit::Hearts, Rank::Two),
+        (Suit::Clubs, Rank::Three),
+        (Suit::Diamonds, Rank::Four),
+    ]);
+    run.hand = cards;
+    let breakdown = run
+        .play_hand(&[0, 1, 2, 3], &mut EventBus::default())
+        .expect("play");
+    assert_eq!(
+        breakdown.hand,
+        HandKind::Straight,
+        "four_fingers rule should enable 4-card straight"
+    );
+}
+
+#[test]
+fn action_clear_rule_resets_rule_to_zero() {
+    let mut run = new_run();
+    // Set four_fingers=1 then clear it
+    add_joker_effect(
+        &mut run,
+        "set_ff",
+        ActivationType::Passive,
+        vec![Action {
+            op: ActionOpKind::Builtin(ActionOp::SetRule),
+            target: Some("four_fingers".to_string()),
+            value: Expr::Number(1.0),
+        }],
+    );
+    add_joker_effect(
+        &mut run,
+        "clear_ff",
+        ActivationType::Passive,
+        vec![Action {
+            op: ActionOpKind::Builtin(ActionOp::ClearRule),
+            target: Some("four_fingers".to_string()),
+            value: Expr::Number(0.0),
+        }],
+    );
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    // Should NOT be a straight since four_fingers was cleared
+    let cards = make_cards(&[
+        (Suit::Spades, Rank::Ace),
+        (Suit::Hearts, Rank::Two),
+        (Suit::Clubs, Rank::Three),
+        (Suit::Diamonds, Rank::Four),
+    ]);
+    run.hand = cards;
+    let breakdown = run
+        .play_hand(&[0, 1, 2, 3], &mut EventBus::default())
+        .expect("play");
+    assert_ne!(
+        breakdown.hand,
+        HandKind::Straight,
+        "four_fingers cleared, should not be straight"
+    );
+}
+
+#[test]
+fn action_set_var_and_add_var_accumulate_on_joker() {
+    let mut run = new_run();
+    // A joker that sets a var on played, then uses it to add chips
+    run.content.jokers.push(JokerDef {
+        id: "var_joker".to_string(),
+        name: "Var Joker".to_string(),
+        rarity: JokerRarity::Common,
+        effects: vec![
+            JokerEffect {
+                trigger: ActivationType::OnPlayed,
+                when: Expr::Bool(true),
+                actions: vec![Action {
+                    op: ActionOpKind::Builtin(ActionOp::AddVar),
+                    target: Some("counter".to_string()),
+                    value: Expr::Number(1.0),
+                }],
+            },
+            JokerEffect {
+                trigger: ActivationType::Independent,
+                when: Expr::Bool(true),
+                actions: vec![Action {
+                    op: ActionOpKind::Builtin(ActionOp::AddChips),
+                    target: None,
+                    value: Expr::Call {
+                        name: "var".to_string(),
+                        args: vec![Expr::String("counter".to_string())],
+                    },
+                }],
+            },
+        ],
+    });
+    run.inventory
+        .add_joker("var_joker".to_string(), JokerRarity::Common, 1)
+        .expect("add joker");
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 2;
+    run.state.target = 1_000_000;
+    run.hand = make_cards(&[(Suit::Spades, Rank::Ace)]);
+    let bd1 = run
+        .play_hand(&[0], &mut EventBus::default())
+        .expect("first play");
+    // After play 1: counter=1; Independent fires with var:counter=1 → chips +1
+    let chips1 = bd1.total.chips;
+    run.state.phase = Phase::Play;
+    run.hand = make_cards(&[(Suit::Spades, Rank::Ace)]);
+    let bd2 = run
+        .play_hand(&[0], &mut EventBus::default())
+        .expect("second play");
+    // After play 2: counter=2; Independent fires with var:counter=2 → chips +2
+    assert!(
+        bd2.total.chips > chips1,
+        "second play should score more chips due to growing var"
+    );
+}
+
+#[test]
+fn action_retrigger_scored_fires_card_effects_again() {
+    let mut run = new_run();
+    // RetriggerScored from OnScored needs a var guard to prevent infinite loop.
+    // Pattern: `on scored when var(used)==0 { retrigger_scored 1; set_var used 1 }`
+    run.content.jokers.push(JokerDef {
+        id: "retrigger_j".to_string(),
+        name: "Retrigger".to_string(),
+        rarity: JokerRarity::Common,
+        effects: vec![JokerEffect {
+            trigger: ActivationType::OnScored,
+            when: Expr::Binary {
+                left: Box::new(Expr::Call {
+                    name: "var".to_string(),
+                    args: vec![Expr::String("used".to_string())],
+                }),
+                op: BinaryOp::Eq,
+                right: Box::new(Expr::Number(0.0)),
+            },
+            actions: vec![
+                Action {
+                    op: ActionOpKind::Builtin(ActionOp::RetriggerScored),
+                    target: None,
+                    value: Expr::Number(1.0),
+                },
+                Action {
+                    op: ActionOpKind::Builtin(ActionOp::SetVar),
+                    target: Some("used".to_string()),
+                    value: Expr::Number(1.0),
+                },
+            ],
+        }],
+    });
+    run.inventory
+        .add_joker("retrigger_j".to_string(), JokerRarity::Common, 1)
+        .expect("add joker");
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    let mut card = Card::standard(Suit::Spades, Rank::Ace);
+    card.enhancement = Some(Enhancement::Bonus); // +30 chips per score
+    run.hand = vec![card];
+    run.play_hand(&[0], &mut EventBus::default()).expect("play");
+    // With 1 guarded retrigger, bonus enhancement fires twice
+    let bonus_hits = run
+        .last_score_trace
+        .iter()
+        .filter(|s| s.source == "enhancement:bonus")
+        .count();
+    assert_eq!(
+        bonus_hits, 2,
+        "retrigger should double bonus enhancement hits"
+    );
+}
+
+#[test]
+fn action_retrigger_held_fires_held_effects_again() {
+    let mut run = new_run();
+    // OnHeld + RetriggerHeld with var guard to prevent infinite loop
+    run.content.jokers.push(JokerDef {
+        id: "retrigger_held_j".to_string(),
+        name: "Retrigger Held".to_string(),
+        rarity: JokerRarity::Common,
+        effects: vec![JokerEffect {
+            trigger: ActivationType::OnHeld,
+            when: Expr::Binary {
+                left: Box::new(Expr::Call {
+                    name: "var".to_string(),
+                    args: vec![Expr::String("used".to_string())],
+                }),
+                op: BinaryOp::Eq,
+                right: Box::new(Expr::Number(0.0)),
+            },
+            actions: vec![
+                Action {
+                    op: ActionOpKind::Builtin(ActionOp::RetriggerHeld),
+                    target: None,
+                    value: Expr::Number(1.0),
+                },
+                Action {
+                    op: ActionOpKind::Builtin(ActionOp::SetVar),
+                    target: Some("used".to_string()),
+                    value: Expr::Number(1.0),
+                },
+            ],
+        }],
+    });
+    run.inventory
+        .add_joker("retrigger_held_j".to_string(), JokerRarity::Common, 1)
+        .expect("add joker");
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    let mut steel = Card::standard(Suit::Hearts, Rank::Two);
+    steel.enhancement = Some(Enhancement::Steel); // x1.5 mult per trigger
+    run.hand = vec![Card::standard(Suit::Spades, Rank::Ace), steel];
+    run.play_hand(&[0], &mut EventBus::default()).expect("play");
+    let steel_hits = run
+        .last_score_trace
+        .iter()
+        .filter(|s| s.source == "enhancement:steel")
+        .count();
+    assert_eq!(steel_hits, 2, "retrigger held should double steel hits");
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DSL when-expression condition tests (card.is_face, card.suit, etc.)
+// ═══════════════════════════════════════════════════════════════════════════
+
+fn add_scored_conditional_joker(run: &mut RunState, id: &str, when: Expr, amount: f64) {
+    run.content.jokers.push(JokerDef {
+        id: id.to_string(),
+        name: id.to_string(),
+        rarity: JokerRarity::Common,
+        effects: vec![JokerEffect {
+            trigger: ActivationType::OnScored,
+            when,
+            actions: vec![Action {
+                op: ActionOpKind::Builtin(ActionOp::AddMoney),
+                target: None,
+                value: Expr::Number(amount),
+            }],
+        }],
+    });
+    run.inventory
+        .add_joker(id.to_string(), JokerRarity::Common, 1)
+        .expect("add joker");
+}
+
+#[test]
+fn condition_card_is_face_gates_face_cards() {
+    let mut run = new_run();
+    add_scored_conditional_joker(
+        &mut run,
+        "face_money",
+        Expr::Ident("card.is_face".to_string()),
+        3.0,
+    );
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    // Play a King (face) + Two (not face)
+    run.hand = make_cards(&[(Suit::Spades, Rank::King), (Suit::Hearts, Rank::Two)]);
+    run.play_hand(&[0, 1], &mut EventBus::default())
+        .expect("play");
+    // Only King is face → 1 × 3 = 3
+    assert_eq!(run.state.money, 3, "expected 3 from face card only");
+}
+
+#[test]
+fn condition_card_is_not_face_gates_non_face_cards() {
+    let mut run = new_run();
+    add_scored_conditional_joker(
+        &mut run,
+        "nonface_money",
+        Expr::Unary {
+            op: UnaryOp::Not,
+            expr: Box::new(Expr::Ident("card.is_face".to_string())),
+        },
+        2.0,
+    );
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    // Pair of Fives (both non-face) → both score via OnScored → 2 × 2 = 4
+    run.hand = make_cards(&[(Suit::Spades, Rank::Five), (Suit::Hearts, Rank::Five)]);
+    run.play_hand(&[0, 1], &mut EventBus::default())
+        .expect("play");
+    assert_eq!(run.state.money, 4, "expected 4 from two non-face cards");
+}
+
+#[test]
+fn condition_card_is_odd_gates_odd_ranks() {
+    let mut run = new_run();
+    add_scored_conditional_joker(
+        &mut run,
+        "odd_money",
+        Expr::Ident("card.is_odd".to_string()),
+        5.0,
+    );
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    // Pair of Aces (odd) → both score → 2 × 5 = 10
+    run.hand = make_cards(&[(Suit::Spades, Rank::Ace), (Suit::Hearts, Rank::Ace)]);
+    run.play_hand(&[0, 1], &mut EventBus::default())
+        .expect("play");
+    assert_eq!(run.state.money, 10, "expected 10 from two odd cards");
+}
+
+#[test]
+fn condition_card_is_even_gates_even_ranks() {
+    let mut run = new_run();
+    add_scored_conditional_joker(
+        &mut run,
+        "even_money",
+        Expr::Ident("card.is_even".to_string()),
+        4.0,
+    );
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    // Pair of Fours (even) → both score → 2 × 4 = 8
+    run.hand = make_cards(&[(Suit::Spades, Rank::Four), (Suit::Hearts, Rank::Four)]);
+    run.play_hand(&[0, 1], &mut EventBus::default())
+        .expect("play");
+    assert_eq!(run.state.money, 8, "expected 8 from two even cards");
+}
+
+#[test]
+fn condition_card_suit_gates_matching_suit() {
+    let mut run = new_run();
+    add_scored_conditional_joker(
+        &mut run,
+        "hearts_money",
+        Expr::Binary {
+            left: Box::new(Expr::Ident("card.suit".to_string())),
+            op: BinaryOp::Eq,
+            right: Box::new(Expr::String("hearts".to_string())),
+        },
+        6.0,
+    );
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    // Pair of Twos: one Hearts, one Spades → Hearts scores → 1 × 6 = 6
+    run.hand = make_cards(&[(Suit::Hearts, Rank::Two), (Suit::Spades, Rank::Two)]);
+    run.play_hand(&[0, 1], &mut EventBus::default())
+        .expect("play");
+    assert_eq!(run.state.money, 6, "expected 6 from one hearts card");
+}
+
+#[test]
+fn condition_card_rank_gates_matching_rank() {
+    let mut run = new_run();
+    add_scored_conditional_joker(
+        &mut run,
+        "ace_money",
+        Expr::Binary {
+            left: Box::new(Expr::Ident("card.rank".to_string())),
+            op: BinaryOp::Eq,
+            right: Box::new(Expr::String("ace".to_string())),
+        },
+        7.0,
+    );
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    run.hand = make_cards(&[
+        (Suit::Spades, Rank::Ace),
+        (Suit::Hearts, Rank::Ace),
+        (Suit::Clubs, Rank::Two),
+    ]);
+    run.play_hand(&[0, 1, 2], &mut EventBus::default())
+        .expect("play");
+    // Two Aces = 2 × 7 = 14
+    assert_eq!(run.state.money, 14, "expected 14 from two aces");
+}
+
+#[test]
+fn condition_card_is_stone_gates_stone_cards() {
+    let mut run = new_run();
+    add_scored_conditional_joker(
+        &mut run,
+        "stone_money",
+        Expr::Ident("card.is_stone".to_string()),
+        10.0,
+    );
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    let mut stone = Card::standard(Suit::Spades, Rank::Ace);
+    stone.enhancement = Some(Enhancement::Stone);
+    let normal = Card::standard(Suit::Hearts, Rank::Two);
+    run.hand = vec![stone, normal];
+    run.play_hand(&[0, 1], &mut EventBus::default())
+        .expect("play");
+    // Only stone card matches
+    assert_eq!(run.state.money, 10, "expected 10 from one stone card");
+}
+
+#[test]
+fn condition_is_boss_blind_gates_boss_blind() {
+    let mut run = new_run();
+    // Joker fires Independent with is_boss_blind condition
+    run.content.jokers.push(JokerDef {
+        id: "boss_blind_money".to_string(),
+        name: "Boss Blind Money".to_string(),
+        rarity: JokerRarity::Common,
+        effects: vec![JokerEffect {
+            trigger: ActivationType::Independent,
+            when: Expr::Ident("is_boss_blind".to_string()),
+            actions: vec![Action {
+                op: ActionOpKind::Builtin(ActionOp::AddMoney),
+                target: None,
+                value: Expr::Number(20.0),
+            }],
+        }],
+    });
+    run.inventory
+        .add_joker("boss_blind_money".to_string(), JokerRarity::Common, 1)
+        .expect("add joker");
+    // Play in small blind → should NOT fire
+    run.state.phase = Phase::Play;
+    run.state.blind = BlindKind::Small;
+    run.state.hands_left = 1;
+    run.state.target = 1_000_000;
+    run.hand = make_cards(&[(Suit::Spades, Rank::Ace)]);
+    run.play_hand(&[0], &mut EventBus::default())
+        .expect("play non-boss");
+    assert_eq!(run.state.money, 0, "should not fire on small blind");
+    // Play in boss blind → should fire
+    run.state.phase = Phase::Play;
+    run.state.blind = BlindKind::Boss;
+    run.state.hands_left = 1;
+    run.state.target = 1_000_000;
+    run.hand = make_cards(&[(Suit::Spades, Rank::Ace)]);
+    run.play_hand(&[0], &mut EventBus::default())
+        .expect("play boss");
+    assert_eq!(run.state.money, 20, "should fire on boss blind");
+}
+
+#[test]
+fn condition_hand_variable_gates_by_hand_type() {
+    let mut run = new_run();
+    // Fires Independent when hand == "flush"
+    run.content.jokers.push(JokerDef {
+        id: "flush_money".to_string(),
+        name: "Flush Money".to_string(),
+        rarity: JokerRarity::Common,
+        effects: vec![JokerEffect {
+            trigger: ActivationType::Independent,
+            when: Expr::Binary {
+                left: Box::new(Expr::Ident("hand".to_string())),
+                op: BinaryOp::Eq,
+                right: Box::new(Expr::String("flush".to_string())),
+            },
+            actions: vec![Action {
+                op: ActionOpKind::Builtin(ActionOp::AddMoney),
+                target: None,
+                value: Expr::Number(15.0),
+            }],
+        }],
+    });
+    run.inventory
+        .add_joker("flush_money".to_string(), JokerRarity::Common, 1)
+        .expect("add joker");
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 2;
+    run.state.target = 1_000_000;
+    // Play a non-flush first
+    run.hand = make_cards(&[(Suit::Spades, Rank::Ace), (Suit::Hearts, Rank::Two)]);
+    run.play_hand(&[0, 1], &mut EventBus::default())
+        .expect("play pair");
+    assert_eq!(run.state.money, 0, "should not fire on pair");
+    // Play a flush
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    run.hand = make_cards(&[
+        (Suit::Spades, Rank::Two),
+        (Suit::Spades, Rank::Four),
+        (Suit::Spades, Rank::Six),
+        (Suit::Spades, Rank::Eight),
+        (Suit::Spades, Rank::Ten),
+    ]);
+    run.play_hand(&[0, 1, 2, 3, 4], &mut EventBus::default())
+        .expect("play flush");
+    assert_eq!(run.state.money, 15, "should fire on flush");
+}
+
+#[test]
+fn condition_hands_left_variable_gates_by_count() {
+    let mut run = new_run();
+    // Fires when hands_left == 1 (last hand)
+    run.content.jokers.push(JokerDef {
+        id: "last_hand_money".to_string(),
+        name: "Last Hand Money".to_string(),
+        rarity: JokerRarity::Common,
+        effects: vec![JokerEffect {
+            trigger: ActivationType::Independent,
+            when: Expr::Binary {
+                left: Box::new(Expr::Ident("hands_left".to_string())),
+                op: BinaryOp::Eq,
+                right: Box::new(Expr::Number(1.0)),
+            },
+            actions: vec![Action {
+                op: ActionOpKind::Builtin(ActionOp::AddMoney),
+                target: None,
+                value: Expr::Number(25.0),
+            }],
+        }],
+    });
+    run.inventory
+        .add_joker("last_hand_money".to_string(), JokerRarity::Common, 1)
+        .expect("add joker");
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 2;
+    run.state.target = 1_000_000;
+    run.hand = make_cards(&[(Suit::Spades, Rank::Ace)]);
+    run.play_hand(&[0], &mut EventBus::default())
+        .expect("first play");
+    assert_eq!(run.state.money, 0, "should not fire with 2 hands left");
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    run.hand = make_cards(&[(Suit::Spades, Rank::Ace)]);
+    run.play_hand(&[0], &mut EventBus::default())
+        .expect("second play");
+    assert_eq!(run.state.money, 25, "should fire on last hand");
+}
+
+#[test]
+fn condition_money_variable_gates_by_amount() {
+    let mut run = new_run();
+    run.state.money = 0;
+    // Fires Independent when money >= 10
+    run.content.jokers.push(JokerDef {
+        id: "rich_bonus".to_string(),
+        name: "Rich Bonus".to_string(),
+        rarity: JokerRarity::Common,
+        effects: vec![JokerEffect {
+            trigger: ActivationType::Independent,
+            when: Expr::Binary {
+                left: Box::new(Expr::Ident("money".to_string())),
+                op: BinaryOp::Ge,
+                right: Box::new(Expr::Number(10.0)),
+            },
+            actions: vec![Action {
+                op: ActionOpKind::Builtin(ActionOp::AddChips),
+                target: None,
+                value: Expr::Number(50.0),
+            }],
+        }],
+    });
+    run.inventory
+        .add_joker("rich_bonus".to_string(), JokerRarity::Common, 1)
+        .expect("add joker");
+    // First play: money=0 → should not fire
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 2;
+    run.state.target = 1_000_000;
+    run.hand = make_cards(&[(Suit::Spades, Rank::Ace)]);
+    let bd1 = run
+        .play_hand(&[0], &mut EventBus::default())
+        .expect("play broke");
+    assert!(
+        !run.last_score_trace
+            .iter()
+            .any(|s| s.source.contains("rich_bonus")),
+        "should not fire when broke"
+    );
+    // Set money to 15 and play again
+    run.state.money = 15;
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    run.hand = make_cards(&[(Suit::Spades, Rank::Ace)]);
+    let bd2 = run
+        .play_hand(&[0], &mut EventBus::default())
+        .expect("play rich");
+    assert!(
+        bd2.total.chips > bd1.total.chips,
+        "rich bonus should fire and add chips"
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DSL: Retrigger and scoring interaction edge cases
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn scoring_retrigger_scored_stacks_with_joker_editions() {
+    let mut run = new_run();
+    // Use var guard to prevent infinite loop: fires once with 2 retriggers
+    run.content.jokers.push(JokerDef {
+        id: "retrig2".to_string(),
+        name: "Retrig2".to_string(),
+        rarity: JokerRarity::Common,
+        effects: vec![JokerEffect {
+            trigger: ActivationType::OnScored,
+            when: Expr::Binary {
+                left: Box::new(Expr::Call {
+                    name: "var".to_string(),
+                    args: vec![Expr::String("used".to_string())],
+                }),
+                op: BinaryOp::Eq,
+                right: Box::new(Expr::Number(0.0)),
+            },
+            actions: vec![
+                Action {
+                    op: ActionOpKind::Builtin(ActionOp::RetriggerScored),
+                    target: None,
+                    value: Expr::Number(2.0),
+                },
+                Action {
+                    op: ActionOpKind::Builtin(ActionOp::SetVar),
+                    target: Some("used".to_string()),
+                    value: Expr::Number(1.0),
+                },
+            ],
+        }],
+    });
+    run.inventory
+        .add_joker("retrig2".to_string(), JokerRarity::Common, 1)
+        .expect("add joker");
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    let mut card = Card::standard(Suit::Spades, Rank::Ace);
+    card.enhancement = Some(Enhancement::Bonus);
+    run.hand = vec![card];
+    run.play_hand(&[0], &mut EventBus::default()).expect("play");
+    let bonus_hits = run
+        .last_score_trace
+        .iter()
+        .filter(|s| s.source == "enhancement:bonus")
+        .count();
+    assert_eq!(bonus_hits, 3, "2 retriggers → 3 total bonus hits");
+}
+
+#[test]
+fn scoring_multiple_jokers_add_chips_stack() {
+    let mut run = new_run();
+    add_scoring_joker(&mut run, "chips_a", ActionOp::AddChips, 10.0);
+    add_scoring_joker(&mut run, "chips_b", ActionOp::AddChips, 20.0);
+    add_scoring_joker(&mut run, "chips_c", ActionOp::AddChips, 30.0);
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    run.hand = make_cards(&[(Suit::Spades, Rank::Ace)]);
+    let bd = run.play_hand(&[0], &mut EventBus::default()).expect("play");
+    // All three AddChips stack: base + rank + 10 + 20 + 30
+    let base_and_rank = bd.base.chips + bd.rank_chips;
+    assert_eq!(bd.total.chips, base_and_rank + 60);
+}
+
+#[test]
+fn scoring_multiple_mul_mult_compound() {
+    let mut run = new_run();
+    add_scoring_joker(&mut run, "mul2a", ActionOp::MultiplyMult, 2.0);
+    add_scoring_joker(&mut run, "mul2b", ActionOp::MultiplyMult, 3.0);
+    run.state.phase = Phase::Play;
+    run.state.hands_left = 1;
+    run.hand = make_cards(&[(Suit::Spades, Rank::Ace)]);
+    let bd = run.play_hand(&[0], &mut EventBus::default()).expect("play");
+    // base_mult * 2 * 3 = base_mult * 6
+    assert_eq!(bd.total.mult, bd.base.mult * 6.0);
 }

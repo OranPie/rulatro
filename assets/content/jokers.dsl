@@ -509,10 +509,6 @@ joker campfire "Campfire" Rare {
 }
 
 # Additional jokers with partial/engine-backed effects.
-joker joker_stencil "Joker Stencil" Uncommon {
-  on independent { mul_mult max(1, empty_joker_slots + 1) }
-}
-
 joker four_fingers "Four Fingers" Uncommon {
   on passive { set_rule four_fingers 1 }
 }
