@@ -258,6 +258,54 @@ impl CardAttrRules {
             .cloned()
             .unwrap_or_else(|| builtin_seal(key))
     }
+
+    /// Resolve a dot-notation lookup key like `"enhancement.chips"` for modifier `id`.
+    ///
+    /// The namespace (`enhancement`, `edition`, `seal`) selects which stat block to use;
+    /// the field selects the specific value within that block.
+    /// `id` is the modifier's id (e.g. `"bonus"`, `"foil"`, `"gold"`).
+    pub fn resolve_lookup(&self, key: &str, id: &str) -> f64 {
+        let Some(dot) = key.find('.') else {
+            return 0.0;
+        };
+        let namespace = &key[..dot];
+        let field = &key[dot + 1..];
+        match namespace {
+            "enhancement" => {
+                let def = self.enhancement(id);
+                match field {
+                    "chips" => def.chips as f64,
+                    "mult" => def.mult_add,
+                    "x_mult" => def.mult_mul,
+                    "x_mult_held" => def.mult_mul_held,
+                    "destroy_odds" => def.destroy_odds as f64,
+                    "lucky_mult_odds" => def.prob_mult_odds as f64,
+                    "lucky_mult" => def.prob_mult_add,
+                    "lucky_money_odds" => def.prob_money_odds as f64,
+                    "lucky_money" => def.prob_money_add as f64,
+                    _ => 0.0,
+                }
+            }
+            "edition" => {
+                let def = self.edition(id);
+                match field {
+                    "chips" => def.chips as f64,
+                    "mult" => def.mult_add,
+                    "x_mult" => def.mult_mul,
+                    _ => 0.0,
+                }
+            }
+            "seal" => {
+                let def = self.seal(id);
+                match field {
+                    "money_scored" => def.money_scored as f64,
+                    "money_held" => def.money_held as f64,
+                    _ => 0.0,
+                }
+            }
+            _ => 0.0,
+        }
+    }
 }
 
 fn builtin_enhancement(key: &str) -> EnhancementDef {

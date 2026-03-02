@@ -68,9 +68,7 @@ pub(super) fn dispatch_action(
             handle_copy_played_card(run, joker, ctx, card_mut, score, money, results)
         }
         ActionOp::AddTarot => handle_add_tarot(run, joker, ctx, card_mut, score, money, results),
-        ActionOp::AddPlanet => {
-            handle_add_planet(run, joker, ctx, card_mut, score, money, results)
-        }
+        ActionOp::AddPlanet => handle_add_planet(run, joker, ctx, card_mut, score, money, results),
         ActionOp::AddSpectral => {
             handle_add_spectral(run, joker, ctx, card_mut, score, money, results)
         }
@@ -148,9 +146,7 @@ pub(super) fn dispatch_action(
         }
         ActionOp::SetRule => handle_set_rule(run, joker, ctx, card_mut, score, money, results),
         ActionOp::AddRule => handle_add_rule(run, joker, ctx, card_mut, score, money, results),
-        ActionOp::ClearRule => {
-            handle_clear_rule(run, joker, ctx, card_mut, score, money, results)
-        }
+        ActionOp::ClearRule => handle_clear_rule(run, joker, ctx, card_mut, score, money, results),
         ActionOp::SetVar => handle_set_var(run, joker, ctx, card_mut, score, money, results),
         ActionOp::AddVar => handle_add_var(run, joker, ctx, card_mut, score, money, results),
     }
