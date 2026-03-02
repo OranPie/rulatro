@@ -139,11 +139,24 @@ pub struct EconomyRule {
     /// Initial number of consumable slots. Defaults to 2.
     #[serde(default = "default_consumable_slots")]
     pub initial_consumable_slots: usize,
+    /// Divisor applied to a joker's buy price when calculating its sell value.
+    /// Defaults to 2 (sell for half the buy price).
+    #[serde(default = "default_joker_sell_divisor")]
+    pub joker_sell_divisor: i64,
 }
 
-fn default_hand_size() -> usize { 8 }
-fn default_joker_slots() -> usize { 5 }
-fn default_consumable_slots() -> usize { 2 }
+fn default_hand_size() -> usize {
+    8
+}
+fn default_joker_slots() -> usize {
+    5
+}
+fn default_consumable_slots() -> usize {
+    2
+}
+fn default_joker_sell_divisor() -> i64 {
+    2
+}
 
 /// Stat block for a card enhancement (Bonus, Mult, Glass, etc.).
 /// All fields default to zero / no-effect.
@@ -226,28 +239,55 @@ pub struct CardAttrRules {
 impl CardAttrRules {
     /// Look up an enhancement by key, falling back to built-in canonical defaults.
     pub fn enhancement(&self, key: &str) -> EnhancementDef {
-        self.enhancements.get(key).cloned().unwrap_or_else(|| builtin_enhancement(key))
+        self.enhancements
+            .get(key)
+            .cloned()
+            .unwrap_or_else(|| builtin_enhancement(key))
     }
     /// Look up an edition by key, falling back to built-in canonical defaults.
     pub fn edition(&self, key: &str) -> EditionDef {
-        self.editions.get(key).cloned().unwrap_or_else(|| builtin_edition(key))
+        self.editions
+            .get(key)
+            .cloned()
+            .unwrap_or_else(|| builtin_edition(key))
     }
     /// Look up a seal by key, falling back to built-in canonical defaults.
     pub fn seal(&self, key: &str) -> SealDef {
-        self.seals.get(key).cloned().unwrap_or_else(|| builtin_seal(key))
+        self.seals
+            .get(key)
+            .cloned()
+            .unwrap_or_else(|| builtin_seal(key))
     }
 }
 
 fn builtin_enhancement(key: &str) -> EnhancementDef {
     match key {
-        "bonus" => EnhancementDef { chips: 30, ..Default::default() },
-        "mult"  => EnhancementDef { mult_add: 4.0, ..Default::default() },
-        "glass" => EnhancementDef { mult_mul: 2.0, destroy_odds: 4, ..Default::default() },
-        "steel" => EnhancementDef { mult_mul_held: 1.5, ..Default::default() },
-        "stone" => EnhancementDef { chips: 50, ..Default::default() },
+        "bonus" => EnhancementDef {
+            chips: 30,
+            ..Default::default()
+        },
+        "mult" => EnhancementDef {
+            mult_add: 4.0,
+            ..Default::default()
+        },
+        "glass" => EnhancementDef {
+            mult_mul: 2.0,
+            destroy_odds: 4,
+            ..Default::default()
+        },
+        "steel" => EnhancementDef {
+            mult_mul_held: 1.5,
+            ..Default::default()
+        },
+        "stone" => EnhancementDef {
+            chips: 50,
+            ..Default::default()
+        },
         "lucky" => EnhancementDef {
-            prob_mult_odds: 5, prob_mult_add: 20.0,
-            prob_money_odds: 15, prob_money_add: 20,
+            prob_mult_odds: 5,
+            prob_mult_add: 20.0,
+            prob_money_odds: 15,
+            prob_money_add: 20,
             ..Default::default()
         },
         _ => EnhancementDef::default(),
@@ -256,18 +296,37 @@ fn builtin_enhancement(key: &str) -> EnhancementDef {
 
 fn builtin_edition(key: &str) -> EditionDef {
     match key {
-        "foil"         => EditionDef { chips: 50, ..Default::default() },
-        "holographic"  => EditionDef { mult_add: 10.0, ..Default::default() },
-        "polychrome"   => EditionDef { mult_mul: 1.5, ..Default::default() },
+        "foil" => EditionDef {
+            chips: 50,
+            ..Default::default()
+        },
+        "holographic" => EditionDef {
+            mult_add: 10.0,
+            ..Default::default()
+        },
+        "polychrome" => EditionDef {
+            mult_mul: 1.5,
+            ..Default::default()
+        },
         _ => EditionDef::default(),
     }
 }
 
 fn builtin_seal(key: &str) -> SealDef {
     match key {
-        "gold"   => SealDef { money_scored: 3, money_held: 3, ..Default::default() },
-        "blue"   => SealDef { grant_planet: Some(true), ..Default::default() },
-        "purple" => SealDef { grant_tarot_discard: Some(true), ..Default::default() },
+        "gold" => SealDef {
+            money_scored: 3,
+            money_held: 3,
+            ..Default::default()
+        },
+        "blue" => SealDef {
+            grant_planet: Some(true),
+            ..Default::default()
+        },
+        "purple" => SealDef {
+            grant_tarot_discard: Some(true),
+            ..Default::default()
+        },
         _ => SealDef::default(),
     }
 }

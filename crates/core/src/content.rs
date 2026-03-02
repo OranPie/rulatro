@@ -37,6 +37,10 @@ pub struct ConsumableDef {
     #[serde(default)]
     pub hand: Option<HandKind>,
     pub effects: Vec<EffectBlock>,
+    /// When true, using this consumable does not update `last_consumable` state.
+    /// Defaults to false. Used by The Fool which replays the last consumable.
+    #[serde(default)]
+    pub skip_last_consumable: bool,
 }
 
 #[derive(Debug, Clone)]

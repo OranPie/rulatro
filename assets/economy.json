@@ -6,5 +6,6 @@
   "interest_step": 5,
   "interest_per": 1,
   "interest_cap": 5,
-  "initial_hand_size": 8
+  "initial_hand_size": 8,
+  "joker_sell_divisor": 2
 }

@@ -133,40 +133,49 @@ impl LuaRuntime {
         // register_hand(id, { eval=fn, priority=N })
         let hands_ref = custom_hands.clone();
         let register_hand = lua
-            .create_function_mut(
-                move |lua, (id, def): (String, mlua::Table)| {
-                    let eval_func: Function = def.get("eval").map_err(|_| {
-                        mlua::Error::RuntimeError(
-                            "register_hand: 'eval' function required".to_string(),
-                        )
-                    })?;
-                    let priority: i32 = def.get("priority").unwrap_or(50);
-                    let key = lua.create_registry_value(eval_func)?;
-                    let mod_id: String = lua
-                        .globals()
-                        .get("__rulatro_mod_id")
-                        .unwrap_or_else(|_| "unknown".to_string());
-                    let mut hands = hands_ref.borrow_mut();
-                    hands.push(LuaCustomHand { mod_id, id, eval_func: key, priority });
-                    hands.sort_by(|a, b| b.priority.cmp(&a.priority));
-                    Ok(())
-                },
-            )
+            .create_function_mut(move |lua, (id, def): (String, mlua::Table)| {
+                let eval_func: Function = def.get("eval").map_err(|_| {
+                    mlua::Error::RuntimeError("register_hand: 'eval' function required".to_string())
+                })?;
+                let priority: i32 = def.get("priority").unwrap_or(50);
+                let key = lua.create_registry_value(eval_func)?;
+                let mod_id: String = lua
+                    .globals()
+                    .get("__rulatro_mod_id")
+                    .unwrap_or_else(|_| "unknown".to_string());
+                let mut hands = hands_ref.borrow_mut();
+                hands.push(LuaCustomHand {
+                    mod_id,
+                    id,
+                    eval_func: key,
+                    priority,
+                });
+                hands.sort_by(|a, b| b.priority.cmp(&a.priority));
+                Ok(())
+            })
             .map_err(|err| ModError::Runtime(err.to_string()))?;
 
         // register_flow(point, mode, fn, opts?) — Flow Kernel unified registration
         let flow_ref = flow_handlers.clone();
         let register_flow = lua
             .create_function_mut(
-                move |lua, (point_str, mode_str, func, opts): (String, String, Function, Option<mlua::Table>)| {
+                move |lua,
+                      (point_str, mode_str, func, opts): (
+                    String,
+                    String,
+                    Function,
+                    Option<mlua::Table>,
+                )| {
                     let Some(point) = parse_flow_point(&point_str) else {
                         return Err(mlua::Error::RuntimeError(format!(
-                            "register_flow: unknown point '{}'", point_str
+                            "register_flow: unknown point '{}'",
+                            point_str
                         )));
                     };
                     let Some(mode) = parse_flow_mode(&mode_str) else {
                         return Err(mlua::Error::RuntimeError(format!(
-                            "register_flow: unknown mode '{}' (expected patch/replace/around)", mode_str
+                            "register_flow: unknown mode '{}' (expected patch/replace/around)",
+                            mode_str
                         )));
                     };
                     let priority: i32 = opts
@@ -178,7 +187,11 @@ impl LuaRuntime {
                         .globals()
                         .get("__rulatro_mod_id")
                         .unwrap_or_else(|_| "unknown".to_string());
-                    let handler = LuaFlowHandler { mod_id, func: key, priority };
+                    let handler = LuaFlowHandler {
+                        mod_id,
+                        func: key,
+                        priority,
+                    };
                     let mut map = flow_ref.borrow_mut();
                     let list = map.entry((point, mode)).or_default();
                     // Insert sorted by priority desc (stable — equal priority preserves insertion order)
@@ -236,7 +249,14 @@ impl LuaRuntime {
             .set("rulatro", api)
             .map_err(|err| ModError::Runtime(err.to_string()))?;
 
-        Ok(Self { lua, hooks, effects, effect_ops, custom_hands, flow_handlers })
+        Ok(Self {
+            lua,
+            hooks,
+            effects,
+            effect_ops,
+            custom_hands,
+            flow_handlers,
+        })
     }
 
     pub fn load_mod(&mut self, item: &LoadedMod) -> Result<(), ModError> {
@@ -357,7 +377,10 @@ impl LuaRuntime {
         let ctx_value = match self.lua.to_value(ctx) {
             Ok(v) => v,
             Err(err) => {
-                eprintln!("[modding] invoke_effect: failed to serialize context: {}", err);
+                eprintln!(
+                    "[modding] invoke_effect: failed to serialize context: {}",
+                    err
+                );
                 return merged;
             }
         };
@@ -366,23 +389,25 @@ impl LuaRuntime {
             let func: Function = match self.lua.registry_value(key) {
                 Ok(f) => f,
                 Err(err) => {
-                    eprintln!("[mod:{}] missing effect function '{}': {}", mod_id, name, err);
+                    eprintln!(
+                        "[mod:{}] missing effect function '{}': {}",
+                        mod_id, name, err
+                    );
                     continue;
                 }
             };
             let prev_mod: Option<String> = self.lua.globals().get("__rulatro_mod_id").ok();
             let _ = self.lua.globals().set("__rulatro_mod_id", mod_id.clone());
-            let result: Value =
-                match func.call((ctx_value.clone(), target.unwrap_or(""), value)) {
-                    Ok(v) => v,
-                    Err(err) => {
-                        eprintln!("[mod:{}] effect '{}' error: {}", mod_id, name, err);
-                        if let Some(p) = prev_mod {
-                            let _ = self.lua.globals().set("__rulatro_mod_id", p);
-                        }
-                        continue;
+            let result: Value = match func.call((ctx_value.clone(), target.unwrap_or(""), value)) {
+                Ok(v) => v,
+                Err(err) => {
+                    eprintln!("[mod:{}] effect '{}' error: {}", mod_id, name, err);
+                    if let Some(p) = prev_mod {
+                        let _ = self.lua.globals().set("__rulatro_mod_id", p);
                     }
-                };
+                    continue;
+                }
+            };
             if let Some(p) = prev_mod {
                 let _ = self.lua.globals().set("__rulatro_mod_id", p);
             }
@@ -425,7 +450,10 @@ impl LuaRuntime {
         let ctx_value = match self.lua.to_value(ctx) {
             Ok(v) => v,
             Err(err) => {
-                eprintln!("[modding] evaluate_hand: failed to serialize context: {}", err);
+                eprintln!(
+                    "[modding] evaluate_hand: failed to serialize context: {}",
+                    err
+                );
                 return None;
             }
         };
@@ -456,7 +484,10 @@ impl LuaRuntime {
             let result: Value = match func.call(ctx_value.clone()) {
                 Ok(v) => v,
                 Err(err) => {
-                    eprintln!("[mod:{}] evaluate_hand '{}' error: {}", mod_id, hand_id, err);
+                    eprintln!(
+                        "[mod:{}] evaluate_hand '{}' error: {}",
+                        mod_id, hand_id, err
+                    );
                     if let Some(p) = prev_mod {
                         let _ = self.lua.globals().set("__rulatro_mod_id", p);
                     }
@@ -487,12 +518,7 @@ impl LuaRuntime {
         None
     }
 
-    pub fn invoke_effect_op(
-        &mut self,
-        name: &str,
-        value: f64,
-        ctx: &ModEffectContext<'_>,
-    ) -> bool {
+    pub fn invoke_effect_op(&mut self, name: &str, value: f64, ctx: &ModEffectContext<'_>) -> bool {
         let ctx_value = match self.lua.to_value(ctx) {
             Ok(v) => v,
             Err(_) => return false,
@@ -553,38 +579,79 @@ impl LuaRuntime {
             .collect()
     }
 
-    pub fn flow_hand_eval_patch(&mut self, base: HandEvalPatch, ctx: &FlowCtx<'_>) -> HandEvalPatch {
+    pub fn flow_hand_eval_patch(
+        &mut self,
+        base: HandEvalPatch,
+        ctx: &FlowCtx<'_>,
+    ) -> HandEvalPatch {
         let snapshot = self.snapshot_flow(FlowPoint::HandEval, FlowMode::Patch);
-        if snapshot.is_empty() { return base; }
-        let ctx_val = match self.lua.to_value(ctx) { Ok(v) => v, Err(_) => return base };
+        if snapshot.is_empty() {
+            return base;
+        }
+        let ctx_val = match self.lua.to_value(ctx) {
+            Ok(v) => v,
+            Err(_) => return base,
+        };
         run_patch(&self.lua, &snapshot, base, &ctx_val, "hand_eval")
     }
 
-    pub fn flow_card_debuff_patch(&mut self, base: CardDebuffPatch, ctx: &FlowCtx<'_>) -> CardDebuffPatch {
+    pub fn flow_card_debuff_patch(
+        &mut self,
+        base: CardDebuffPatch,
+        ctx: &FlowCtx<'_>,
+    ) -> CardDebuffPatch {
         let snapshot = self.snapshot_flow(FlowPoint::CardDebuff, FlowMode::Patch);
-        if snapshot.is_empty() { return base; }
-        let ctx_val = match self.lua.to_value(ctx) { Ok(v) => v, Err(_) => return base };
+        if snapshot.is_empty() {
+            return base;
+        }
+        let ctx_val = match self.lua.to_value(ctx) {
+            Ok(v) => v,
+            Err(_) => return base,
+        };
         run_patch(&self.lua, &snapshot, base, &ctx_val, "card_debuff")
     }
 
-    pub fn flow_score_base_patch(&mut self, base: ScoreBasePatch, ctx: &FlowCtx<'_>) -> ScoreBasePatch {
+    pub fn flow_score_base_patch(
+        &mut self,
+        base: ScoreBasePatch,
+        ctx: &FlowCtx<'_>,
+    ) -> ScoreBasePatch {
         let snapshot = self.snapshot_flow(FlowPoint::ScoreBase, FlowMode::Patch);
-        if snapshot.is_empty() { return base; }
-        let ctx_val = match self.lua.to_value(ctx) { Ok(v) => v, Err(_) => return base };
+        if snapshot.is_empty() {
+            return base;
+        }
+        let ctx_val = match self.lua.to_value(ctx) {
+            Ok(v) => v,
+            Err(_) => return base,
+        };
         run_patch(&self.lua, &snapshot, base, &ctx_val, "score_base")
     }
 
-    pub fn flow_shop_params_patch(&mut self, base: ShopParamsPatch, ctx: &FlowCtx<'_>) -> ShopParamsPatch {
+    pub fn flow_shop_params_patch(
+        &mut self,
+        base: ShopParamsPatch,
+        ctx: &FlowCtx<'_>,
+    ) -> ShopParamsPatch {
         let snapshot = self.snapshot_flow(FlowPoint::ShopParams, FlowMode::Patch);
-        if snapshot.is_empty() { return base; }
-        let ctx_val = match self.lua.to_value(ctx) { Ok(v) => v, Err(_) => return base };
+        if snapshot.is_empty() {
+            return base;
+        }
+        let ctx_val = match self.lua.to_value(ctx) {
+            Ok(v) => v,
+            Err(_) => return base,
+        };
         run_patch(&self.lua, &snapshot, base, &ctx_val, "shop_params")
     }
 
     pub fn flow_hand_type_replace(&mut self, ctx: &FlowCtx<'_>) -> Option<HandTypeOutput> {
         let snapshot = self.snapshot_flow(FlowPoint::HandType, FlowMode::Replace);
-        if snapshot.is_empty() { return None; }
-        let ctx_val = match self.lua.to_value(ctx) { Ok(v) => v, Err(_) => return None };
+        if snapshot.is_empty() {
+            return None;
+        }
+        let ctx_val = match self.lua.to_value(ctx) {
+            Ok(v) => v,
+            Err(_) => return None,
+        };
         for (mod_id, key) in &snapshot {
             let func: Function = match self.lua.registry_value(key) {
                 Ok(f) => f,
@@ -596,12 +663,18 @@ impl LuaRuntime {
                 Ok(v) => v,
                 Err(err) => {
                     eprintln!("[mod:{}] flow hand_type replace error: {}", mod_id, err);
-                    if let Some(p) = prev { let _ = self.lua.globals().set("__rulatro_mod_id", p); }
+                    if let Some(p) = prev {
+                        let _ = self.lua.globals().set("__rulatro_mod_id", p);
+                    }
                     continue;
                 }
             };
-            if let Some(p) = prev { let _ = self.lua.globals().set("__rulatro_mod_id", p); }
-            if matches!(result, Value::Nil | Value::Boolean(false)) { continue; }
+            if let Some(p) = prev {
+                let _ = self.lua.globals().set("__rulatro_mod_id", p);
+            }
+            if matches!(result, Value::Nil | Value::Boolean(false)) {
+                continue;
+            }
             if let Ok(out) = self.lua.from_value::<HandTypeOutput>(result) {
                 return Some(out);
             }
@@ -612,16 +685,26 @@ impl LuaRuntime {
     pub fn flow_joker_effect(&mut self, ctx: &FlowCtx<'_>) -> EffectOutput {
         let name = ctx.effect_name.unwrap_or("");
         let snapshot = self.snapshot_flow(FlowPoint::JokerEffect, FlowMode::Patch);
-        if snapshot.is_empty() { return EffectOutput::default(); }
-        let ctx_val = match self.lua.to_value(ctx) { Ok(v) => v, Err(_) => return EffectOutput::default() };
+        if snapshot.is_empty() {
+            return EffectOutput::default();
+        }
+        let ctx_val = match self.lua.to_value(ctx) {
+            Ok(v) => v,
+            Err(_) => return EffectOutput::default(),
+        };
         run_effect_output_patch(&self.lua, &snapshot, ctx_val, name, "joker_effect")
     }
 
     pub fn flow_consumable_effect(&mut self, ctx: &FlowCtx<'_>) -> EffectOutput {
         let name = ctx.effect_name.unwrap_or("");
         let snapshot = self.snapshot_flow(FlowPoint::ConsumableEffect, FlowMode::Patch);
-        if snapshot.is_empty() { return EffectOutput::default(); }
-        let ctx_val = match self.lua.to_value(ctx) { Ok(v) => v, Err(_) => return EffectOutput::default() };
+        if snapshot.is_empty() {
+            return EffectOutput::default();
+        }
+        let ctx_val = match self.lua.to_value(ctx) {
+            Ok(v) => v,
+            Err(_) => return EffectOutput::default(),
+        };
         run_effect_output_patch(&self.lua, &snapshot, ctx_val, name, "consumable_effect")
     }
 }
@@ -640,7 +723,10 @@ where
     for (mod_id, key) in handlers {
         let patch_val = match lua.to_value(&current) {
             Ok(v) => v,
-            Err(err) => { eprintln!("[mod:{}] flow_{} patch serialize: {}", mod_id, label, err); continue; }
+            Err(err) => {
+                eprintln!("[mod:{}] flow_{} patch serialize: {}", mod_id, label, err);
+                continue;
+            }
         };
         let func: Function = match lua.registry_value(key) {
             Ok(f) => f,
@@ -652,15 +738,25 @@ where
             Ok(v) => v,
             Err(err) => {
                 eprintln!("[mod:{}] flow_{} error: {}", mod_id, label, err);
-                if let Some(p) = prev { let _ = lua.globals().set("__rulatro_mod_id", p); }
+                if let Some(p) = prev {
+                    let _ = lua.globals().set("__rulatro_mod_id", p);
+                }
                 continue;
             }
         };
-        if let Some(p) = prev { let _ = lua.globals().set("__rulatro_mod_id", p); }
-        if matches!(result, Value::Nil) { continue; }
+        if let Some(p) = prev {
+            let _ = lua.globals().set("__rulatro_mod_id", p);
+        }
+        if matches!(result, Value::Nil) {
+            continue;
+        }
         match lua.from_value::<T>(result) {
-            Ok(new_patch) => { current = new_patch; }
-            Err(err) => { eprintln!("[mod:{}] flow_{} bad return: {}", mod_id, label, err); }
+            Ok(new_patch) => {
+                current = new_patch;
+            }
+            Err(err) => {
+                eprintln!("[mod:{}] flow_{} bad return: {}", mod_id, label, err);
+            }
         }
     }
     current
@@ -686,19 +782,29 @@ fn run_effect_output_patch(
             Ok(v) => v,
             Err(err) => {
                 eprintln!("[mod:{}] flow_{} error: {}", mod_id, label, err);
-                if let Some(p) = prev { let _ = lua.globals().set("__rulatro_mod_id", p); }
+                if let Some(p) = prev {
+                    let _ = lua.globals().set("__rulatro_mod_id", p);
+                }
                 continue;
             }
         };
-        if let Some(p) = prev { let _ = lua.globals().set("__rulatro_mod_id", p); }
-        if matches!(result, Value::Nil) { continue; }
+        if let Some(p) = prev {
+            let _ = lua.globals().set("__rulatro_mod_id", p);
+        }
+        if matches!(result, Value::Nil) {
+            continue;
+        }
         match lua.from_value::<EffectOutput>(result) {
             Ok(out) => {
                 let stop = out.stop;
                 merged.merge_from(out);
-                if stop { break; }
+                if stop {
+                    break;
+                }
             }
-            Err(err) => { eprintln!("[mod:{}] flow_{} bad return: {}", mod_id, label, err); }
+            Err(err) => {
+                eprintln!("[mod:{}] flow_{} bad return: {}", mod_id, label, err);
+            }
         }
     }
     merged

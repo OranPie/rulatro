@@ -1,7 +1,7 @@
 use anyhow::{anyhow, bail, Context, Result};
 use rulatro_core::{
-    Action, ActionOp, ActionOpKind, ActivationType, BinaryOp, BossDef, Expr, JokerDef,
-    JokerEffect, JokerRarity, TagDef, UnaryOp,
+    Action, ActionOp, ActionOpKind, ActivationType, BinaryOp, BossDef, Expr, JokerDef, JokerEffect,
+    JokerRarity, TagDef, UnaryOp,
 };
 use std::collections::HashMap;
 use std::fs;

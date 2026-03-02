@@ -3188,6 +3188,7 @@ fn pack_open_blocks_owned_tarot_when_duplicates_disabled() {
         kind: ConsumableKind::Tarot,
         hand: None,
         effects: Vec::new(),
+        skip_last_consumable: false,
     }];
     let offer = PackOffer {
         kind: PackKind::Arcana,
@@ -3221,6 +3222,7 @@ fn pack_open_allows_owned_tarot_when_duplicates_enabled() {
         kind: ConsumableKind::Tarot,
         hand: None,
         effects: Vec::new(),
+        skip_last_consumable: false,
     }];
     let offer = PackOffer {
         kind: PackKind::Arcana,
@@ -3294,6 +3296,7 @@ fn shop_restrictions_block_owned_tarot_offer() {
             kind: ConsumableKind::Tarot,
             hand: None,
             effects: Vec::new(),
+            skip_last_consumable: false,
         },
         ConsumableDef {
             id: "free".to_string(),
@@ -3301,6 +3304,7 @@ fn shop_restrictions_block_owned_tarot_offer() {
             kind: ConsumableKind::Tarot,
             hand: None,
             effects: Vec::new(),
+            skip_last_consumable: false,
         },
     ];
     let mut rule = run.config.shop.clone();
@@ -3333,6 +3337,7 @@ fn shop_restrictions_block_owned_planet_offer() {
             kind: ConsumableKind::Planet,
             hand: None,
             effects: Vec::new(),
+            skip_last_consumable: false,
         },
         ConsumableDef {
             id: "free".to_string(),
@@ -3340,6 +3345,7 @@ fn shop_restrictions_block_owned_planet_offer() {
             kind: ConsumableKind::Planet,
             hand: None,
             effects: Vec::new(),
+            skip_last_consumable: false,
         },
     ];
     let mut rule = run.config.shop.clone();
@@ -3371,6 +3377,7 @@ fn pack_open_blocks_owned_planet_when_duplicates_disabled() {
         kind: ConsumableKind::Planet,
         hand: None,
         effects: Vec::new(),
+        skip_last_consumable: false,
     }];
     let offer = PackOffer {
         kind: PackKind::Celestial,
@@ -3404,6 +3411,7 @@ fn pack_open_allows_owned_planet_when_duplicates_enabled() {
         kind: ConsumableKind::Planet,
         hand: None,
         effects: Vec::new(),
+        skip_last_consumable: false,
     }];
     let offer = PackOffer {
         kind: PackKind::Celestial,
@@ -3447,6 +3455,7 @@ fn pack_open_blocks_owned_spectral_when_duplicates_disabled() {
         kind: ConsumableKind::Spectral,
         hand: None,
         effects: Vec::new(),
+        skip_last_consumable: false,
     }];
     let offer = PackOffer {
         kind: PackKind::Spectral,

@@ -77,36 +77,92 @@ pub enum EffectOp {
     Score(RuleEffect),
     AddMoney(i64),
     SetMoney(i64),
-    DoubleMoney { cap: i64 },
-    AddMoneyFromJokers { cap: i64 },
+    DoubleMoney {
+        cap: i64,
+    },
+    AddMoneyFromJokers {
+        cap: i64,
+    },
     AddHandSize(i64),
-    UpgradeHand { hand: HandKind, amount: u32 },
-    UpgradeAllHands { amount: u32 },
-    AddRandomConsumable { kind: ConsumableKind, count: u8 },
-    AddJoker { rarity: JokerRarity, count: u8 },
-    AddRandomJoker { count: u8 },
-    RandomJokerEdition { editions: Vec<Edition>, chance: f64 },
-    SetRandomJokerEdition { edition: Edition },
-    SetRandomJokerEditionDestroyOthers { edition: Edition },
-    DuplicateRandomJokerDestroyOthers { remove_negative: bool },
-    EnhanceSelected { enhancement: Enhancement, count: u8 },
-    AddEditionToSelected { editions: Vec<Edition>, count: u8 },
-    AddSealToSelected { seal: Seal, count: u8 },
-    ConvertSelectedSuit { suit: Suit, count: u8 },
-    IncreaseSelectedRank { count: u8, delta: i8 },
-    DestroySelected { count: u8 },
-    DestroyRandomInHand { count: u8 },
-    CopySelected { count: u8 },
+    UpgradeHand {
+        hand: HandKind,
+        amount: u32,
+    },
+    UpgradeAllHands {
+        amount: u32,
+    },
+    AddRandomConsumable {
+        kind: ConsumableKind,
+        count: u8,
+    },
+    AddJoker {
+        rarity: JokerRarity,
+        count: u8,
+    },
+    AddRandomJoker {
+        count: u8,
+    },
+    RandomJokerEdition {
+        editions: Vec<Edition>,
+        chance: f64,
+    },
+    SetRandomJokerEdition {
+        edition: Edition,
+    },
+    SetRandomJokerEditionDestroyOthers {
+        edition: Edition,
+    },
+    DuplicateRandomJokerDestroyOthers {
+        remove_negative: bool,
+    },
+    EnhanceSelected {
+        enhancement: Enhancement,
+        count: u8,
+    },
+    AddEditionToSelected {
+        editions: Vec<Edition>,
+        count: u8,
+    },
+    AddSealToSelected {
+        seal: Seal,
+        count: u8,
+    },
+    ConvertSelectedSuit {
+        suit: Suit,
+        count: u8,
+    },
+    IncreaseSelectedRank {
+        count: u8,
+        delta: i8,
+    },
+    DestroySelected {
+        count: u8,
+    },
+    DestroyRandomInHand {
+        count: u8,
+    },
+    CopySelected {
+        count: u8,
+    },
     ConvertLeftIntoRight,
     ConvertHandToRandomRank,
     ConvertHandToRandomSuit,
-    AddRandomEnhancedCards { count: u8, filter: RankFilter },
-    CreateLastConsumable { exclude: Option<String> },
+    AddRandomEnhancedCards {
+        count: u8,
+        filter: RankFilter,
+    },
+    CreateLastConsumable {
+        exclude: Option<String>,
+    },
     RetriggerScored(i64),
     RetriggerHeld(i64),
     /// A mod-registered consumable effect. `name` is the effect identifier;
     /// `value` is an optional numeric parameter (defaults to 0.0).
-    Custom { name: String, #[serde(default)] value: f64 },
+    Custom {
+        name: String,
+        #[serde(default)]
+        value: f64,
+    },
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

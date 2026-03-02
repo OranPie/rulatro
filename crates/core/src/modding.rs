@@ -77,11 +77,11 @@ pub struct HandEvalPatch {
 impl HandEvalPatch {
     /// Merge `other` into `self` using per-field policies.
     pub fn merge_from(&mut self, other: &HandEvalPatch) {
-        self.max_gap     = merge_max_opt(self.max_gap,     other.max_gap);
-        self.min_len     = merge_min_opt(self.min_len,     other.min_len);
+        self.max_gap = merge_max_opt(self.max_gap, other.max_gap);
+        self.min_len = merge_min_opt(self.min_len, other.min_len);
         self.four_fingers = bool_or_opt(self.four_fingers, other.four_fingers);
-        self.smear_suits  = bool_or_opt(self.smear_suits,  other.smear_suits);
-        self.splash       = bool_or_opt(self.splash,       other.splash);
+        self.smear_suits = bool_or_opt(self.smear_suits, other.smear_suits);
+        self.splash = bool_or_opt(self.splash, other.splash);
     }
 }
 
@@ -105,8 +105,12 @@ impl CardDebuffPatch {
     /// Final resolution: shield wins over debuff.
     #[inline]
     pub fn resolve(&self, base_debuffed: bool) -> bool {
-        if self.force_shield { return false; }
-        if self.force_debuff { return true; }
+        if self.force_shield {
+            return false;
+        }
+        if self.force_debuff {
+            return true;
+        }
         base_debuffed
     }
 }
@@ -127,14 +131,18 @@ pub struct ScoreBasePatch {
 
 impl Default for ScoreBasePatch {
     fn default() -> Self {
-        Self { chips_mult: 1.0, mult_mult: 1.0, level_delta: 0 }
+        Self {
+            chips_mult: 1.0,
+            mult_mult: 1.0,
+            level_delta: 0,
+        }
     }
 }
 
 impl ScoreBasePatch {
     pub fn merge_from(&mut self, other: &ScoreBasePatch) {
-        self.chips_mult  *= other.chips_mult;
-        self.mult_mult   *= other.mult_mult;
+        self.chips_mult *= other.chips_mult;
+        self.mult_mult *= other.mult_mult;
         self.level_delta += other.level_delta;
     }
 }
@@ -155,9 +163,9 @@ pub struct ShopParamsPatch {
 
 impl ShopParamsPatch {
     pub fn merge_from(&mut self, other: &ShopParamsPatch) {
-        self.allow_duplicates  = bool_or_opt(self.allow_duplicates, other.allow_duplicates);
+        self.allow_duplicates = bool_or_opt(self.allow_duplicates, other.allow_duplicates);
         self.joker_price_delta += other.joker_price_delta;
-        self.free_rerolls      += other.free_rerolls;
+        self.free_rerolls += other.free_rerolls;
     }
 }
 
@@ -226,18 +234,22 @@ pub struct EffectOutput {
 impl EffectOutput {
     /// Accumulate `other` into `self`.  Addition for numerics, OR for bools.
     pub fn merge_from(&mut self, other: EffectOutput) {
-        self.handled   |= other.handled;
+        self.handled |= other.handled;
         self.add_chips += other.add_chips;
-        self.add_mult  += other.add_mult;
-        if other.mul_mult  != 0.0 { self.mul_mult  *= other.mul_mult; }
-        if other.mul_chips != 0.0 { self.mul_chips *= other.mul_chips; }
+        self.add_mult += other.add_mult;
+        if other.mul_mult != 0.0 {
+            self.mul_mult *= other.mul_mult;
+        }
+        if other.mul_chips != 0.0 {
+            self.mul_chips *= other.mul_chips;
+        }
         self.add_money += other.add_money;
         self.set_rules.extend(other.set_rules);
         self.add_rules.extend(other.add_rules);
         self.set_vars.extend(other.set_vars);
         self.add_vars.extend(other.add_vars);
         self.extra_effects.extend(other.extra_effects);
-        self.stop        |= other.stop;
+        self.stop |= other.stop;
         self.cancel_core |= other.cancel_core;
     }
 }
@@ -248,14 +260,14 @@ impl From<ModActionResult> for EffectOutput {
         Self {
             handled: r.add_chips != 0 || r.add_mult != 0.0 || !r.set_rules.is_empty(),
             add_chips: r.add_chips,
-            add_mult:  r.add_mult,
-            mul_mult:  r.mul_mult,
+            add_mult: r.add_mult,
+            mul_mult: r.mul_mult,
             mul_chips: r.mul_chips,
             add_money: r.add_money,
             set_rules: r.set_rules,
             add_rules: r.add_rules,
-            set_vars:  r.set_vars,
-            add_vars:  r.add_vars,
+            set_vars: r.set_vars,
+            add_vars: r.add_vars,
             ..Default::default()
         }
     }
@@ -264,10 +276,10 @@ impl From<ModActionResult> for EffectOutput {
 impl From<ModHookResult> for EffectOutput {
     fn from(r: ModHookResult) -> Self {
         Self {
-            handled:      !r.effects.is_empty(),
+            handled: !r.effects.is_empty(),
             extra_effects: r.effects,
-            stop:          r.stop,
-            cancel_core:   r.cancel_core,
+            stop: r.stop,
+            cancel_core: r.cancel_core,
             ..Default::default()
         }
     }
@@ -286,13 +298,13 @@ pub struct FlowCtx<'a> {
 
     // ── Scoring / hand context ─────────────────────────────────────
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub hand_kind:  Option<HandKind>,
+    pub hand_kind: Option<HandKind>,
     #[serde(skip_serializing_if = "slice_is_empty")]
-    pub played:   &'a [Card],
+    pub played: &'a [Card],
     #[serde(skip_serializing_if = "slice_is_empty")]
-    pub scoring:  &'a [Card],
+    pub scoring: &'a [Card],
     #[serde(skip_serializing_if = "slice_is_empty")]
-    pub held:     &'a [Card],
+    pub held: &'a [Card],
     #[serde(skip_serializing_if = "slice_is_empty")]
     pub discarded: &'a [Card],
 
@@ -302,9 +314,9 @@ pub struct FlowCtx<'a> {
 
     // ── Effect / action context ─────────────────────────────────────
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub joker_id:     Option<&'a str>,
+    pub joker_id: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub effect_name:  Option<&'a str>,
+    pub effect_name: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub effect_value: Option<f64>,
 
@@ -312,30 +324,45 @@ pub struct FlowCtx<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub trigger: Option<ActivationType>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub blind:   Option<BlindKind>,
+    pub blind: Option<BlindKind>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub card_lucky_triggers: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub sold_value:      Option<i64>,
+    pub sold_value: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub consumable_kind: Option<ConsumableKind>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub consumable_id:   Option<&'a str>,
+    pub consumable_id: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub joker_count: Option<usize>,
 }
 
-fn slice_is_empty<T>(s: &&[T]) -> bool { s.is_empty() }
+fn slice_is_empty<T>(s: &&[T]) -> bool {
+    s.is_empty()
+}
 
 impl<'a> FlowCtx<'a> {
     /// Construct a minimal context for pure-patch flow points.
     pub fn patch(point: FlowPoint, state: &'a GameState) -> Self {
         Self {
-            point, state,
-            hand_kind: None, played: &[], scoring: &[], held: &[], discarded: &[],
-            card: None, joker_id: None, effect_name: None, effect_value: None,
-            trigger: None, blind: None, card_lucky_triggers: None, sold_value: None,
-            consumable_kind: None, consumable_id: None, joker_count: None,
+            point,
+            state,
+            hand_kind: None,
+            played: &[],
+            scoring: &[],
+            held: &[],
+            discarded: &[],
+            card: None,
+            joker_id: None,
+            effect_name: None,
+            effect_value: None,
+            trigger: None,
+            blind: None,
+            card_lucky_triggers: None,
+            sold_value: None,
+            consumable_kind: None,
+            consumable_id: None,
+            joker_count: None,
         }
     }
 
@@ -356,10 +383,10 @@ impl<'a> FlowCtx<'a> {
         effect_value: f64,
     ) -> Self {
         let mut ctx = Self::patch(FlowPoint::JokerEffect, state);
-        ctx.hand_kind    = hand_kind;
-        ctx.card         = card;
-        ctx.joker_id     = joker_id;
-        ctx.effect_name  = Some(effect_name);
+        ctx.hand_kind = hand_kind;
+        ctx.card = card;
+        ctx.joker_id = joker_id;
+        ctx.effect_name = Some(effect_name);
         ctx.effect_value = Some(effect_value);
         ctx
     }
@@ -371,7 +398,7 @@ impl<'a> FlowCtx<'a> {
         effect_value: f64,
     ) -> Self {
         let mut ctx = Self::patch(FlowPoint::ConsumableEffect, state);
-        ctx.effect_name  = Some(effect_name);
+        ctx.effect_name = Some(effect_name);
         ctx.effect_value = Some(effect_value);
         ctx
     }
@@ -420,7 +447,9 @@ fn bool_or_opt(a: Option<bool>, b: Option<bool>) -> Option<bool> {
     }
 }
 
-fn one_f64() -> f64 { 1.0 }
+fn one_f64() -> f64 {
+    1.0
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LEGACY TYPES — kept for backward compatibility; new code should use Flow Kernel
@@ -452,7 +481,7 @@ pub struct ModHookResult {
 impl ModHookResult {
     pub fn merge(&mut self, other: ModHookResult) {
         self.effects.extend(other.effects);
-        self.stop        |= other.stop;
+        self.stop |= other.stop;
         self.cancel_core |= other.cancel_core;
     }
 }
@@ -461,45 +490,58 @@ impl ModHookResult {
 /// Legacy; new code returns `EffectOutput`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ModActionResult {
-    #[serde(default)] pub add_chips: i64,
-    #[serde(default)] pub add_mult: f64,
-    #[serde(default)] pub mul_mult: f64,
-    #[serde(default)] pub mul_chips: f64,
-    #[serde(default)] pub add_money: i64,
-    #[serde(default)] pub set_rules: Vec<(String, f64)>,
-    #[serde(default)] pub add_rules: Vec<(String, f64)>,
-    #[serde(default)] pub set_vars: Vec<(String, f64)>,
-    #[serde(default)] pub add_vars: Vec<(String, f64)>,
+    #[serde(default)]
+    pub add_chips: i64,
+    #[serde(default)]
+    pub add_mult: f64,
+    #[serde(default)]
+    pub mul_mult: f64,
+    #[serde(default)]
+    pub mul_chips: f64,
+    #[serde(default)]
+    pub add_money: i64,
+    #[serde(default)]
+    pub set_rules: Vec<(String, f64)>,
+    #[serde(default)]
+    pub add_rules: Vec<(String, f64)>,
+    #[serde(default)]
+    pub set_vars: Vec<(String, f64)>,
+    #[serde(default)]
+    pub add_vars: Vec<(String, f64)>,
 }
 
 /// Context passed to `invoke_effect` / `invoke_effect_op`.  Legacy; new code uses `FlowCtx`.
 #[derive(Debug, Serialize)]
 pub struct ModEffectContext<'a> {
-    pub state:    &'a GameState,
+    pub state: &'a GameState,
     pub hand_kind: Option<HandKind>,
-    pub card:      Option<Card>,
-    pub joker_id:  Option<&'a str>,
+    pub card: Option<Card>,
+    pub joker_id: Option<&'a str>,
 }
 
 /// Context passed to `evaluate_hand`.  Legacy; new code uses `FlowCtx`.
 #[derive(Debug, Serialize)]
 pub struct ModHandEvalContext<'a> {
-    pub state:         &'a GameState,
-    pub cards:         &'a [Card],
+    pub state: &'a GameState,
+    pub cards: &'a [Card],
     pub smeared_suits: bool,
-    pub four_fingers:  bool,
-    pub shortcut:      bool,
+    pub four_fingers: bool,
+    pub shortcut: bool,
 }
 
 /// Result of a custom hand evaluation.  Legacy; new code uses `HandTypeOutput`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModHandResult {
-    pub hand_id:         String,
+    pub hand_id: String,
     pub scoring_indices: Vec<usize>,
-    #[serde(default)] pub base_chips:  Option<i64>,
-    #[serde(default)] pub base_mult:   Option<f64>,
-    #[serde(default)] pub level_chips: Option<i64>,
-    #[serde(default)] pub level_mult:  Option<f64>,
+    #[serde(default)]
+    pub base_chips: Option<i64>,
+    #[serde(default)]
+    pub base_mult: Option<f64>,
+    #[serde(default)]
+    pub level_chips: Option<i64>,
+    #[serde(default)]
+    pub level_mult: Option<f64>,
 }
 
 impl From<ModHandResult> for HandTypeOutput {
@@ -507,10 +549,10 @@ impl From<ModHandResult> for HandTypeOutput {
         Self {
             hand_id: r.hand_id,
             scoring_indices: r.scoring_indices,
-            base_chips:  r.base_chips,
-            base_mult:   r.base_mult,
+            base_chips: r.base_chips,
+            base_mult: r.base_mult,
             level_chips: r.level_chips,
-            level_mult:  r.level_mult,
+            level_mult: r.level_mult,
         }
     }
 }
@@ -520,10 +562,10 @@ impl From<HandTypeOutput> for ModHandResult {
         Self {
             hand_id: o.hand_id,
             scoring_indices: o.scoring_indices,
-            base_chips:  o.base_chips,
-            base_mult:   o.base_mult,
+            base_chips: o.base_chips,
+            base_mult: o.base_mult,
             level_chips: o.level_chips,
-            level_mult:  o.level_mult,
+            level_mult: o.level_mult,
         }
     }
 }
@@ -531,31 +573,31 @@ impl From<HandTypeOutput> for ModHandResult {
 /// Definition for a custom hand stored in `RunState`.
 #[derive(Debug, Clone)]
 pub struct CustomHandDef {
-    pub id:          String,
-    pub base_chips:  i64,
-    pub base_mult:   f64,
+    pub id: String,
+    pub base_chips: i64,
+    pub base_mult: f64,
     pub level_chips: i64,
-    pub level_mult:  f64,
+    pub level_mult: f64,
 }
 
 /// Full context for `on_hook`.  Legacy; new code uses `FlowCtx`.
 #[derive(Debug, Serialize)]
 pub struct ModHookContext<'a> {
-    pub phase:               ModHookPhase,
-    pub trigger:             ActivationType,
-    pub state:               &'a GameState,
-    pub hand_kind:           HandKind,
-    pub blind:               BlindKind,
-    pub played:              &'a [Card],
-    pub scoring:             &'a [Card],
-    pub held:                &'a [Card],
-    pub discarded:           &'a [Card],
-    pub card:                Option<Card>,
+    pub phase: ModHookPhase,
+    pub trigger: ActivationType,
+    pub state: &'a GameState,
+    pub hand_kind: HandKind,
+    pub blind: BlindKind,
+    pub played: &'a [Card],
+    pub scoring: &'a [Card],
+    pub held: &'a [Card],
+    pub discarded: &'a [Card],
+    pub card: Option<Card>,
     pub card_lucky_triggers: i64,
-    pub sold_value:          Option<i64>,
-    pub consumable_kind:     Option<ConsumableKind>,
-    pub consumable_id:       Option<&'a str>,
-    pub joker_count:         usize,
+    pub sold_value: Option<i64>,
+    pub consumable_kind: Option<ConsumableKind>,
+    pub consumable_id: Option<&'a str>,
+    pub joker_count: usize,
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -648,4 +690,3 @@ pub trait ModRuntime {
         EffectOutput::default()
     }
 }
-

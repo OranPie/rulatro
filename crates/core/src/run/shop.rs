@@ -13,12 +13,15 @@ impl RunState {
         };
         // Free rerolls granted by patch.
         if shop_patch.free_rerolls > 0 {
-            self.state.shop_free_rerolls =
-                self.state.shop_free_rerolls.saturating_add(shop_patch.free_rerolls as u8);
+            self.state.shop_free_rerolls = self
+                .state
+                .shop_free_rerolls
+                .saturating_add(shop_patch.free_rerolls as u8);
         }
         let mut restrictions = crate::ShopRestrictions::default();
-        restrictions.allow_duplicates =
-            shop_patch.allow_duplicates.unwrap_or(self.rule_flag("shop_allow_duplicates"));
+        restrictions.allow_duplicates = shop_patch
+            .allow_duplicates
+            .unwrap_or(self.rule_flag("shop_allow_duplicates"));
         restrictions.owned_jokers = self
             .inventory
             .jokers
@@ -45,7 +48,8 @@ impl RunState {
     pub(super) fn default_joker_price(&mut self, rarity: crate::JokerRarity) -> i64 {
         let price_delta = if let Some(rt) = self.mod_runtime.as_mut() {
             let ctx = FlowCtx::patch(FlowPoint::ShopParams, &self.state);
-            rt.flow_shop_params_patch(ShopParamsPatch::default(), &ctx).joker_price_delta
+            rt.flow_shop_params_patch(ShopParamsPatch::default(), &ctx)
+                .joker_price_delta
         } else {
             0
         };
@@ -70,7 +74,8 @@ impl RunState {
     pub(super) fn calc_joker_sell_value(&self, joker: &crate::JokerInstance) -> i64 {
         let base = joker.buy_price.max(0);
         let bonus = joker.vars.get("sell_bonus").copied().unwrap_or(0.0).floor() as i64;
-        let value = base / 2 + bonus;
+        let divisor = self.config.economy.joker_sell_divisor.max(1);
+        let value = base / divisor + bonus;
         value.max(1)
     }
 

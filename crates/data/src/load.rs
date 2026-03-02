@@ -229,6 +229,8 @@ struct RawConsumableDef {
     mixins: Vec<String>,
     #[serde(default, alias = "i18n", alias = "locales")]
     names: HashMap<String, String>,
+    #[serde(default)]
+    skip_last_consumable: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -528,6 +530,7 @@ fn load_consumables_optional(
             kind: item.kind,
             hand: item.hand,
             effects,
+            skip_last_consumable: item.skip_last_consumable,
         });
     }
     Ok(out)
@@ -1111,6 +1114,7 @@ mod tests {
             effects: vec![block_add_money(own_money)],
             mixins: mixins.iter().map(|value| value.to_string()).collect(),
             names: HashMap::new(),
+            skip_last_consumable: false,
         }
     }
 

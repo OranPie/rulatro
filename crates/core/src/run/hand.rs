@@ -112,7 +112,7 @@ impl RunState {
         // Merge: Flow Kernel overrides > rule_vars fallbacks.
         let final_rules = crate::HandEvalRules {
             smeared_suits: patch.smear_suits.unwrap_or(eval_rules.smeared_suits),
-            four_fingers:  patch.four_fingers.unwrap_or(eval_rules.four_fingers),
+            four_fingers: patch.four_fingers.unwrap_or(eval_rules.four_fingers),
             shortcut: patch.max_gap.map(|g| g > 1).unwrap_or(eval_rules.shortcut),
         };
         let splash = patch.splash.unwrap_or(self.splash_active());
@@ -137,8 +137,8 @@ impl RunState {
                     state: &self.state,
                     cards: &eval_cards,
                     smeared_suits: final_rules.smeared_suits,
-                    four_fingers:  final_rules.four_fingers,
-                    shortcut:      final_rules.shortcut,
+                    four_fingers: final_rules.four_fingers,
+                    shortcut: final_rules.shortcut,
                 })
             } else {
                 None
@@ -147,9 +147,8 @@ impl RunState {
             None
         };
         // Merge: flow_replace_result wins over legacy custom_result.
-        let merged_custom: Option<ModHandResult> = flow_replace_result
-            .map(|o| o.into())
-            .or(custom_result);
+        let merged_custom: Option<ModHandResult> =
+            flow_replace_result.map(|o| o.into()).or(custom_result);
 
         let mut breakdown = if let Some(mod_hand) = merged_custom {
             // Find or register the custom hand in the registry.
@@ -187,13 +186,24 @@ impl RunState {
                 .sum();
             ScoreBreakdown {
                 hand: hand_kind,
-                base: Score { chips: base_chips, mult: base_mult },
+                base: Score {
+                    chips: base_chips,
+                    mult: base_mult,
+                },
                 rank_chips,
                 scoring_indices: mod_hand.scoring_indices,
-                total: Score { chips: base_chips + rank_chips, mult: base_mult },
+                total: Score {
+                    chips: base_chips + rank_chips,
+                    mult: base_mult,
+                },
             }
         } else {
-            score_hand_with_rules(&eval_cards, &self.tables, final_rules, &self.state.hand_levels)
+            score_hand_with_rules(
+                &eval_cards,
+                &self.tables,
+                final_rules,
+                &self.state.hand_levels,
+            )
         };
 
         if splash {
@@ -222,7 +232,8 @@ impl RunState {
         } else {
             ScoreBasePatch::default()
         };
-        let level_delta = score_patch.level_delta + self.rule_value("hand_level_delta").floor() as i64;
+        let level_delta =
+            score_patch.level_delta + self.rule_value("hand_level_delta").floor() as i64;
         if level_delta != 0 {
             let base_level = self.hand_level(breakdown.hand) as i64;
             let effective = (base_level + level_delta).max(1) as u32;
@@ -234,7 +245,7 @@ impl RunState {
             breakdown.total.mult = breakdown.base.mult;
         }
         let chips_mult = score_patch.chips_mult * self.rule_value_or("base_chips_mult", 1.0);
-        let mult_mult  = score_patch.mult_mult  * self.rule_value_or("base_mult_mult",  1.0);
+        let mult_mult = score_patch.mult_mult * self.rule_value_or("base_mult_mult", 1.0);
         if chips_mult != 1.0 || mult_mult != 1.0 {
             let scaled = (breakdown.base.chips as f64 * chips_mult).floor() as i64;
             breakdown.base.chips = scaled;
@@ -585,7 +596,11 @@ impl RunState {
         match card.enhancement {
             Some(Enhancement::Bonus) => {
                 let chips = self.tables.card_attrs.enhancement("bonus").chips;
-                self.apply_rule_effect(score, crate::RuleEffect::AddChips(chips), "enhancement:bonus")
+                self.apply_rule_effect(
+                    score,
+                    crate::RuleEffect::AddChips(chips),
+                    "enhancement:bonus",
+                )
             }
             Some(Enhancement::Mult) => {
                 let mult = self.tables.card_attrs.enhancement("mult").mult_add;
@@ -607,7 +622,11 @@ impl RunState {
             }
             Some(Enhancement::Stone) => {
                 let chips = self.tables.card_attrs.enhancement("stone").chips;
-                self.apply_rule_effect(score, crate::RuleEffect::AddChips(chips), "enhancement:stone")
+                self.apply_rule_effect(
+                    score,
+                    crate::RuleEffect::AddChips(chips),
+                    "enhancement:stone",
+                )
             }
             Some(Enhancement::Lucky) => {
                 let def = self.tables.card_attrs.enhancement("lucky");
@@ -638,7 +657,11 @@ impl RunState {
         match card.enhancement {
             Some(Enhancement::Steel) => {
                 let mul = self.tables.card_attrs.enhancement("steel").mult_mul_held;
-                self.apply_rule_effect(score, crate::RuleEffect::MultiplyMult(mul), "enhancement:steel")
+                self.apply_rule_effect(
+                    score,
+                    crate::RuleEffect::MultiplyMult(mul),
+                    "enhancement:steel",
+                )
             }
             _ => {}
         }
@@ -674,11 +697,19 @@ impl RunState {
             }
             Some(Edition::Holographic) => {
                 let mult = self.tables.card_attrs.edition("holographic").mult_add;
-                self.apply_rule_effect(score, crate::RuleEffect::AddMult(mult), "edition:holographic")
+                self.apply_rule_effect(
+                    score,
+                    crate::RuleEffect::AddMult(mult),
+                    "edition:holographic",
+                )
             }
             Some(Edition::Polychrome) => {
                 let mul = self.tables.card_attrs.edition("polychrome").mult_mul;
-                self.apply_rule_effect(score, crate::RuleEffect::MultiplyMult(mul), "edition:polychrome")
+                self.apply_rule_effect(
+                    score,
+                    crate::RuleEffect::MultiplyMult(mul),
+                    "edition:polychrome",
+                )
             }
             _ => {}
         }
@@ -923,7 +954,7 @@ impl RunState {
         if matches!(
             def.kind,
             crate::ConsumableKind::Tarot | crate::ConsumableKind::Planet
-        ) && !def.id.eq_ignore_ascii_case("the_fool")
+        ) && !def.skip_last_consumable
         {
             self.state.last_consumable = Some(crate::LastConsumable {
                 kind: def.kind,
@@ -1200,7 +1231,12 @@ impl RunState {
                 EffectOp::RetriggerScored(_) | EffectOp::RetriggerHeld(_) => {}
                 EffectOp::Custom { name, value } => {
                     if let Some(rt) = self.mod_runtime.as_mut() {
-                        let ctx = ModEffectContext { state: &self.state, hand_kind: None, card: None, joker_id: None };
+                        let ctx = ModEffectContext {
+                            state: &self.state,
+                            hand_kind: None,
+                            card: None,
+                            joker_id: None,
+                        };
                         if !rt.invoke_effect_op(name, *value, &ctx) {
                             eprintln!("[core] unhandled EffectOp::Custom '{}'", name);
                         }

@@ -2,17 +2,26 @@
   {
     "id": "the_fool",
     "name": "The Fool",
-    "names": { "zh_CN": "愚者" },
+    "names": {
+      "zh_CN": "愚者"
+    },
     "kind": "Tarot",
     "effects": [
       {
         "trigger": "OnUse",
-        "conditions": ["Always"],
+        "conditions": [
+          "Always"
+        ],
         "effects": [
-          { "CreateLastConsumable": { "exclude": "the_fool" } }
+          {
+            "CreateLastConsumable": {
+              "exclude": "the_fool"
+            }
+          }
         ]
       }
-    ]
+    ],
+    "skip_last_consumable": true
   },
   {
     "id": "the_magician",
@@ -21,9 +30,16 @@
     "effects": [
       {
         "trigger": "OnUse",
-        "conditions": ["Always"],
+        "conditions": [
+          "Always"
+        ],
         "effects": [
-          { "EnhanceSelected": { "enhancement": "Lucky", "count": 2 } }
+          {
+            "EnhanceSelected": {
+              "enhancement": "Lucky",
+              "count": 2
+            }
+          }
         ]
       }
     ]
@@ -35,9 +51,16 @@
     "effects": [
       {
         "trigger": "OnUse",
-        "conditions": ["Always"],
+        "conditions": [
+          "Always"
+        ],
         "effects": [
-          { "AddRandomConsumable": { "kind": "Planet", "count": 2 } }
+          {
+            "AddRandomConsumable": {
+              "kind": "Planet",
+              "count": 2
+            }
+          }
         ]
       }
     ]
@@ -49,9 +72,16 @@
     "effects": [
       {
         "trigger": "OnUse",
-        "conditions": ["Always"],
+        "conditions": [
+          "Always"
+        ],
         "effects": [
-          { "EnhanceSelected": { "enhancement": "Mult", "count": 2 } }
+          {
+            "EnhanceSelected": {
+              "enhancement": "Mult",
+              "count": 2
+            }
+          }
         ]
       }
     ]
@@ -63,9 +93,16 @@
     "effects": [
       {
         "trigger": "OnUse",
-        "conditions": ["Always"],
+        "conditions": [
+          "Always"
+        ],
         "effects": [
-          { "AddRandomConsumable": { "kind": "Tarot", "count": 2 } }
+          {
+            "AddRandomConsumable": {
+              "kind": "Tarot",
+              "count": 2
+            }
+          }
         ]
       }
     ]
@@ -77,9 +114,16 @@
     "effects": [
       {
         "trigger": "OnUse",
-        "conditions": ["Always"],
+        "conditions": [
+          "Always"
+        ],
         "effects": [
-          { "EnhanceSelected": { "enhancement": "Bonus", "count": 2 } }
+          {
+            "EnhanceSelected": {
+              "enhancement": "Bonus",
+              "count": 2
+            }
+          }
         ]
       }
     ]
@@ -91,9 +135,16 @@
     "effects": [
       {
         "trigger": "OnUse",
-        "conditions": ["Always"],
+        "conditions": [
+          "Always"
+        ],
         "effects": [
-          { "EnhanceSelected": { "enhancement": "Wild", "count": 1 } }
+          {
+            "EnhanceSelected": {
+              "enhancement": "Wild",
+              "count": 1
+            }
+          }
         ]
       }
     ]
@@ -105,9 +156,16 @@
     "effects": [
       {
         "trigger": "OnUse",
-        "conditions": ["Always"],
+        "conditions": [
+          "Always"
+        ],
         "effects": [
-          { "EnhanceSelected": { "enhancement": "Steel", "count": 1 } }
+          {
+            "EnhanceSelected": {
+              "enhancement": "Steel",
+              "count": 1
+            }
+          }
         ]
       }
     ]
@@ -119,9 +177,16 @@
     "effects": [
       {
         "trigger": "OnUse",
-        "conditions": ["Always"],
+        "conditions": [
+          "Always"
+        ],
         "effects": [
-          { "EnhanceSelected": { "enhancement": "Glass", "count": 1 } }
+          {
+            "EnhanceSelected": {
+              "enhancement": "Glass",
+              "count": 1
+            }
+          }
         ]
       }
     ]
@@ -133,9 +198,15 @@
     "effects": [
       {
         "trigger": "OnUse",
-        "conditions": ["Always"],
+        "conditions": [
+          "Always"
+        ],
         "effects": [
-          { "DoubleMoney": { "cap": 20 } }
+          {
+            "DoubleMoney": {
+              "cap": 20
+            }
+          }
         ]
       }
     ]
@@ -147,11 +218,17 @@
     "effects": [
       {
         "trigger": "OnUse",
-        "conditions": ["Always"],
+        "conditions": [
+          "Always"
+        ],
         "effects": [
           {
             "RandomJokerEdition": {
-              "editions": ["Foil", "Holographic", "Polychrome"],
+              "editions": [
+                "Foil",
+                "Holographic",
+                "Polychrome"
+              ],
               "chance": 0.25
             }
           }
@@ -166,9 +243,16 @@
     "effects": [
       {
         "trigger": "OnUse",
-        "conditions": ["Always"],
+        "conditions": [
+          "Always"
+        ],
         "effects": [
-          { "IncreaseSelectedRank": { "count": 2, "delta": 1 } }
+          {
+            "IncreaseSelectedRank": {
+              "count": 2,
+              "delta": 1
+            }
+          }
         ]
       }
     ]
@@ -180,9 +264,15 @@
     "effects": [
       {
         "trigger": "OnUse",
-        "conditions": ["Always"],
+        "conditions": [
+          "Always"
+        ],
         "effects": [
-          { "DestroySelected": { "count": 2 } }
+          {
+            "DestroySelected": {
+              "count": 2
+            }
+          }
         ]
       }
     ]
@@ -194,7 +284,9 @@
     "effects": [
       {
         "trigger": "OnUse",
-        "conditions": ["Always"],
+        "conditions": [
+          "Always"
+        ],
         "effects": [
           "ConvertLeftIntoRight"
         ]
@@ -208,9 +300,15 @@
     "effects": [
       {
         "trigger": "OnUse",
-        "conditions": ["Always"],
+        "conditions": [
+          "Always"
+        ],
         "effects": [
-          { "AddMoneyFromJokers": { "cap": 50 } }
+          {
+            "AddMoneyFromJokers": {
+              "cap": 50
+            }
+          }
         ]
       }
     ]
@@ -222,9 +320,16 @@
     "effects": [
       {
         "trigger": "OnUse",
-        "conditions": ["Always"],
+        "conditions": [
+          "Always"
+        ],
         "effects": [
-          { "EnhanceSelected": { "enhancement": "Gold", "count": 1 } }
+          {
+            "EnhanceSelected": {
+              "enhancement": "Gold",
+              "count": 1
+            }
+          }
         ]
       }
     ]
@@ -236,9 +341,16 @@
     "effects": [
       {
         "trigger": "OnUse",
-        "conditions": ["Always"],
+        "conditions": [
+          "Always"
+        ],
         "effects": [
-          { "EnhanceSelected": { "enhancement": "Stone", "count": 1 } }
+          {
+            "EnhanceSelected": {
+              "enhancement": "Stone",
+              "count": 1
+            }
+          }
         ]
       }
     ]
@@ -250,9 +362,16 @@
     "effects": [
       {
         "trigger": "OnUse",
-        "conditions": ["Always"],
+        "conditions": [
+          "Always"
+        ],
         "effects": [
-          { "ConvertSelectedSuit": { "suit": "Diamonds", "count": 3 } }
+          {
+            "ConvertSelectedSuit": {
+              "suit": "Diamonds",
+              "count": 3
+            }
+          }
         ]
       }
     ]
@@ -264,9 +383,16 @@
     "effects": [
       {
         "trigger": "OnUse",
-        "conditions": ["Always"],
+        "conditions": [
+          "Always"
+        ],
         "effects": [
-          { "ConvertSelectedSuit": { "suit": "Clubs", "count": 3 } }
+          {
+            "ConvertSelectedSuit": {
+              "suit": "Clubs",
+              "count": 3
+            }
+          }
         ]
       }
     ]
@@ -278,9 +404,16 @@
     "effects": [
       {
         "trigger": "OnUse",
-        "conditions": ["Always"],
+        "conditions": [
+          "Always"
+        ],
         "effects": [
-          { "ConvertSelectedSuit": { "suit": "Hearts", "count": 3 } }
+          {
+            "ConvertSelectedSuit": {
+              "suit": "Hearts",
+              "count": 3
+            }
+          }
         ]
       }
     ]
@@ -292,9 +425,15 @@
     "effects": [
       {
         "trigger": "OnUse",
-        "conditions": ["Always"],
+        "conditions": [
+          "Always"
+        ],
         "effects": [
-          { "AddRandomJoker": { "count": 1 } }
+          {
+            "AddRandomJoker": {
+              "count": 1
+            }
+          }
         ]
       }
     ]
@@ -306,9 +445,16 @@
     "effects": [
       {
         "trigger": "OnUse",
-        "conditions": ["Always"],
+        "conditions": [
+          "Always"
+        ],
         "effects": [
-          { "ConvertSelectedSuit": { "suit": "Spades", "count": 3 } }
+          {
+            "ConvertSelectedSuit": {
+              "suit": "Spades",
+              "count": 3
+            }
+          }
         ]
       }
     ]

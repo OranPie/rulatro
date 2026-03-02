@@ -118,8 +118,11 @@ impl ModRuntime for ModManager {
             merged.add_chips += r.add_chips;
             merged.add_mult += r.add_mult;
             if r.mul_mult != 0.0 {
-                merged.mul_mult =
-                    if merged.mul_mult == 0.0 { r.mul_mult } else { merged.mul_mult * r.mul_mult };
+                merged.mul_mult = if merged.mul_mult == 0.0 {
+                    r.mul_mult
+                } else {
+                    merged.mul_mult * r.mul_mult
+                };
             }
             if r.mul_chips != 0.0 {
                 merged.mul_chips = if merged.mul_chips == 0.0 {
@@ -167,7 +170,11 @@ impl ModRuntime for ModManager {
         base
     }
 
-    fn flow_card_debuff_patch(&mut self, base: CardDebuffPatch, ctx: &FlowCtx<'_>) -> CardDebuffPatch {
+    fn flow_card_debuff_patch(
+        &mut self,
+        base: CardDebuffPatch,
+        ctx: &FlowCtx<'_>,
+    ) -> CardDebuffPatch {
         #[cfg(feature = "mod_lua")]
         if let Some(rt) = self.lua.as_mut() {
             return rt.flow_card_debuff_patch(base, ctx);
@@ -183,7 +190,11 @@ impl ModRuntime for ModManager {
         base
     }
 
-    fn flow_shop_params_patch(&mut self, base: ShopParamsPatch, ctx: &FlowCtx<'_>) -> ShopParamsPatch {
+    fn flow_shop_params_patch(
+        &mut self,
+        base: ShopParamsPatch,
+        ctx: &FlowCtx<'_>,
+    ) -> ShopParamsPatch {
         #[cfg(feature = "mod_lua")]
         if let Some(rt) = self.lua.as_mut() {
             return rt.flow_shop_params_patch(base, ctx);
