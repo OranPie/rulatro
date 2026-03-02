@@ -82,6 +82,8 @@ mixin base_bonus
 ```
 Keep mixins condition-based; avoid ID-specific branches in mixins.
 
+**Card modifiers** (Enhancement/Edition/Seal effects) are also data-driven, defined in `crates/data/card_modifiers.json` (embedded via `include_bytes!` in `crates/data/src/card_modifier_defs.rs`). They share the same `ActionOp`/`ActivationType` vocabulary as the joker DSL. `load_content_with_mods_locale` populates `content.card_modifiers`; `apply_card_modifier_effects()` in `crates/core/src/run/hand.rs` applies them during scoring. `crates/core/src/run/builtin_card_modifiers.rs` remains as a Rust fallback for `RunState::new()`.
+
 ## Modding
 
 Mods live in `mods/<id>/` with a required `mod.json`. Data mods use the same DSL/JSON formats as core content. Duplicate IDs are rejected unless listed in `overrides`. Lua hooks:

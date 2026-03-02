@@ -410,10 +410,7 @@ impl RunState {
     }
 
     pub(super) fn voucher_offer_for_shop(&mut self) -> crate::VoucherOffer {
-        let mut pool: Vec<String> = crate::all_vouchers()
-            .iter()
-            .map(|entry| entry.id.to_string())
-            .collect();
+        let mut pool: Vec<String> = self.content.vouchers.iter().map(|v| v.id.clone()).collect();
         if let Some(shop) = self.shop.as_ref() {
             let in_shop: std::collections::HashSet<String> = shop
                 .voucher_offers
@@ -446,7 +443,7 @@ impl RunState {
         let mut reroll_reduce = 0i64;
         let mut discount = 0u8;
         for id in &self.state.active_vouchers {
-            if let Some(voucher) = crate::voucher_by_id(id) {
+            if let Some(voucher) = self.content.voucher_by_id(id) {
                 match voucher.effect {
                     crate::VoucherEffect::AddShopCardSlots(value) => {
                         add_slots = add_slots.saturating_add(value);
@@ -490,7 +487,7 @@ impl RunState {
         self.state
             .active_vouchers
             .iter()
-            .filter_map(|id| crate::voucher_by_id(id))
+            .filter_map(|id| self.content.voucher_by_id(id))
             .filter_map(|voucher| match voucher.effect {
                 crate::VoucherEffect::AddHandsPerRound(value) => Some(value),
                 _ => None,
@@ -502,7 +499,7 @@ impl RunState {
         self.state
             .active_vouchers
             .iter()
-            .filter_map(|id| crate::voucher_by_id(id))
+            .filter_map(|id| self.content.voucher_by_id(id))
             .filter_map(|voucher| match voucher.effect {
                 crate::VoucherEffect::AddDiscardsPerRound(value) => Some(value),
                 _ => None,
@@ -511,10 +508,11 @@ impl RunState {
     }
 
     fn apply_voucher_state_effect(&mut self, voucher_id: &str) {
-        let Some(voucher) = crate::voucher_by_id(voucher_id) else {
-            return;
+        let effect = match self.content.voucher_by_id(voucher_id) {
+            Some(v) => v.effect,
+            None => return,
         };
-        match voucher.effect {
+        match effect {
             crate::VoucherEffect::AddConsumableSlots(value) => {
                 self.inventory.consumable_slots = self
                     .inventory

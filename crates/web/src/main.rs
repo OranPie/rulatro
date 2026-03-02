@@ -1,5 +1,5 @@
 use rulatro_core::{
-    format_joker_effect_compact, voucher_by_id, BlindKind, Card, ConsumableKind, EventBus,
+    format_joker_effect_compact, BlindKind, Card, ConsumableKind, EventBus,
     PackOpen, PackOption, Phase, RuleEffect, RunState, ScoreBreakdown, ScoreTables, ScoreTraceStep,
     ShopOfferRef,
 };
@@ -493,7 +493,7 @@ fn snapshot_state(run: &RunState, content_signature: &str, locale: &str) -> UiSt
             .voucher_offers
             .iter()
             .map(|offer| {
-                if let Some(def) = voucher_by_id(&offer.id) {
+                if let Some(def) = run.content.voucher_by_id(&offer.id) {
                     UiVoucherOffer {
                         id: offer.id.clone(),
                         name: def.name(zh_cn).to_string(),

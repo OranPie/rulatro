@@ -803,7 +803,8 @@ def cmd_hardcoded(args: argparse.Namespace) -> int:
             continue
         print(f"- [{severity}] {item['id']}: {item['message']}")
         print(f"  {file_path}:{line_str}")
-        blocking_found += 1
+        if severity.upper() != "INFO":
+            blocking_found += 1
 
     print(
         f"\naudit complete: {blocking_found} blocking found, {allowlisted_found} allowlisted found, {missing} missing, {errors} read error(s), {len(checks)} rule(s)"

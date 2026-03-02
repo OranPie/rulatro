@@ -1,0 +1,8 @@
+[
+  { "key": "debuff_face",          "condition": "is_face" },
+  { "key": "debuff_suit_spades",   "condition": { "is_suit": "Spades" } },
+  { "key": "debuff_suit_hearts",   "condition": { "is_suit": "Hearts" } },
+  { "key": "debuff_suit_clubs",    "condition": { "is_suit": "Clubs" } },
+  { "key": "debuff_suit_diamonds", "condition": { "is_suit": "Diamonds" } },
+  { "key": "debuff_played_ante",   "condition": "played_this_ante" }
+]

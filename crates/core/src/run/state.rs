@@ -1,4 +1,4 @@
-use super::helpers::{is_face, normalize};
+use super::helpers::normalize;
 use super::*;
 use crate::*;
 
@@ -93,7 +93,7 @@ impl RunState {
             .active_vouchers
             .iter()
             .map(|id| {
-                if let Some(voucher) = voucher_by_id(id) {
+                if let Some(voucher) = self.content.voucher_by_id(id) {
                     format!(
                         "{} ({}) - {}",
                         voucher.name(zh_cn),
@@ -202,14 +202,13 @@ impl RunState {
     }
 
     pub(super) fn is_card_debuffed(&mut self, card: crate::Card) -> bool {
-        // Compute base debuff from rule_flags.
-        let base = self.rule_flag("debuff_face") && is_face(card)
-            || self.rule_flag("debuff_suit_spades") && card.suit == crate::Suit::Spades
-            || self.rule_flag("debuff_suit_hearts") && card.suit == crate::Suit::Hearts
-            || self.rule_flag("debuff_suit_clubs") && card.suit == crate::Suit::Clubs
-            || self.rule_flag("debuff_suit_diamonds") && card.suit == crate::Suit::Diamonds
-            || (self.rule_flag("debuff_played_ante")
-                && self.state.played_card_ids_ante.contains(&card.id));
+        // Snapshot rules to avoid simultaneous borrow of self.content and self (rule_flag is &mut).
+        let rules: Vec<crate::CardConditionalRule> = self.content.debuff_rules.clone();
+        let played_ids: std::collections::HashSet<u32> = self.state.played_card_ids_ante.clone();
+        // Compute base debuff from data-driven debuff_rules table.
+        let base = rules
+            .iter()
+            .any(|rule| self.rule_flag(&rule.key) && rule.condition.matches(card, &played_ids));
         // Apply Flow Kernel CardDebuff patch.
         let patch = if let Some(rt) = self.mod_runtime.as_mut() {
             let ctx = FlowCtx::card_debuff(&self.state, card);

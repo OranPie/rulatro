@@ -4,7 +4,7 @@ use crate::persistence::{
 use anyhow::{Context, Result};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use rulatro_core::{
-    voucher_by_id, BlindKind, BlindOutcome, Card, ConsumableKind, Edition, EffectBlock, EffectOp,
+    BlindKind, BlindOutcome, Card, ConsumableKind, Edition, EffectBlock, EffectOp,
     Enhancement, Event, EventBus, PackOpen, PackOption, Phase, RankFilter, RuleEffect, RunError,
     RunState, ScoreBreakdown, Seal, ShopOfferRef, ShopPurchase,
 };
@@ -542,7 +542,7 @@ impl App {
             });
         }
         for (idx, offer) in shop.voucher_offers.iter().enumerate() {
-            let (name, effect) = if let Some(def) = voucher_by_id(&offer.id) {
+            let (name, effect) = if let Some(def) = self.run.content.voucher_by_id(&offer.id) {
                 (
                     def.name(matches!(self.locale, UiLocale::ZhCn)).to_string(),
                     def.effect_text(matches!(self.locale, UiLocale::ZhCn))

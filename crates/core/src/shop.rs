@@ -1,6 +1,6 @@
 use crate::{
-    all_vouchers, ConsumableKind, Content, Edition, JokerRarity, PackKind, PackPrice, PackSize,
-    PackWeight, PriceRange, RngState, ShopCardKind, ShopPrices, ShopRule,
+    ConsumableKind, Content, Edition, JokerRarity, PackKind, PackPrice, PackSize, PackWeight,
+    PriceRange, RngState, ShopCardKind, ShopPrices, ShopRule,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -92,7 +92,8 @@ impl ShopState {
     ) -> Self {
         let cards = generate_cards(rule, content, rng, restrictions);
         let packs = generate_packs(rule, rng);
-        let voucher_offers = generate_vouchers(rule.voucher_slots as usize, rng, restrictions);
+        let voucher_offers =
+            generate_vouchers(rule.voucher_slots as usize, content, rng, restrictions);
         Self {
             cards,
             packs,
@@ -358,16 +359,14 @@ fn generate_cards(
 
 fn generate_vouchers(
     slots: usize,
+    content: &Content,
     rng: &mut RngState,
     restrictions: &ShopRestrictions,
 ) -> Vec<VoucherOffer> {
     if slots == 0 {
         return Vec::new();
     }
-    let all: Vec<String> = all_vouchers()
-        .iter()
-        .map(|entry| entry.id.to_string())
-        .collect();
+    let all: Vec<String> = content.vouchers.iter().map(|v| v.id.clone()).collect();
     let mut pool: Vec<String> = if restrictions.allow_duplicates {
         all.clone()
     } else {
@@ -376,10 +375,7 @@ fn generate_vouchers(
             .collect()
     };
     if pool.is_empty() {
-        pool = all_vouchers()
-            .iter()
-            .map(|entry| entry.id.to_string())
-            .collect();
+        pool = content.vouchers.iter().map(|v| v.id.clone()).collect();
     }
     let mut picked = Vec::new();
     for _ in 0..slots {
@@ -390,10 +386,7 @@ fn generate_vouchers(
         let id = pool.remove(idx);
         picked.push(VoucherOffer { id });
         if restrictions.allow_duplicates {
-            pool = all_vouchers()
-                .iter()
-                .map(|entry| entry.id.to_string())
-                .collect();
+            pool = content.vouchers.iter().map(|v| v.id.clone()).collect();
         }
     }
     picked

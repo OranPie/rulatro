@@ -1,6 +1,6 @@
 use crate::{AnteTargetRecord, AutoAction, AutoplayConfig, AutoplayError, EvalMetrics};
 use rulatro_core::{
-    score_hand, voucher_by_id, BlindKind, BlindOutcome, Card, ConsumableKind, EffectOp, EventBus,
+    score_hand, BlindKind, BlindOutcome, Card, ConsumableKind, EffectOp, EventBus,
     HandKind, PackOpen, PackOption, Phase, Rank, RuleEffect, RunState, ShopCardKind, ShopOfferRef,
 };
 
@@ -110,7 +110,7 @@ impl Simulator {
             AutoAction::BuyVoucher { index } => {
                 let shop = self.run.shop.as_ref()?;
                 let voucher = shop.voucher_offers.get(*index)?;
-                Some(describe_voucher(voucher.id.as_str()))
+                Some(describe_voucher(voucher.id.as_str(), &self.run.content))
             }
             AutoAction::PickPack { indices } => {
                 let open = self.open_pack.as_ref()?;
@@ -1005,8 +1005,8 @@ fn find_consumable_extra(run: &RunState, kind: ConsumableKind, id: &str) -> Stri
     }
 }
 
-fn describe_voucher(id: &str) -> String {
-    if let Some(voucher) = voucher_by_id(id) {
+fn describe_voucher(id: &str, content: &rulatro_core::Content) -> String {
+    if let Some(voucher) = content.voucher_by_id(id) {
         format!(
             "buy voucher/购买优惠券: {} id={} effect/效果={}",
             voucher.name(false),

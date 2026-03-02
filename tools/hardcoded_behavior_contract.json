@@ -15,11 +15,11 @@
   },
   "checks": [
     {
-      "id": "last_consumable_the_fool",
-      "severity": "high",
+      "id": "last_consumable_skip_flag",
+      "severity": "info",
       "path": "crates/core/src/run/hand.rs",
-      "pattern": "!def.id.eq_ignore_ascii_case(\"the_fool\")",
-      "message": "special-case ID gate: the_fool bypasses last_consumable tracking"
+      "pattern": "skip_last_consumable",
+      "message": "data-driven skip_last_consumable flag controls the_fool behavior (no hardcoded ID gate)"
     },
     {
       "id": "effectop_runtime_match",
@@ -29,31 +29,35 @@
       "message": "EffectOp execution is still branch-based in core runtime"
     },
     {
-      "id": "actionop_runtime_match",
+      "id": "actionop_runtime_dispatch",
       "severity": "high",
       "path": "crates/core/src/run/joker.rs",
-      "pattern": "ActionOpKind::Builtin(op) => match op {",
-      "message": "ActionOp execution is still branch-based in core runtime"
+      "pattern": "action_handlers::dispatch_action(",
+      "message": "ActionOp execution delegates to action_handlers::dispatch_action (branch-based)"
     },
     {
-      "id": "hookpoint_runtime_match",
-      "severity": "medium",
+      "id": "hookpoint_binding_table",
+      "severity": "info",
       "path": "crates/core/src/run/hooks.rs",
-      "pattern": "fn activation_for(point: HookPoint)",
-      "message": "hook dispatch still uses explicit core mapping"
+      "pattern": "HOOK_ACTIVATION_BINDINGS",
+      "message": "hook dispatch uses HOOK_ACTIVATION_BINDINGS table (data-table pattern, not per-hook branches)"
     },
     {
       "id": "pack_kind_keyword_mapping",
-      "severity": "medium",
+      "severity": "info",
       "path": "crates/core/src/run/joker.rs",
-      "pattern": "let kind = match kind_part {",
-      "message": "pack kind parsing uses hardcoded keywords"
+      "pattern": "pack_kind == kind_part",
+      "message": "pack kind parsing matches against pack_kind strings from content (data-driven, not hardcoded enum)"
     }
   ],
   "allowlist": [
     {
       "id": "effectop_runtime_match",
       "reason": "Temporary during migration to data-driven operation registry; keep covered by effects matrix tests."
+    },
+    {
+      "id": "actionop_runtime_dispatch",
+      "reason": "ActionOp dispatch is branch-based; migration deferred after EffectOp registry is complete."
     }
   ]
 }

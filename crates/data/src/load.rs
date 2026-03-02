@@ -1,3 +1,4 @@
+use crate::card_conditional_rules::{load_builtin_debuff_rules, load_builtin_draw_facedown_rules};
 use crate::card_modifier_defs::load_builtin_card_modifiers;
 use crate::joker_dsl::{
     load_boss_mixin_refs, load_bosses_dsl_with_locale, load_joker_mixin_refs,
@@ -9,6 +10,7 @@ use crate::schema::{
     ContentPack, EconomyRule, EffectBlock, GameConfig, HandRule, JokerDef, RankRule, ShopRule,
     TagDef,
 };
+use crate::voucher_defs::load_builtin_vouchers;
 use anyhow::{bail, Context};
 use rulatro_core::{ActionOp, ActionOpKind, HandKind, JokerEffect};
 use rulatro_modding::{FileSystemModLoader, LoadedMod};
@@ -59,7 +61,11 @@ pub fn load_content(dir: &Path) -> anyhow::Result<Content> {
 
 pub fn load_content_with_locale(dir: &Path, locale: Option<&str>) -> anyhow::Result<Content> {
     let base = dir.join("content");
-    load_content_dir(&base, false, locale)
+    let mut content = load_content_dir(&base, false, locale)?;
+    content.vouchers = load_builtin_vouchers();
+    content.debuff_rules = load_builtin_debuff_rules();
+    content.draw_facedown_rules = load_builtin_draw_facedown_rules();
+    Ok(content)
 }
 
 #[derive(Debug)]
@@ -96,6 +102,7 @@ pub fn load_content_with_mods_locale(
         CardAttrRules::default()
     };
     content.card_modifiers = load_builtin_card_modifiers(&card_attrs);
+    content.vouchers = load_builtin_vouchers();
 
     let mods = load_mods(mods_dir)?;
     if mods.is_empty() {
@@ -228,6 +235,9 @@ fn load_content_dir(
         planets,
         spectrals,
         card_modifiers: Vec::new(),
+        vouchers: Vec::new(),
+        debuff_rules: Vec::new(),
+        draw_facedown_rules: Vec::new(),
     })
 }
 

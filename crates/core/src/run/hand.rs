@@ -1,4 +1,3 @@
-use super::helpers::is_face;
 use super::*;
 use crate::*;
 
@@ -76,7 +75,13 @@ impl RunState {
         if roll_sides > 0 {
             rolled = self.roll(roll_sides as u64);
         }
-        let face_rule = self.rule_flag("draw_face_down_face") && is_face(card);
+        // Snapshot rules to avoid simultaneous borrow of self.content and self (rule_flag is &mut).
+        let facedown_rules: Vec<crate::CardConditionalRule> =
+            self.content.draw_facedown_rules.clone();
+        let played_ids: std::collections::HashSet<u32> = self.state.played_card_ids_ante.clone();
+        let face_rule = facedown_rules
+            .iter()
+            .any(|rule| self.rule_flag(&rule.key) && rule.condition.matches(card, &played_ids));
         first_hand || after_hand || rolled || face_rule
     }
 

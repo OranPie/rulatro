@@ -121,6 +121,43 @@ pub struct ConsumableDef {
     pub skip_last_consumable: bool,
 }
 
+/// Condition that can be evaluated against a single card.
+/// Used by [`CardConditionalRule`] for data-driven debuff and face-down tables.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CardCondition {
+    IsFace,
+    IsSuit(Suit),
+    PlayedThisAnte,
+}
+
+impl CardCondition {
+    pub fn matches(
+        &self,
+        card: crate::Card,
+        played_ante_ids: &std::collections::HashSet<u32>,
+    ) -> bool {
+        match self {
+            CardCondition::IsFace => {
+                matches!(
+                    card.rank,
+                    crate::Rank::Jack | crate::Rank::Queen | crate::Rank::King
+                )
+            }
+            CardCondition::IsSuit(suit) => card.suit == *suit,
+            CardCondition::PlayedThisAnte => played_ante_ids.contains(&card.id),
+        }
+    }
+}
+
+/// A rule pairing a `rule_flag` key with a [`CardCondition`].
+/// When the flag is set and the condition matches, the rule triggers.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CardConditionalRule {
+    pub key: String,
+    pub condition: CardCondition,
+}
+
 #[derive(Debug, Clone)]
 pub struct Content {
     pub jokers: Vec<JokerDef>,
@@ -131,6 +168,12 @@ pub struct Content {
     pub spectrals: Vec<ConsumableDef>,
     /// Data-driven definitions for Enhancement, Edition, and Seal scoring behaviors.
     pub card_modifiers: Vec<CardModifierDef>,
+    /// Voucher definitions, loaded from `assets/vouchers.json` by `rulatro-data`.
+    pub vouchers: Vec<crate::VoucherDef>,
+    /// Data-driven debuff rules, loaded from `assets/card_debuff_rules.json`.
+    pub debuff_rules: Vec<CardConditionalRule>,
+    /// Data-driven face-down draw rules, loaded from `assets/card_draw_facedown_rules.json`.
+    pub draw_facedown_rules: Vec<CardConditionalRule>,
 }
 
 impl Content {
@@ -207,6 +250,10 @@ impl Content {
 
     pub fn tag_by_id(&self, id: &str) -> Option<&TagDef> {
         self.tags.iter().find(|tag| tag.id == id)
+    }
+
+    pub fn voucher_by_id(&self, id: &str) -> Option<&crate::VoucherDef> {
+        self.vouchers.iter().find(|v| v.id == id)
     }
 
     /// Look up a card modifier definition by kind and id.

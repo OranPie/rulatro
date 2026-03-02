@@ -3,7 +3,7 @@ use rulatro_autoplay::{
     ObjectiveWeights, Simulator, TargetConfig,
 };
 use rulatro_core::{
-    voucher_by_id, BlindKind, BlindOutcome, Card, ConsumableKind, Content, Edition, EffectBlock,
+    BlindKind, BlindOutcome, Card, ConsumableKind, Content, Edition, EffectBlock,
     EffectOp, Enhancement, Event, EventBus, GameConfig, PackOpen, PackOption, Phase, Rank,
     RankFilter, RuleEffect, RunError, RunState, ScoreBreakdown, ScoreTables, ScoreTraceStep, Seal,
     ShopOfferRef, Suit,
@@ -3606,7 +3606,7 @@ fn print_shop(locale: UiLocale, run: &RunState) {
         run.config.shop.prices.voucher
     );
     for (idx, offer) in shop.voucher_offers.iter().enumerate() {
-        if let Some(def) = voucher_by_id(&offer.id) {
+        if let Some(def) = run.content.voucher_by_id(&offer.id) {
             println!(
                 "  {:>2}: {} ({}) - {}",
                 idx,
