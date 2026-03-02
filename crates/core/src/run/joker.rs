@@ -863,5 +863,4 @@ mod tests {
         );
         assert_eq!(parse_pack_target("celestial_mega", &weights), None);
     }
-
 }

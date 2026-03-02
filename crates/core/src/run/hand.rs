@@ -658,8 +658,12 @@ impl RunState {
             for action in &effect.actions {
                 let value = match &action.value {
                     Expr::Number(v) => *v,
+                    Expr::Lookup(key) => self.tables.card_attrs.resolve_lookup(key, id),
                     _ => continue,
                 };
+                if value == 0.0 {
+                    continue;
+                }
                 match &action.op {
                     ActionOpKind::Builtin(ActionOp::AddChips) => {
                         self.apply_rule_effect(

@@ -77,16 +77,11 @@ fn resolve_modifier(
         let mut actions = Vec::new();
         for raw_action in &raw_effect.actions {
             let op = parse_op(&raw_action.op)?;
-            let value = resolve_expr(&raw_action.value, &raw.id, card_attrs);
-            // Skip zero-value actions to avoid, e.g., MultiplyMult(0.0) zeroing
-            // the score, and to match the conditional guards in builtin_card_modifiers.rs.
-            if value != 0.0 {
-                actions.push(Action {
-                    op: ActionOpKind::Builtin(op),
-                    target: None,
-                    value: Expr::Number(value),
-                });
-            }
+            actions.push(Action {
+                op: ActionOpKind::Builtin(op),
+                target: None,
+                value: Expr::Lookup(raw_action.value.clone()),
+            });
         }
         if !actions.is_empty() {
             effects.push(JokerEffect {
@@ -147,53 +142,9 @@ fn parse_op(s: &str) -> anyhow::Result<ActionOp> {
 }
 
 /// Resolve a dot-notation expression like `"enhancement.chips"` to an `f64` value.
-///
-/// The namespace (`enhancement`, `edition`, `seal`) selects which attr lookup to use;
-/// the field alias selects the specific field within that stat block.
-/// `id` is the parent modifier's id (e.g. `"bonus"`, `"glass"`, `"foil"`) used to
-/// look up the correct stat block from `card_attrs`.
+/// Delegates to [`CardAttrRules::resolve_lookup`].
 fn resolve_expr(expr: &str, id: &str, card_attrs: &CardAttrRules) -> f64 {
-    let Some(dot) = expr.find('.') else {
-        return 0.0;
-    };
-    let namespace = &expr[..dot];
-    let field = &expr[dot + 1..];
-
-    match namespace {
-        "enhancement" => {
-            let def = card_attrs.enhancement(id);
-            match field {
-                "chips" => def.chips as f64,
-                "mult" => def.mult_add,
-                "x_mult" => def.mult_mul,
-                "x_mult_held" => def.mult_mul_held,
-                "destroy_odds" => def.destroy_odds as f64,
-                "lucky_mult_odds" => def.prob_mult_odds as f64,
-                "lucky_mult" => def.prob_mult_add,
-                "lucky_money_odds" => def.prob_money_odds as f64,
-                "lucky_money" => def.prob_money_add as f64,
-                _ => 0.0,
-            }
-        }
-        "edition" => {
-            let def = card_attrs.edition(id);
-            match field {
-                "chips" => def.chips as f64,
-                "mult" => def.mult_add,
-                "x_mult" => def.mult_mul,
-                _ => 0.0,
-            }
-        }
-        "seal" => {
-            let def = card_attrs.seal(id);
-            match field {
-                "money_scored" => def.money_scored as f64,
-                "money_held" => def.money_held as f64,
-                _ => 0.0,
-            }
-        }
-        _ => 0.0,
-    }
+    card_attrs.resolve_lookup(expr, id)
 }
 
 #[cfg(test)]
@@ -218,41 +169,44 @@ mod tests {
                 .unwrap_or_else(|| panic!("missing modifier {id}"))
         };
 
-        // Bonus: 30 chips on score (matches builtin_enhancement "bonus")
+        // Bonus: add_chips using dynamic lookup key
         let bonus = find(CardModifierKind::Enhancement, "bonus");
         assert_eq!(bonus.effects.len(), 1);
         assert_eq!(bonus.effects[0].trigger, ActivationType::OnScored);
         assert_eq!(bonus.effects[0].actions.len(), 1);
         assert!(matches!(
             &bonus.effects[0].actions[0].value,
-            Expr::Number(v) if (*v - 30.0).abs() < 1e-9
+            Expr::Lookup(k) if k == "enhancement.chips"
         ));
 
-        // Mult: +4 mult on score
+        // Mult: add_mult using dynamic lookup key
         let mult = find(CardModifierKind::Enhancement, "mult");
         assert!(matches!(
             &mult.effects[0].actions[0].value,
-            Expr::Number(v) if (*v - 4.0).abs() < 1e-9
+            Expr::Lookup(k) if k == "enhancement.mult"
         ));
 
-        // Glass: x2 mult on score, destroy_odds=4
+        // Glass: mul_mult using dynamic lookup key; destroy_odds is a static struct field
+        // resolved at load time (not an action value subject to dynamic lookup)
         let glass = find(CardModifierKind::Enhancement, "glass");
         assert_eq!(glass.destroy_odds, 4);
         assert_eq!(glass.effects.len(), 1);
         assert!(matches!(
             &glass.effects[0].actions[0].value,
-            Expr::Number(v) if (*v - 2.0).abs() < 1e-9
+            Expr::Lookup(k) if k == "enhancement.x_mult"
         ));
 
-        // Steel: x1.5 mult when held
+        // Steel: mul_mult (held) using dynamic lookup key
         let steel = find(CardModifierKind::Enhancement, "steel");
         assert_eq!(steel.effects[0].trigger, ActivationType::OnHeld);
         assert!(matches!(
             &steel.effects[0].actions[0].value,
-            Expr::Number(v) if (*v - 1.5).abs() < 1e-9
+            Expr::Lookup(k) if k == "enhancement.x_mult_held"
         ));
 
-        // Lucky: probabilistic odds, no deterministic effects
+        // Lucky: probabilistic fields (lucky_mult_odds, lucky_mult_add, etc.) are static
+        // struct fields resolved at load time — they are not action values in the effects
+        // list and are unaffected by the Expr::Lookup change.
         let lucky = find(CardModifierKind::Enhancement, "lucky");
         assert_eq!(lucky.effects.len(), 0);
         assert_eq!(lucky.lucky_mult_odds, 5);
@@ -260,24 +214,24 @@ mod tests {
         assert_eq!(lucky.lucky_money_odds, 15);
         assert_eq!(lucky.lucky_money_add, 20);
 
-        // Polychrome: x1.5 mult on score
+        // Polychrome: mul_mult using dynamic lookup key
         let poly = find(CardModifierKind::Edition, "polychrome");
         assert!(matches!(
             &poly.effects[0].actions[0].value,
-            Expr::Number(v) if (*v - 1.5).abs() < 1e-9
+            Expr::Lookup(k) if k == "edition.x_mult"
         ));
 
-        // Gold seal: +3 money on score
+        // Gold seal: add_money using dynamic lookup key
         let gold = find(CardModifierKind::Seal, "gold");
         assert_eq!(gold.effects[0].trigger, ActivationType::OnScored);
         assert!(matches!(
             &gold.effects[0].actions[0].value,
-            Expr::Number(v) if (*v - 3.0).abs() < 1e-9
+            Expr::Lookup(k) if k == "seal.money_scored"
         ));
     }
 
     #[test]
-    fn custom_card_attrs_override_values() {
+    fn custom_card_attrs_resolve_at_eval_time() {
         use rulatro_core::{EditionDef, EnhancementDef};
         use std::collections::HashMap;
 
@@ -304,13 +258,14 @@ mod tests {
         };
         let defs = load_builtin_card_modifiers(&card_attrs);
 
+        // Action values are now Expr::Lookup — not pre-resolved at load time.
         let bonus = defs
             .iter()
             .find(|d| d.kind == CardModifierKind::Enhancement && d.id == "bonus")
             .expect("bonus modifier");
         assert!(matches!(
             &bonus.effects[0].actions[0].value,
-            Expr::Number(v) if (*v - 99.0).abs() < 1e-9
+            Expr::Lookup(k) if k == "enhancement.chips"
         ));
 
         let foil = defs
@@ -319,7 +274,14 @@ mod tests {
             .expect("foil modifier");
         assert!(matches!(
             &foil.effects[0].actions[0].value,
-            Expr::Number(v) if (*v - 77.0).abs() < 1e-9
+            Expr::Lookup(k) if k == "edition.chips"
         ));
+
+        // Verify that resolve_lookup returns the custom values at evaluation time.
+        assert_eq!(
+            card_attrs.resolve_lookup("enhancement.chips", "bonus"),
+            99.0
+        );
+        assert_eq!(card_attrs.resolve_lookup("edition.chips", "foil"), 77.0);
     }
 }
