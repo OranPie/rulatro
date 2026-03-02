@@ -1,8 +1,86 @@
-use crate::{ConsumableKind, EffectBlock, HandKind, JokerEffect, JokerRarity, Rank, Suit};
+use crate::{
+    Action, ActivationType, ConsumableKind, EffectBlock, HandKind, JokerEffect, JokerRarity, Rank,
+    Suit,
+};
 use serde::{Deserialize, Serialize};
 
 fn default_weight() -> u32 {
     1
+}
+
+/// Identifies whether a card modifier is an Enhancement, Edition, or Seal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CardModifierKind {
+    Enhancement,
+    Edition,
+    Seal,
+}
+
+/// Data-driven definition for a card modifier's scoring/held effects.
+#[derive(Debug, Clone)]
+pub struct CardModifierDef {
+    pub kind: CardModifierKind,
+    /// The lowercase id matching the key used in [`CardAttrRules`](crate::CardAttrRules)
+    /// (e.g. `"bonus"`, `"foil"`, `"gold"`).
+    pub id: String,
+    /// Deterministic effects applied when the trigger fires.
+    pub effects: Vec<JokerEffect>,
+    /// 1-in-N odds of destroying the card after scoring (0 = never). Used by Glass.
+    pub destroy_odds: u32,
+    /// 1-in-N odds of a lucky mult proc (0 = never). Used by Lucky.
+    pub lucky_mult_odds: u32,
+    /// Mult added when the lucky mult roll succeeds.
+    pub lucky_mult_add: f64,
+    /// 1-in-N odds of a lucky money proc (0 = never). Used by Lucky.
+    pub lucky_money_odds: u32,
+    /// Money added when the lucky money roll succeeds.
+    pub lucky_money_add: i64,
+}
+
+impl CardModifierDef {
+    /// Convenience constructor for a modifier with only deterministic effects.
+    pub fn simple(
+        kind: CardModifierKind,
+        id: impl Into<String>,
+        effects: Vec<JokerEffect>,
+    ) -> Self {
+        Self {
+            kind,
+            id: id.into(),
+            effects,
+            destroy_odds: 0,
+            lucky_mult_odds: 0,
+            lucky_mult_add: 0.0,
+            lucky_money_odds: 0,
+            lucky_money_add: 0,
+        }
+    }
+
+    /// Convenience helper: a single-action scored effect.
+    pub fn scored(kind: CardModifierKind, id: impl Into<String>, action: Action) -> Self {
+        Self::simple(
+            kind,
+            id,
+            vec![JokerEffect {
+                trigger: ActivationType::OnScored,
+                when: crate::Expr::Bool(true),
+                actions: vec![action],
+            }],
+        )
+    }
+
+    /// Convenience helper: a single-action held effect.
+    pub fn held(kind: CardModifierKind, id: impl Into<String>, action: Action) -> Self {
+        Self::simple(
+            kind,
+            id,
+            vec![JokerEffect {
+                trigger: ActivationType::OnHeld,
+                when: crate::Expr::Bool(true),
+                actions: vec![action],
+            }],
+        )
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -51,6 +129,8 @@ pub struct Content {
     pub tarots: Vec<ConsumableDef>,
     pub planets: Vec<ConsumableDef>,
     pub spectrals: Vec<ConsumableDef>,
+    /// Data-driven definitions for Enhancement, Edition, and Seal scoring behaviors.
+    pub card_modifiers: Vec<CardModifierDef>,
 }
 
 impl Content {
@@ -127,6 +207,13 @@ impl Content {
 
     pub fn tag_by_id(&self, id: &str) -> Option<&TagDef> {
         self.tags.iter().find(|tag| tag.id == id)
+    }
+
+    /// Look up a card modifier definition by kind and id.
+    pub fn modifier_def(&self, kind: CardModifierKind, id: &str) -> Option<&CardModifierDef> {
+        self.card_modifiers
+            .iter()
+            .find(|d| d.kind == kind && d.id == id)
     }
 
     pub fn random_standard_card(&self, rng: &mut crate::RngState) -> crate::Card {
