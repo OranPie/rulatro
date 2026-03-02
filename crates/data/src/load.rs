@@ -1,3 +1,4 @@
+use crate::card_modifier_defs::load_builtin_card_modifiers;
 use crate::joker_dsl::{
     load_boss_mixin_refs, load_bosses_dsl_with_locale, load_joker_mixin_refs,
     load_jokers_dsl_with_locale, load_tag_mixin_refs, load_tags_dsl_with_locale,
@@ -19,6 +20,7 @@ use std::path::Path;
 
 const CONSUMABLE_MIXINS_FILE: &str = "consumable_mixins.json";
 const NAMED_EFFECT_MIXINS_FILE: &str = "named_effect_mixins.json";
+const CARD_ATTRIBUTES_FILE: &str = "card_attributes.json";
 
 pub fn load_content_pack(path: &Path) -> anyhow::Result<ContentPack> {
     let raw = fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
@@ -33,7 +35,7 @@ pub fn load_game_config(dir: &Path) -> anyhow::Result<GameConfig> {
     let antes: Vec<AnteRule> = load_json(dir.join("antes.json"))?;
     let economy: EconomyRule = load_json(dir.join("economy.json"))?;
     let shop: ShopRule = load_json(dir.join("shop.json"))?;
-    let card_attrs_path = dir.join("card_attributes.json");
+    let card_attrs_path = dir.join(CARD_ATTRIBUTES_FILE);
     let card_attrs: CardAttrRules = if card_attrs_path.exists() {
         load_json(card_attrs_path)?
     } else {
@@ -84,6 +86,17 @@ pub fn load_content_with_mods_locale(
     locale: Option<&str>,
 ) -> anyhow::Result<ModLoadReport> {
     let mut content = load_content_with_locale(assets_dir, locale)?;
+
+    // Populate card_modifiers from the embedded JSON, resolved against the
+    // game's card attribute balance values.
+    let card_attrs_path = assets_dir.join(CARD_ATTRIBUTES_FILE);
+    let card_attrs: CardAttrRules = if card_attrs_path.exists() {
+        load_json(card_attrs_path)?
+    } else {
+        CardAttrRules::default()
+    };
+    content.card_modifiers = load_builtin_card_modifiers(&card_attrs);
+
     let mods = load_mods(mods_dir)?;
     if mods.is_empty() {
         return Ok(ModLoadReport {
