@@ -19,6 +19,11 @@ impl RunState {
         let mut state = GameState::new();
         state.hand_size_base = initial_hand_size;
         state.hand_size = initial_hand_size;
+        let mut content = content;
+        if content.card_modifiers.is_empty() {
+            content.card_modifiers =
+                super::builtin_card_modifiers::build_builtin_card_modifiers(&config.card_attrs);
+        }
         Self {
             config,
             tables,

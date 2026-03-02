@@ -8,6 +8,7 @@ use thiserror::Error;
 
 mod action_handlers;
 mod blind;
+mod builtin_card_modifiers;
 mod context;
 mod eval;
 mod hand;
