@@ -1,0 +1,92 @@
+[
+  {
+    "id": "the_comet",
+    "name": "The Comet",
+    "kind": "Tarot",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "AddRandomConsumable": { "kind": "Planet", "count": 1 } },
+          { "AddMoney": 3 }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "the_navigator",
+    "name": "The Navigator",
+    "kind": "Tarot",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "EnhanceSelected": { "enhancement": "Bonus", "count": 3 } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "the_herald",
+    "name": "The Herald",
+    "kind": "Tarot",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "AddHandSize": 1 },
+          { "AddRandomConsumable": { "kind": "Tarot", "count": 1 } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "the_guardian_card",
+    "name": "The Guardian",
+    "kind": "Tarot",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "AddSealToSelected": { "seal": "Gold", "count": 2 } },
+          { "AddMoney": 5 }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "the_twins",
+    "name": "The Twins",
+    "kind": "Tarot",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "CopySelected": { "count": 1 } },
+          { "EnhanceSelected": { "enhancement": "Mult", "count": 1 } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "the_phoenix_card",
+    "name": "The Phoenix",
+    "kind": "Tarot",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "DestroyRandomInHand": { "count": 2 } },
+          { "AddRandomEnhancedCards": { "count": 3, "filter": "Face" } },
+          { "AddEditionToSelected": { "editions": ["Foil", "Holographic", "Polychrome"], "count": 1 } }
+        ]
+      }
+    ]
+  }
+]

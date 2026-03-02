@@ -1,0 +1,12 @@
+{
+  "meta": {
+    "id": "astral_dominion",
+    "name": "Astral Dominion",
+    "version": "1.0.0",
+    "description": "Four factions wage cosmic war: Celestial (stars/planets), Shadow (risk/destruction), Fortune (luck/money), and Arcane (rituals/consumables). 32 jokers, 6 tarots, 5 spectrals, 2 new pack types."
+  },
+  "entry": "scripts/main.lua",
+  "content": {
+    "root": "content"
+  }
+}

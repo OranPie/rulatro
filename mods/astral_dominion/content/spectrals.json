@@ -1,0 +1,79 @@
+[
+  {
+    "id": "eclipse_mist",
+    "name": "Eclipse Mist",
+    "kind": "Spectral",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "DestroyRandomInHand": { "count": 1 } },
+          { "AddRandomEnhancedCards": { "count": 2, "filter": "Ace" } },
+          { "AddSealToSelected": { "seal": "Blue", "count": 2 } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "starfall",
+    "name": "Starfall",
+    "kind": "Spectral",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "AddRandomConsumable": { "kind": "Planet", "count": 3 } },
+          { "AddMoney": -5 }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "void_touch",
+    "name": "Void Touch",
+    "kind": "Spectral",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "SetRandomJokerEdition": { "edition": "Negative" } },
+          { "UpgradeAllHands": { "amount": 1 } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "chaos_seed",
+    "name": "Chaos Seed",
+    "kind": "Spectral",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "DestroyRandomInHand": { "count": 2 } },
+          { "AddRandomEnhancedCards": { "count": 4, "filter": "Face" } },
+          { "AddJoker": { "rarity": "Common", "count": 1 } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "prism_shard",
+    "name": "Prism Shard",
+    "kind": "Spectral",
+    "effects": [
+      {
+        "trigger": "OnUse",
+        "conditions": ["Always"],
+        "effects": [
+          { "AddEditionToSelected": { "editions": ["Foil", "Holographic", "Polychrome"], "count": 2 } },
+          { "AddRandomConsumable": { "kind": "Tarot", "count": 1 } }
+        ]
+      }
+    ]
+  }
+]

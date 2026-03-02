@@ -1,0 +1,11 @@
+{
+  "_comment": "New pack kinds for Astral Dominion. Astral packs draw from both Tarot and Planet pools. Shadow packs draw from Joker pool with elevated rare/legendary odds. Both are rare shop appearances.",
+  "pack_weights": [
+    { "kind": "Astral", "size": "Normal", "weight": 80,  "options": 3, "picks": 1 },
+    { "kind": "Astral", "size": "Jumbo",  "weight": 40,  "options": 5, "picks": 2 },
+    { "kind": "Astral", "size": "Mega",   "weight": 12,  "options": 6, "picks": 3 },
+    { "kind": "Shadow", "size": "Normal", "weight": 60,  "options": 2, "picks": 1 },
+    { "kind": "Shadow", "size": "Jumbo",  "weight": 30,  "options": 4, "picks": 1 },
+    { "kind": "Shadow", "size": "Mega",   "weight": 8,   "options": 4, "picks": 2 }
+  ]
+}
