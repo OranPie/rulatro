@@ -345,6 +345,9 @@ pub enum Expr {
     Number(f64),
     String(String),
     Ident(String),
+    /// Dynamic lookup resolved at evaluation time from `CardAttrRules`.
+    /// The key uses dot-notation, e.g. `"enhancement.chips"` or `"edition.x_mult"`.
+    Lookup(String),
     Call {
         name: String,
         args: Vec<Expr>,
@@ -421,6 +424,7 @@ pub fn format_expr_compact(expr: &Expr) -> String {
         Expr::Number(value) => format_number(*value),
         Expr::String(value) => format!("\"{value}\""),
         Expr::Ident(value) => value.clone(),
+        Expr::Lookup(key) => format!("lookup({key})"),
         Expr::Call { name, args } => {
             let inner = args
                 .iter()

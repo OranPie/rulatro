@@ -13,6 +13,13 @@ impl RunState {
             Expr::Number(value) => EvalValue::Num(*value),
             Expr::String(value) => EvalValue::Str(normalize(value)),
             Expr::Ident(value) => self.eval_ident(value, ctx),
+            Expr::Lookup(key) => {
+                if let (Some(attrs), Some(id)) = (ctx.card_attrs, ctx.modifier_id) {
+                    EvalValue::Num(attrs.resolve_lookup(key, id))
+                } else {
+                    EvalValue::Num(0.0)
+                }
+            }
             Expr::Call { name, args } => self.eval_call(name, args, ctx),
             Expr::Unary { op, expr } => {
                 let inner = self.eval_expr(expr, ctx);

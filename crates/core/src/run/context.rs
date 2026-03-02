@@ -1,4 +1,4 @@
-use crate::{BlindKind, Card};
+use crate::{BlindKind, Card, CardAttrRules};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -24,6 +24,10 @@ pub(super) struct EvalContext<'a> {
     pub(super) discarded_cards: &'a [Card],
     pub(super) joker_vars: Option<HashMap<String, f64>>,
     pub(super) joker_index: Option<usize>,
+    /// `CardAttrRules` reference used to resolve `Expr::Lookup` values.
+    pub(super) card_attrs: Option<&'a CardAttrRules>,
+    /// The modifier id (e.g. `"bonus"`, `"foil"`) used with `Expr::Lookup`.
+    pub(super) modifier_id: Option<&'a str>,
 }
 
 impl<'a> EvalContext<'a> {
@@ -59,6 +63,8 @@ impl<'a> EvalContext<'a> {
             discarded_cards: &[],
             joker_vars: None,
             joker_index: None,
+            card_attrs: None,
+            modifier_id: None,
         }
     }
 
@@ -94,6 +100,8 @@ impl<'a> EvalContext<'a> {
             discarded_cards: &[],
             joker_vars: None,
             joker_index: None,
+            card_attrs: None,
+            modifier_id: None,
         }
     }
 
@@ -131,6 +139,8 @@ impl<'a> EvalContext<'a> {
             discarded_cards: &[],
             joker_vars: None,
             joker_index: None,
+            card_attrs: None,
+            modifier_id: None,
         }
     }
 
@@ -167,6 +177,8 @@ impl<'a> EvalContext<'a> {
             discarded_cards: &[],
             joker_vars: None,
             joker_index: None,
+            card_attrs: None,
+            modifier_id: None,
         }
     }
 
@@ -202,6 +214,8 @@ impl<'a> EvalContext<'a> {
             discarded_cards,
             joker_vars: None,
             joker_index: None,
+            card_attrs: None,
+            modifier_id: None,
         }
     }
 
@@ -236,6 +250,8 @@ impl<'a> EvalContext<'a> {
             discarded_cards,
             joker_vars: None,
             joker_index: None,
+            card_attrs: None,
+            modifier_id: None,
         }
     }
 
@@ -269,6 +285,8 @@ impl<'a> EvalContext<'a> {
             discarded_cards: &[],
             joker_vars: None,
             joker_index: None,
+            card_attrs: None,
+            modifier_id: None,
         }
     }
 
@@ -282,6 +300,12 @@ impl<'a> EvalContext<'a> {
         let mut next = self.clone();
         next.joker_index = Some(index);
         next
+    }
+
+    pub(super) fn with_modifier_context(mut self, id: &'a str, attrs: &'a CardAttrRules) -> Self {
+        self.modifier_id = Some(id);
+        self.card_attrs = Some(attrs);
+        self
     }
 
     pub(super) fn consumable(
@@ -315,6 +339,8 @@ impl<'a> EvalContext<'a> {
             discarded_cards: &[],
             joker_vars: None,
             joker_index: None,
+            card_attrs: None,
+            modifier_id: None,
         }
     }
 
@@ -348,6 +374,8 @@ impl<'a> EvalContext<'a> {
             discarded_cards: &[],
             joker_vars: None,
             joker_index: None,
+            card_attrs: None,
+            modifier_id: None,
         }
     }
 }
