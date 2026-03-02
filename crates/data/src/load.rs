@@ -214,6 +214,7 @@ fn load_content_dir(
         tarots,
         planets,
         spectrals,
+        card_modifiers: Vec::new(),
     })
 }
 

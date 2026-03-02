@@ -7,6 +7,7 @@ use std::fmt;
 use thiserror::Error;
 
 mod blind;
+mod builtin_card_modifiers;
 mod context;
 mod eval;
 mod hand;
