@@ -495,8 +495,8 @@ fn evaluate_hand_smeared_suits_flush() {
     ]);
     let rules = HandEvalRules {
         smeared_suits: true,
-        four_fingers: false,
-        shortcut: false,
+        min_hand_len: 5,
+        max_gap: 1,
     };
     assert_eq!(evaluate_hand_with_rules(&cards, rules), HandKind::Flush);
     assert_eq!(evaluate_hand(&cards), HandKind::HighCard);
@@ -512,8 +512,8 @@ fn evaluate_hand_four_fingers_straight() {
     ]);
     let rules = HandEvalRules {
         smeared_suits: false,
-        four_fingers: true,
-        shortcut: false,
+        min_hand_len: 4,
+        max_gap: 1,
     };
     assert_eq!(evaluate_hand_with_rules(&cards, rules), HandKind::Straight);
     assert_eq!(evaluate_hand(&cards), HandKind::HighCard);
@@ -530,8 +530,8 @@ fn evaluate_hand_shortcut_straight() {
     ]);
     let rules = HandEvalRules {
         smeared_suits: false,
-        four_fingers: false,
-        shortcut: true,
+        min_hand_len: 5,
+        max_gap: 2,
     };
     assert_eq!(evaluate_hand_with_rules(&cards, rules), HandKind::Straight);
     assert_eq!(evaluate_hand(&cards), HandKind::HighCard);

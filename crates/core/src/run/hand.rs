@@ -117,14 +117,27 @@ impl RunState {
         // Merge: Flow Kernel overrides > rule_vars fallbacks.
         let final_rules = crate::HandEvalRules {
             smeared_suits: patch.smear_suits.unwrap_or(eval_rules.smeared_suits),
-            four_fingers: patch.four_fingers.unwrap_or(eval_rules.four_fingers),
-            shortcut: patch.max_gap.map(|g| g > 1).unwrap_or(eval_rules.shortcut),
+            min_hand_len: patch
+                .four_fingers
+                .map(|ff| if ff { 4u8 } else { 5u8 })
+                .or_else(|| patch.min_len.map(|l| l as u8))
+                .unwrap_or(eval_rules.min_hand_len),
+            max_gap: patch.max_gap.map(|g| g as u8).unwrap_or(eval_rules.max_gap),
         };
         let splash = patch.splash.unwrap_or(self.splash_active());
         let mut eval_cards = played.clone();
         for card in &mut eval_cards {
-            if self.is_card_debuffed(*card) && card.enhancement == Some(Enhancement::Stone) {
-                card.enhancement = None;
+            if self.is_card_debuffed(*card) {
+                if let Some(enh) = card.enhancement {
+                    let id = Self::enhancement_to_id(enh);
+                    if self
+                        .content
+                        .modifier_def(CardModifierKind::Enhancement, id)
+                        .map_or(false, |d| d.debuff_strips_self)
+                    {
+                        card.enhancement = None;
+                    }
+                }
             }
         }
 
@@ -142,8 +155,8 @@ impl RunState {
                     state: &self.state,
                     cards: &eval_cards,
                     smeared_suits: final_rules.smeared_suits,
-                    four_fingers: final_rules.four_fingers,
-                    shortcut: final_rules.shortcut,
+                    min_hand_len: final_rules.min_hand_len,
+                    max_gap: final_rules.max_gap,
                 })
             } else {
                 None

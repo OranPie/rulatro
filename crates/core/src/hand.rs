@@ -66,11 +66,24 @@ pub fn level_kind(kind: HandKind) -> HandKind {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy)]
 pub struct HandEvalRules {
     pub smeared_suits: bool,
-    pub four_fingers: bool,
-    pub shortcut: bool,
+    /// Minimum non-stone card count for a flush or straight to be recognised (default: 5).
+    /// Set to 4 to replicate the "Four Fingers" joker effect.
+    pub min_hand_len: u8,
+    /// Maximum rank gap allowed in a straight (default: 1, set to 2 for "Shortcut").
+    pub max_gap: u8,
+}
+
+impl Default for HandEvalRules {
+    fn default() -> Self {
+        Self {
+            smeared_suits: false,
+            min_hand_len: 5,
+            max_gap: 1,
+        }
+    }
 }
 
 pub fn evaluate_hand(cards: &[Card]) -> HandKind {
@@ -102,10 +115,12 @@ pub fn evaluate_hand_with_rules(cards: &[Card], rules: HandEvalRules) -> HandKin
     counts.sort_by(|a, b| b.cmp(a));
 
     let is_flush = (len == 5 && suit_counts.len() == 1)
-        || (rules.four_fingers && len == 4 && suit_counts.len() == 1);
-    let max_gap = if rules.shortcut { 2 } else { 1 };
-    let is_straight = (len == 5 && is_straight_len(&eval_cards, 5, max_gap))
-        || (rules.four_fingers && len == 4 && is_straight_len(&eval_cards, 4, max_gap));
+        || (rules.min_hand_len < 5 && len == rules.min_hand_len as usize && suit_counts.len() == 1);
+    let gap = rules.max_gap;
+    let is_straight = (len == 5 && is_straight_len(&eval_cards, 5, gap))
+        || (rules.min_hand_len < 5
+            && len == rules.min_hand_len as usize
+            && is_straight_len(&eval_cards, rules.min_hand_len as usize, gap));
 
     if len == 5 {
         if counts == [5] {
@@ -150,7 +165,7 @@ pub fn evaluate_hand_with_rules(cards: &[Card], rules: HandEvalRules) -> HandKin
         return HandKind::HighCard;
     }
 
-    if rules.four_fingers && len == 4 {
+    if rules.min_hand_len < 5 && len == rules.min_hand_len as usize {
         if is_flush && is_straight {
             return HandKind::StraightFlush;
         }

@@ -49,6 +49,9 @@ pub struct CardModifierDef {
     pub retrigger_count: u32,
     /// Timing phase for joker edition scoring (Pre = before DSL, Post = after).
     pub phase: ModifierPhase,
+    /// When true, this enhancement is stripped from debuffed cards during hand evaluation.
+    /// Used by Stone: debuffed stone cards score as plain cards.
+    pub debuff_strips_self: bool,
 }
 
 impl CardModifierDef {
@@ -69,6 +72,7 @@ impl CardModifierDef {
             lucky_money_add: 0,
             retrigger_count: 0,
             phase: ModifierPhase::default(),
+            debuff_strips_self: false,
         }
     }
 
@@ -313,6 +317,25 @@ impl Content {
         self.card_modifiers
             .iter()
             .find(|d| d.kind == kind && d.id == id)
+    }
+
+    /// Pick a random seal from the content-defined seal pool (uniform distribution).
+    /// Falls back to the four built-in seals if no seals are defined in content.
+    pub fn random_seal(&self, rng: &mut crate::RngState) -> Option<crate::Seal> {
+        let seal_ids: Vec<&str> = self
+            .card_modifiers
+            .iter()
+            .filter(|d| d.kind == CardModifierKind::Seal)
+            .map(|d| d.id.as_str())
+            .collect();
+        if seal_ids.is_empty() {
+            // Fallback: built-in four seals.
+            let fallback = ["red", "blue", "gold", "purple"];
+            let id = fallback[(rng.next_u64() % fallback.len() as u64) as usize];
+            return crate::Seal::from_id(id);
+        }
+        let id = seal_ids[(rng.next_u64() % seal_ids.len() as u64) as usize];
+        crate::Seal::from_id(id)
     }
 
     pub fn random_standard_card(&self, rng: &mut crate::RngState) -> crate::Card {

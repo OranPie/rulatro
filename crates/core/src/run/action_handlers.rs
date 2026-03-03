@@ -775,13 +775,7 @@ pub(super) fn handle_add_random_hand_card(
     let count = ctx.value.map(|v| v.floor() as i64).unwrap_or(1).max(0) as usize;
     for _ in 0..count {
         let mut card = run.content.random_standard_card(&mut run.rng);
-        let roll = run.rng.next_u64() % 4;
-        card.seal = match roll {
-            0 => Some(Seal::Red),
-            1 => Some(Seal::Blue),
-            2 => Some(Seal::Gold),
-            _ => Some(Seal::Purple),
-        };
+        card.seal = run.content.random_seal(&mut run.rng);
         run.assign_card_id(&mut card);
         run.hand.push(card);
         run.trigger_on_card_added(card);

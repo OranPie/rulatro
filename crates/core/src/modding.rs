@@ -526,8 +526,10 @@ pub struct ModHandEvalContext<'a> {
     pub state: &'a GameState,
     pub cards: &'a [Card],
     pub smeared_suits: bool,
-    pub four_fingers: bool,
-    pub shortcut: bool,
+    /// Minimum card count for flush/straight (4 = four_fingers, 5 = default).
+    pub min_hand_len: u8,
+    /// Maximum rank gap in a straight (2 = shortcut, 1 = default).
+    pub max_gap: u8,
 }
 
 /// Result of a custom hand evaluation.  Legacy; new code uses `HandTypeOutput`.

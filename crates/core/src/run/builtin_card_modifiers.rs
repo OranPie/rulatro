@@ -63,17 +63,20 @@ pub(super) fn build_builtin_card_modifiers(card_attrs: &CardAttrRules) -> Vec<Ca
             lucky_money_add: 0,
             retrigger_count: 0,
             phase: crate::ModifierPhase::Pre,
+            debuff_strips_self: false,
         });
     }
 
-    // Stone: flat chips on score (Stone cards are scored even without rank/suit)
+    // Stone: flat chips on score; strips enhancement when debuffed (becomes a plain card)
     let stone = card_attrs.enhancement("stone");
     if stone.chips != 0 {
-        defs.push(CardModifierDef::scored(
+        let mut def = CardModifierDef::scored(
             CardModifierKind::Enhancement,
             "stone",
             scored_action(ActionOp::AddChips, stone.chips as f64),
-        ));
+        );
+        def.debuff_strips_self = true;
+        defs.push(def);
     }
 
     // Lucky: probabilistic mult and/or money on score
@@ -90,6 +93,7 @@ pub(super) fn build_builtin_card_modifiers(card_attrs: &CardAttrRules) -> Vec<Ca
             lucky_money_add: lucky.prob_money_add,
             retrigger_count: 0,
             phase: crate::ModifierPhase::Pre,
+            debuff_strips_self: false,
         });
     }
 

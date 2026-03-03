@@ -55,6 +55,19 @@ pub enum Seal {
     Purple,
 }
 
+impl Seal {
+    /// Parse a seal from its lowercase id string (e.g. `"red"`, `"blue"`).
+    pub fn from_id(id: &str) -> Option<Self> {
+        match id {
+            "red" => Some(Self::Red),
+            "blue" => Some(Self::Blue),
+            "gold" => Some(Self::Gold),
+            "purple" => Some(Self::Purple),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct Card {
     #[serde(default)]

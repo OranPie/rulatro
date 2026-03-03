@@ -297,8 +297,8 @@ impl RunState {
         self.ensure_rule_vars();
         HandEvalRules {
             smeared_suits: self.rule_flag("smeared_suits"),
-            four_fingers: self.rule_flag("four_fingers"),
-            shortcut: self.rule_flag("shortcut"),
+            min_hand_len: if self.rule_flag("four_fingers") { 4 } else { 5 },
+            max_gap: if self.rule_flag("shortcut") { 2 } else { 1 },
         }
     }
 

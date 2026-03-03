@@ -49,6 +49,8 @@ struct RawCardModifierDef {
     retrigger_count: Option<u32>,
     #[serde(default)]
     phase: Option<String>,
+    #[serde(default)]
+    debuff_strips_self: bool,
 }
 
 #[derive(Deserialize)]
@@ -143,6 +145,7 @@ fn resolve_modifier(
         lucky_money_add: resolve_i64(&raw.lucky_money_add),
         retrigger_count: raw.retrigger_count.unwrap_or(0),
         phase,
+        debuff_strips_self: raw.debuff_strips_self,
     })
 }
 

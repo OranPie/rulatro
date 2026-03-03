@@ -50,7 +50,8 @@
           { "op": "add_chips", "value": "enhancement.chips" }
         ]
       }
-    ]
+    ],
+    "debuff_strips_self": true
   },
   {
     "kind": "enhancement",
