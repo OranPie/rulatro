@@ -1,7 +1,7 @@
 use anyhow::Context;
 use rulatro_core::{
     Action, ActionOp, ActionOpKind, ActivationType, CardAttrRules, CardModifierDef,
-    CardModifierKind, Expr, JokerEffect,
+    CardModifierKind, Expr, JokerEffect, ModifierPhase,
 };
 use serde::Deserialize;
 
@@ -45,6 +45,10 @@ struct RawCardModifierDef {
     lucky_money_odds: Option<String>,
     #[serde(default)]
     lucky_money_add: Option<String>,
+    #[serde(default)]
+    retrigger_count: Option<u32>,
+    #[serde(default)]
+    phase: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -77,10 +81,25 @@ fn resolve_modifier(
         let mut actions = Vec::new();
         for raw_action in &raw_effect.actions {
             let op = parse_op(&raw_action.op)?;
+            // If the value contains a dot, it's a lookup expression; otherwise treat
+            // as a plain string target (e.g. "tarot" for grant_random_consumable) or number.
+            let value = if raw_action.value.contains('.') {
+                Expr::Lookup(raw_action.value.clone())
+            } else if let Ok(n) = raw_action.value.parse::<f64>() {
+                Expr::Number(n)
+            } else {
+                // String value acts as target (e.g., consumable kind)
+                Expr::String(raw_action.value.clone())
+            };
+            let target = if op.requires_target() && !raw_action.value.contains('.') {
+                Some(raw_action.value.clone())
+            } else {
+                None
+            };
             actions.push(Action {
                 op: ActionOpKind::Builtin(op),
-                target: None,
-                value: Expr::Lookup(raw_action.value.clone()),
+                target,
+                value,
             });
         }
         if !actions.is_empty() {
@@ -108,6 +127,11 @@ fn resolve_modifier(
             .unwrap_or(0)
     };
 
+    let phase = match raw.phase.as_deref() {
+        Some("post") => ModifierPhase::Post,
+        _ => ModifierPhase::Pre,
+    };
+
     Ok(CardModifierDef {
         kind,
         id: raw.id.clone(),
@@ -117,6 +141,8 @@ fn resolve_modifier(
         lucky_mult_add: resolve_f64(&raw.lucky_mult_add),
         lucky_money_odds: resolve_u32(&raw.lucky_money_odds),
         lucky_money_add: resolve_i64(&raw.lucky_money_add),
+        retrigger_count: raw.retrigger_count.unwrap_or(0),
+        phase,
     })
 }
 
@@ -133,6 +159,10 @@ fn parse_trigger(s: &str) -> anyhow::Result<ActivationType> {
     match s {
         "on_scored" => Ok(ActivationType::OnScored),
         "on_held" => Ok(ActivationType::OnHeld),
+        "on_discard" => Ok(ActivationType::OnDiscard),
+        "on_round_end" => Ok(ActivationType::OnRoundEnd),
+        "on_blind_start" => Ok(ActivationType::OnBlindStart),
+        "passive" => Ok(ActivationType::Passive),
         _ => Err(anyhow::anyhow!("unknown trigger: {s}")),
     }
 }

@@ -1,17 +1,132 @@
 [
-  {"id":"red","name":"Red Deck","description":"+1 Discard every round"},
-  {"id":"blue","name":"Blue Deck","description":"+1 Hand every round"},
-  {"id":"yellow","name":"Yellow Deck","description":"Start with $10"},
-  {"id":"green","name":"Green Deck","description":"+$2 per remaining Hand, +$1 per remaining Discard at end of round. No Interest"},
-  {"id":"black","name":"Black Deck","description":"+1 Joker slot, -1 Hand every round"},
-  {"id":"magic","name":"Magic Deck","description":"Start run with the Crystal Ball Voucher and 2 copies of The Fool"},
-  {"id":"nebula","name":"Nebula Deck","description":"Start run with the Telescope Voucher, -1 Consumable slot"},
-  {"id":"ghost","name":"Ghost Deck","description":"Spectral Cards may appear in the shop, Start run with a Hex Card"},
-  {"id":"abandoned","name":"Abandoned Deck","description":"Start run with no Face Cards (Jacks, Queens, or Kings) in your deck"},
-  {"id":"checkered","name":"Checkered Deck","description":"Start run with 26 Spades and 26 Hearts"},
-  {"id":"zodiac","name":"Zodiac Deck","description":"Start run with Tarot Merchant, Planet Merchant, and Overstock Vouchers"},
-  {"id":"painted","name":"Painted Deck","description":"+2 Hand Size, -1 Joker slot"},
-  {"id":"anaglyph","name":"Anaglyph Deck","description":"After defeating each Boss Blind, gain a Double Tag"},
-  {"id":"plasma","name":"Plasma Deck","description":"Balance Chips and Mult when calculating score for played hand. 2x Base Blind size"},
-  {"id":"erratic","name":"Erratic Deck","description":"All Ranks and Suits in deck are randomised"}
+  {
+    "id": "red",
+    "name": "Red Deck",
+    "description": "+1 Discard every round",
+    "ongoing_effects": [
+      { "trigger": "OnBlindStart", "op": "add_discards", "value": 1 }
+    ]
+  },
+  {
+    "id": "blue",
+    "name": "Blue Deck",
+    "description": "+1 Hand every round",
+    "ongoing_effects": [
+      { "trigger": "OnBlindStart", "op": "add_hands", "value": 1 }
+    ]
+  },
+  {
+    "id": "yellow",
+    "name": "Yellow Deck",
+    "description": "Start with $10",
+    "startup_effects": [
+      { "op": "add_money", "value": 10 }
+    ]
+  },
+  {
+    "id": "green",
+    "name": "Green Deck",
+    "description": "+$2 per remaining Hand, +$1 per remaining Discard at end of round. No Interest",
+    "ongoing_effects": [
+      { "trigger": "OnRoundEnd", "op": "set_rule", "target": "deck_green_bonus", "value": 1 }
+    ]
+  },
+  {
+    "id": "black",
+    "name": "Black Deck",
+    "description": "+1 Joker slot, -1 Hand every round",
+    "startup_effects": [
+      { "op": "add_joker_slots", "value": 1 }
+    ],
+    "ongoing_effects": [
+      { "trigger": "OnBlindStart", "op": "add_hands", "value": -1 }
+    ]
+  },
+  {
+    "id": "magic",
+    "name": "Magic Deck",
+    "description": "Start run with the Crystal Ball Voucher and 2 copies of The Fool",
+    "startup_effects": [
+      { "op": "add_voucher_by_id", "target": "v_crystal_ball", "value": 0 },
+      { "op": "add_consumable_by_id", "target": "c_fool", "value": 0 },
+      { "op": "add_consumable_by_id", "target": "c_fool", "value": 0 }
+    ]
+  },
+  {
+    "id": "nebula",
+    "name": "Nebula Deck",
+    "description": "Start run with the Telescope Voucher, -1 Consumable slot",
+    "startup_effects": [
+      { "op": "add_voucher_by_id", "target": "v_telescope", "value": 0 },
+      { "op": "add_consumable_slots", "value": -1 }
+    ]
+  },
+  {
+    "id": "ghost",
+    "name": "Ghost Deck",
+    "description": "Spectral Cards may appear in the shop, Start run with a Hex Card",
+    "startup_effects": [
+      { "op": "set_rule", "target": "deck_ghost", "value": 1 },
+      { "op": "add_consumable_by_id", "target": "c_hex", "value": 2 }
+    ]
+  },
+  {
+    "id": "abandoned",
+    "name": "Abandoned Deck",
+    "description": "Start run with no Face Cards (Jacks, Queens, or Kings) in your deck",
+    "startup_effects": [
+      { "op": "remove_ranks", "target": "Jack,Queen,King", "value": 0 }
+    ]
+  },
+  {
+    "id": "checkered",
+    "name": "Checkered Deck",
+    "description": "Start run with 26 Spades and 26 Hearts",
+    "startup_effects": [
+      { "op": "set_deck_suits", "target": "Spades,Hearts", "value": 0 }
+    ]
+  },
+  {
+    "id": "zodiac",
+    "name": "Zodiac Deck",
+    "description": "Start run with Tarot Merchant, Planet Merchant, and Overstock Vouchers",
+    "startup_effects": [
+      { "op": "add_voucher_by_id", "target": "v_tarot_merchant", "value": 0 },
+      { "op": "add_voucher_by_id", "target": "v_planet_merchant", "value": 0 },
+      { "op": "add_voucher_by_id", "target": "v_overstock", "value": 0 }
+    ]
+  },
+  {
+    "id": "painted",
+    "name": "Painted Deck",
+    "description": "+2 Hand Size, -1 Joker slot",
+    "startup_effects": [
+      { "op": "add_hand_size_base", "value": 2 },
+      { "op": "add_joker_slots", "value": -1 }
+    ]
+  },
+  {
+    "id": "anaglyph",
+    "name": "Anaglyph Deck",
+    "description": "After defeating each Boss Blind, gain a Double Tag",
+    "startup_effects": [
+      { "op": "set_rule", "target": "deck_anaglyph", "value": 1 }
+    ]
+  },
+  {
+    "id": "plasma",
+    "name": "Plasma Deck",
+    "description": "Balance Chips and Mult when calculating score for played hand. 2x Base Blind size",
+    "startup_effects": [
+      { "op": "set_rule", "target": "deck_plasma", "value": 1 }
+    ]
+  },
+  {
+    "id": "erratic",
+    "name": "Erratic Deck",
+    "description": "All Ranks and Suits in deck are randomised",
+    "startup_effects": [
+      { "op": "randomize_deck", "value": 0 }
+    ]
+  }
 ]

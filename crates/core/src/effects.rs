@@ -228,6 +228,26 @@ pub enum ActionOp {
     ClearRule,
     SetVar,
     AddVar,
+    /// Grant a random consumable of a given kind (target = "tarot"/"planet"/"spectral").
+    GrantRandomConsumable,
+    /// Grant the planet card matching the current/last played hand.
+    GrantPlanetForHand,
+    /// Remove cards of specific ranks from the deck (target = comma-separated rank names).
+    RemoveRanks,
+    /// Set deck to only contain specific suits (target = comma-separated suit names).
+    SetDeckSuits,
+    /// Randomize all ranks and suits in the deck.
+    RandomizeDeck,
+    /// Add a specific voucher by ID (target = voucher id).
+    AddVoucherById,
+    /// Add a specific consumable by ID (target = consumable id, value encodes kind index).
+    AddConsumableById,
+    /// Adjust joker slots (value = delta).
+    AddJokerSlots,
+    /// Adjust consumable slots (value = delta).
+    AddConsumableSlots,
+    /// Adjust hand size base (value = delta).
+    AddHandSizeBase,
 }
 
 impl ActionOp {
@@ -292,6 +312,16 @@ impl ActionOp {
             "clear_rule" | "rule_clear" => Some(Self::ClearRule),
             "set_var" => Some(Self::SetVar),
             "add_var" => Some(Self::AddVar),
+            "grant_random_consumable" | "random_consumable" => Some(Self::GrantRandomConsumable),
+            "grant_planet_for_hand" | "grant_planet" => Some(Self::GrantPlanetForHand),
+            "remove_ranks" => Some(Self::RemoveRanks),
+            "set_deck_suits" => Some(Self::SetDeckSuits),
+            "randomize_deck" => Some(Self::RandomizeDeck),
+            "add_voucher_by_id" | "voucher_by_id" => Some(Self::AddVoucherById),
+            "add_consumable_by_id" | "consumable_by_id" => Some(Self::AddConsumableById),
+            "add_joker_slots" | "joker_slots" => Some(Self::AddJokerSlots),
+            "add_consumable_slots" | "consumable_slots" => Some(Self::AddConsumableSlots),
+            "add_hand_size_base" | "hand_size_base" => Some(Self::AddHandSizeBase),
             _ => None,
         }
     }
@@ -313,6 +343,11 @@ impl ActionOp {
                 | Self::AddRule
                 | Self::ClearRule
                 | Self::SetCardEnhancement
+                | Self::GrantRandomConsumable
+                | Self::RemoveRanks
+                | Self::SetDeckSuits
+                | Self::AddVoucherById
+                | Self::AddConsumableById
         )
     }
 }

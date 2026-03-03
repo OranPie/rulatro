@@ -1,4 +1,5 @@
 use super::helpers::normalize;
+use super::utils::{rank_from_str as parse_rank, suit_from_str as parse_suit};
 use super::*;
 use crate::*;
 
@@ -60,57 +61,104 @@ impl RunState {
 
     /// Apply deck startup effects. Call after `RunState::new()` to customise the starting state.
     pub fn apply_deck(&mut self, deck_id: &str) {
-        match deck_id {
-            "red" => { /* +1 discard per round handled by DeckHook at BlindStart */ }
-            "blue" => { /* +1 hand per round handled by DeckHook at BlindStart */ }
-            "yellow" => {
-                self.state.money += 10;
+        // Look up deck definition from content.
+        let deck_def = self.content.decks.iter().find(|d| d.id == deck_id).cloned();
+        if let Some(deck_def) = deck_def {
+            for effect in &deck_def.startup_effects {
+                self.apply_deck_effect(effect);
             }
-            "green" => { /* money bonus handled by DeckHook at RoundEnd */ }
-            "black" => {
-                self.inventory.joker_slots += 1;
-                // -1 hand per round handled by DeckHook at BlindStart
+        }
+        self.rule_vars.insert(format!("deck_{}", deck_id), 1.0);
+    }
+
+    /// Apply a single data-driven deck effect.
+    fn apply_deck_effect(&mut self, effect: &crate::DeckEffect) {
+        let op = crate::ActionOp::from_keyword(&effect.op);
+        let target = effect.target.as_deref().unwrap_or("");
+        let value = effect.value;
+        match op {
+            Some(crate::ActionOp::AddMoney) => {
+                self.state.money += value.floor() as i64;
             }
-            "magic" => {
-                self.state
-                    .active_vouchers
-                    .push("v_crystal_ball".to_string());
-                for _ in 0..2 {
+            Some(crate::ActionOp::SetMoney) => {
+                self.state.money = value.floor() as i64;
+            }
+            Some(crate::ActionOp::AddJokerSlots) => {
+                let delta = value.floor() as i64;
+                if delta >= 0 {
+                    self.inventory.joker_slots =
+                        self.inventory.joker_slots.saturating_add(delta as usize);
+                } else {
+                    self.inventory.joker_slots =
+                        self.inventory.joker_slots.saturating_sub((-delta) as usize);
+                }
+            }
+            Some(crate::ActionOp::AddConsumableSlots) => {
+                let delta = value.floor() as i64;
+                if delta >= 0 {
+                    self.inventory.consumable_slots = self
+                        .inventory
+                        .consumable_slots
+                        .saturating_add(delta as usize);
+                } else {
+                    self.inventory.consumable_slots = self
+                        .inventory
+                        .consumable_slots
+                        .saturating_sub((-delta) as usize);
+                }
+            }
+            Some(crate::ActionOp::AddHandSizeBase) => {
+                let delta = value.floor() as i64;
+                self.state.hand_size_base =
+                    (self.state.hand_size_base as i64 + delta).max(0) as usize;
+                self.state.hand_size = (self.state.hand_size as i64 + delta).max(0) as usize;
+            }
+            Some(crate::ActionOp::AddVoucherById) => {
+                if !target.is_empty() {
+                    self.state.active_vouchers.push(target.to_string());
+                }
+            }
+            Some(crate::ActionOp::AddConsumableById) => {
+                if !target.is_empty() {
+                    // value encodes consumable kind: 0=Tarot, 1=Planet, 2=Spectral
+                    let kind = match value.floor() as i64 {
+                        1 => ConsumableKind::Planet,
+                        2 => ConsumableKind::Spectral,
+                        _ => ConsumableKind::Tarot,
+                    };
                     if self.inventory.consumables.len() < self.inventory.consumable_slots {
                         self.inventory.consumables.push(ConsumableInstance {
-                            id: "c_fool".to_string(),
-                            kind: ConsumableKind::Tarot,
+                            id: target.to_string(),
+                            kind,
                             edition: None,
                             sell_bonus: 0.0,
                         });
                     }
                 }
             }
-            "nebula" => {
-                self.state.active_vouchers.push("v_telescope".to_string());
-                self.inventory.consumable_slots = self.inventory.consumable_slots.saturating_sub(1);
-            }
-            "ghost" => {
-                self.rule_vars.insert("deck_ghost".to_string(), 1.0);
-                if self.inventory.consumables.len() < self.inventory.consumable_slots {
-                    self.inventory.consumables.push(ConsumableInstance {
-                        id: "c_hex".to_string(),
-                        kind: ConsumableKind::Spectral,
-                        edition: None,
-                        sell_bonus: 0.0,
-                    });
+            Some(crate::ActionOp::SetRule) => {
+                if !target.is_empty() {
+                    self.rule_vars.insert(target.to_string(), value);
                 }
             }
-            "abandoned" => {
+            Some(crate::ActionOp::RemoveRanks) => {
+                let ranks_to_remove: Vec<Rank> = target
+                    .split(',')
+                    .filter_map(|s| parse_rank(s.trim()))
+                    .collect();
                 self.deck
                     .draw
-                    .retain(|card| !matches!(card.rank, Rank::Jack | Rank::Queen | Rank::King));
+                    .retain(|card| !ranks_to_remove.contains(&card.rank));
             }
-            "checkered" => {
-                let mut new_draw: Vec<Card> = Vec::new();
-                let mut card_id = self.next_card_id;
-                for suit in [Suit::Spades, Suit::Hearts] {
-                    for rank in [
+            Some(crate::ActionOp::SetDeckSuits) => {
+                let suits: Vec<Suit> = target
+                    .split(',')
+                    .filter_map(|s| parse_suit(s.trim()))
+                    .collect();
+                if !suits.is_empty() {
+                    let mut new_draw: Vec<Card> = Vec::new();
+                    let mut card_id = self.next_card_id;
+                    let all_ranks = [
                         Rank::Ace,
                         Rank::Two,
                         Rank::Three,
@@ -124,60 +172,69 @@ impl RunState {
                         Rank::Jack,
                         Rank::Queen,
                         Rank::King,
-                    ] {
-                        let mut c = Card::standard(suit, rank);
-                        c.id = card_id;
-                        card_id = card_id.saturating_add(1);
-                        new_draw.push(c);
+                    ];
+                    for &suit in &suits {
+                        for &rank in &all_ranks {
+                            let mut c = Card::standard(suit, rank);
+                            c.id = card_id;
+                            card_id = card_id.saturating_add(1);
+                            new_draw.push(c);
+                        }
                     }
-                }
-                self.next_card_id = card_id;
-                self.deck.draw = new_draw;
-                self.deck.discard.clear();
-                self.deck.shuffle(&mut self.rng);
-            }
-            "zodiac" => {
-                for v in ["v_tarot_merchant", "v_planet_merchant", "v_overstock"] {
-                    self.state.active_vouchers.push(v.to_string());
+                    self.next_card_id = card_id;
+                    self.deck.draw = new_draw;
+                    self.deck.discard.clear();
+                    self.deck.shuffle(&mut self.rng);
                 }
             }
-            "painted" => {
-                self.state.hand_size_base += 2;
-                self.state.hand_size += 2;
-                self.inventory.joker_slots = self.inventory.joker_slots.saturating_sub(1);
-            }
-            "anaglyph" => {
-                self.rule_vars.insert("deck_anaglyph".to_string(), 1.0);
-            }
-            "plasma" => {
-                self.rule_vars.insert("deck_plasma".to_string(), 1.0);
-            }
-            "erratic" => {
+            Some(crate::ActionOp::RandomizeDeck) => {
+                let all_ranks = [
+                    Rank::Ace,
+                    Rank::Two,
+                    Rank::Three,
+                    Rank::Four,
+                    Rank::Five,
+                    Rank::Six,
+                    Rank::Seven,
+                    Rank::Eight,
+                    Rank::Nine,
+                    Rank::Ten,
+                    Rank::Jack,
+                    Rank::Queen,
+                    Rank::King,
+                ];
+                let all_suits = [Suit::Spades, Suit::Hearts, Suit::Clubs, Suit::Diamonds];
                 for card in &mut self.deck.draw {
                     let rank_idx = self.rng.next_u64() % 13;
                     let suit_idx = self.rng.next_u64() % 4;
-                    card.rank = [
-                        Rank::Ace,
-                        Rank::Two,
-                        Rank::Three,
-                        Rank::Four,
-                        Rank::Five,
-                        Rank::Six,
-                        Rank::Seven,
-                        Rank::Eight,
-                        Rank::Nine,
-                        Rank::Ten,
-                        Rank::Jack,
-                        Rank::Queen,
-                        Rank::King,
-                    ][rank_idx as usize];
-                    card.suit = [Suit::Spades, Suit::Hearts, Suit::Clubs, Suit::Diamonds]
-                        [suit_idx as usize];
+                    card.rank = all_ranks[rank_idx as usize];
+                    card.suit = all_suits[suit_idx as usize];
+                }
+            }
+            Some(crate::ActionOp::AddHands) => {
+                let delta = value.floor() as i64;
+                if delta >= 0 {
+                    self.state.hands_left = self.state.hands_left.saturating_add(delta as u8);
+                    self.state.hands_max = self.state.hands_max.saturating_add(delta as u8);
+                } else {
+                    self.state.hands_left = self.state.hands_left.saturating_sub((-delta) as u8);
+                    self.state.hands_max = self.state.hands_max.saturating_sub((-delta) as u8);
+                }
+            }
+            Some(crate::ActionOp::AddDiscards) => {
+                let delta = value.floor() as i64;
+                if delta >= 0 {
+                    self.state.discards_left = self.state.discards_left.saturating_add(delta as u8);
+                    self.state.discards_max = self.state.discards_max.saturating_add(delta as u8);
+                } else {
+                    self.state.discards_left =
+                        self.state.discards_left.saturating_sub((-delta) as u8);
+                    self.state.discards_max =
+                        self.state.discards_max.saturating_sub((-delta) as u8);
                 }
             }
             _ => {}
         }
-        self.rule_vars.insert(format!("deck_{}", deck_id), 1.0);
     }
 
     /// Create a new run and immediately apply the given deck's starting effects.

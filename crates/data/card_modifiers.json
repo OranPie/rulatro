@@ -75,6 +75,19 @@
     ]
   },
   {
+    "kind": "enhancement",
+    "id": "gold",
+    "effects": [
+      {
+        "trigger": "on_round_end",
+        "when": true,
+        "actions": [
+          { "op": "add_money", "value": "seal.money_held" }
+        ]
+      }
+    ]
+  },
+  {
     "kind": "edition",
     "id": "foil",
     "effects": [
@@ -111,7 +124,8 @@
           { "op": "mul_mult", "value": "edition.x_mult" }
         ]
       }
-    ]
+    ],
+    "phase": "post"
   },
   {
     "kind": "seal",
@@ -122,6 +136,38 @@
         "when": true,
         "actions": [
           { "op": "add_money", "value": "seal.money_scored" }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "seal",
+    "id": "red",
+    "effects": [],
+    "retrigger_count": 2
+  },
+  {
+    "kind": "seal",
+    "id": "purple",
+    "effects": [
+      {
+        "trigger": "on_discard",
+        "when": true,
+        "actions": [
+          { "op": "grant_random_consumable", "value": "tarot" }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "seal",
+    "id": "blue",
+    "effects": [
+      {
+        "trigger": "on_round_end",
+        "when": true,
+        "actions": [
+          { "op": "grant_planet_for_hand", "value": "0" }
         ]
       }
     ]

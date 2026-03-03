@@ -61,6 +61,8 @@ pub(super) fn build_builtin_card_modifiers(card_attrs: &CardAttrRules) -> Vec<Ca
             lucky_mult_add: 0.0,
             lucky_money_odds: 0,
             lucky_money_add: 0,
+            retrigger_count: 0,
+            phase: crate::ModifierPhase::Pre,
         });
     }
 
@@ -86,6 +88,8 @@ pub(super) fn build_builtin_card_modifiers(card_attrs: &CardAttrRules) -> Vec<Ca
             lucky_mult_add: lucky.prob_mult_add,
             lucky_money_odds: lucky.prob_money_odds,
             lucky_money_add: lucky.prob_money_add,
+            retrigger_count: 0,
+            phase: crate::ModifierPhase::Pre,
         });
     }
 
@@ -102,6 +106,23 @@ pub(super) fn build_builtin_card_modifiers(card_attrs: &CardAttrRules) -> Vec<Ca
                 target: None,
                 value: Expr::Number(steel.mult_mul_held),
             },
+        ));
+    }
+
+    // Gold enhancement: add money at round end for held cards
+    let gold_enh = card_attrs.seal("gold"); // uses seal.money_held for Gold enhancement
+    if gold_enh.money_held != 0 {
+        defs.push(CardModifierDef::simple(
+            CardModifierKind::Enhancement,
+            "gold",
+            vec![JokerEffect {
+                trigger: ActivationType::OnRoundEnd,
+                when: Expr::Bool(true),
+                actions: vec![scored_action(
+                    ActionOp::AddMoney,
+                    gold_enh.money_held as f64,
+                )],
+            }],
         ));
     }
 
@@ -127,17 +148,19 @@ pub(super) fn build_builtin_card_modifiers(card_attrs: &CardAttrRules) -> Vec<Ca
         ));
     }
 
-    // Polychrome: multiply mult on score
+    // Polychrome: multiply mult on score (post-phase — applied after main scoring)
     let polychrome = card_attrs.edition("polychrome");
     if polychrome.mult_mul != 0.0 {
-        defs.push(CardModifierDef::scored(
+        let mut def = CardModifierDef::scored(
             CardModifierKind::Edition,
             "polychrome",
             scored_action(ActionOp::MultiplyMult, polychrome.mult_mul),
-        ));
+        );
+        def.phase = crate::ModifierPhase::Post;
+        defs.push(def);
     }
 
-    // ─── Seals (scored) ──────────────────────────────────────────────────────
+    // ─── Seals (scored + side-effects) ───────────────────────────────────────
 
     // Gold seal: add money when scored
     let gold_seal = card_attrs.seal("gold");
@@ -148,6 +171,43 @@ pub(super) fn build_builtin_card_modifiers(card_attrs: &CardAttrRules) -> Vec<Ca
             scored_action(ActionOp::AddMoney, gold_seal.money_scored as f64),
         ));
     }
+
+    // Red seal: retrigger cards (count=2 means score twice)
+    {
+        let mut def = CardModifierDef::simple(CardModifierKind::Seal, "red", vec![]);
+        def.retrigger_count = 2;
+        defs.push(def);
+    }
+
+    // Purple seal: grant random tarot on discard
+    defs.push(CardModifierDef::simple(
+        CardModifierKind::Seal,
+        "purple",
+        vec![JokerEffect {
+            trigger: ActivationType::OnDiscard,
+            when: Expr::Bool(true),
+            actions: vec![Action {
+                op: ActionOpKind::Builtin(ActionOp::GrantRandomConsumable),
+                target: Some("tarot".to_string()),
+                value: Expr::String("tarot".to_string()),
+            }],
+        }],
+    ));
+
+    // Blue seal: grant planet for hand at round end
+    defs.push(CardModifierDef::simple(
+        CardModifierKind::Seal,
+        "blue",
+        vec![JokerEffect {
+            trigger: ActivationType::OnRoundEnd,
+            when: Expr::Bool(true),
+            actions: vec![Action {
+                op: ActionOpKind::Builtin(ActionOp::GrantPlanetForHand),
+                target: None,
+                value: Expr::Number(0.0),
+            }],
+        }],
+    ));
 
     defs
 }

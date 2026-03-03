@@ -365,25 +365,17 @@ impl RunState {
         joker: &crate::JokerInstance,
         score: &mut Score,
     ) {
-        match joker.edition {
-            Some(Edition::Foil) => {
-                let chips = self.tables.card_attrs.edition("foil").chips;
-                self.apply_rule_effect(
-                    score,
-                    crate::RuleEffect::AddChips(chips),
-                    "joker_edition:foil",
-                )
-            }
-            Some(Edition::Holographic) => {
-                let mult = self.tables.card_attrs.edition("holographic").mult_add;
-                self.apply_rule_effect(
-                    score,
-                    crate::RuleEffect::AddMult(mult),
-                    "joker_edition:holographic",
-                )
-            }
-            _ => {}
+        let Some(ed) = joker.edition else { return };
+        let id = Self::edition_to_joker_id(ed);
+        let def = self
+            .content
+            .modifier_def(CardModifierKind::Edition, id)
+            .cloned();
+        let Some(def) = def else { return };
+        if def.phase != crate::ModifierPhase::Pre {
+            return;
         }
+        self.apply_joker_edition_def(&def, score, id);
     }
 
     pub(super) fn apply_joker_edition_after(
@@ -391,16 +383,64 @@ impl RunState {
         joker: &crate::JokerInstance,
         score: &mut Score,
     ) {
-        match joker.edition {
-            Some(Edition::Polychrome) => {
-                let mul = self.tables.card_attrs.edition("polychrome").mult_mul;
-                self.apply_rule_effect(
-                    score,
-                    crate::RuleEffect::MultiplyMult(mul),
-                    "joker_edition:polychrome",
-                )
+        let Some(ed) = joker.edition else { return };
+        let id = Self::edition_to_joker_id(ed);
+        let def = self
+            .content
+            .modifier_def(CardModifierKind::Edition, id)
+            .cloned();
+        let Some(def) = def else { return };
+        if def.phase != crate::ModifierPhase::Post {
+            return;
+        }
+        self.apply_joker_edition_def(&def, score, id);
+    }
+
+    fn edition_to_joker_id(ed: Edition) -> &'static str {
+        match ed {
+            Edition::Foil => "foil",
+            Edition::Holographic => "holographic",
+            Edition::Polychrome => "polychrome",
+            Edition::Negative => "negative",
+        }
+    }
+
+    fn apply_joker_edition_def(&mut self, def: &CardModifierDef, score: &mut Score, id: &str) {
+        let source = format!("joker_edition:{id}");
+        for effect in &def.effects {
+            if effect.trigger != ActivationType::OnScored {
+                continue;
             }
-            _ => {}
+            for action in &effect.actions {
+                let value = match &action.value {
+                    Expr::Number(v) => *v,
+                    Expr::Lookup(key) => self.tables.card_attrs.resolve_lookup(key, id),
+                    _ => continue,
+                };
+                if value == 0.0 {
+                    continue;
+                }
+                match &action.op {
+                    ActionOpKind::Builtin(ActionOp::AddChips) => {
+                        self.apply_rule_effect(
+                            score,
+                            crate::RuleEffect::AddChips(value.floor() as i64),
+                            &source,
+                        );
+                    }
+                    ActionOpKind::Builtin(ActionOp::AddMult) => {
+                        self.apply_rule_effect(score, crate::RuleEffect::AddMult(value), &source);
+                    }
+                    ActionOpKind::Builtin(ActionOp::MultiplyMult) => {
+                        self.apply_rule_effect(
+                            score,
+                            crate::RuleEffect::MultiplyMult(value),
+                            &source,
+                        );
+                    }
+                    _ => {}
+                }
+            }
         }
     }
 

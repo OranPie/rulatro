@@ -1138,28 +1138,73 @@ impl RuleHook for DeckHook {
         _events: &mut EventBus,
         _args: &mut HookArgs<'_>,
     ) -> HookResult {
-        match point {
-            HookPoint::BlindStart => {
-                if run.rule_vars.get("deck_red").copied().unwrap_or(0.0) > 0.0 {
-                    run.state.discards_left = run.state.discards_left.saturating_add(1);
-                    run.state.discards_max = run.state.discards_max.saturating_add(1);
+        let trigger = match point {
+            HookPoint::BlindStart => ActivationType::OnBlindStart,
+            HookPoint::RoundEnd => ActivationType::OnRoundEnd,
+            _ => return HookResult::Continue,
+        };
+        // Collect matching deck ongoing effects from the active deck definition.
+        let deck_effects: Vec<crate::DeckEffect> = run
+            .content
+            .decks
+            .iter()
+            .filter(|d| {
+                run.rule_vars
+                    .get(&format!("deck_{}", d.id))
+                    .copied()
+                    .unwrap_or(0.0)
+                    > 0.0
+            })
+            .flat_map(|d| {
+                d.ongoing_effects
+                    .iter()
+                    .filter(|e| e.trigger == trigger)
+                    .cloned()
+            })
+            .collect();
+
+        for effect in &deck_effects {
+            let op = ActionOp::from_keyword(&effect.op);
+            let value = effect.value;
+            match op {
+                Some(ActionOp::AddDiscards) => {
+                    let delta = value.floor() as i64;
+                    if delta >= 0 {
+                        run.state.discards_left =
+                            run.state.discards_left.saturating_add(delta as u8);
+                        run.state.discards_max = run.state.discards_max.saturating_add(delta as u8);
+                    } else {
+                        run.state.discards_left =
+                            run.state.discards_left.saturating_sub((-delta) as u8);
+                        run.state.discards_max =
+                            run.state.discards_max.saturating_sub((-delta) as u8);
+                    }
                 }
-                if run.rule_vars.get("deck_blue").copied().unwrap_or(0.0) > 0.0 {
-                    run.state.hands_left = run.state.hands_left.saturating_add(1);
-                    run.state.hands_max = run.state.hands_max.saturating_add(1);
+                Some(ActionOp::AddHands) => {
+                    let delta = value.floor() as i64;
+                    if delta >= 0 {
+                        run.state.hands_left = run.state.hands_left.saturating_add(delta as u8);
+                        run.state.hands_max = run.state.hands_max.saturating_add(delta as u8);
+                    } else {
+                        run.state.hands_left = run.state.hands_left.saturating_sub((-delta) as u8);
+                        run.state.hands_max = run.state.hands_max.saturating_sub((-delta) as u8);
+                    }
                 }
-                if run.rule_vars.get("deck_black").copied().unwrap_or(0.0) > 0.0 {
-                    run.state.hands_left = run.state.hands_left.saturating_sub(1);
-                    run.state.hands_max = run.state.hands_max.saturating_sub(1);
+                Some(ActionOp::SetRule) => {
+                    // Green deck bonus: compute hands_left*2 + discards_left at round end.
+                    if effect.target.as_deref() == Some("deck_green_bonus")
+                        && trigger == ActivationType::OnRoundEnd
+                    {
+                        let bonus =
+                            run.state.hands_left as i64 * 2 + run.state.discards_left as i64;
+                        run.state.money += bonus;
+                    }
                 }
+                Some(ActionOp::AddMoney) => {
+                    run.state.money += value.floor() as i64;
+                }
+                _ => {}
             }
-            HookPoint::RoundEnd => {
-                if run.rule_vars.get("deck_green").copied().unwrap_or(0.0) > 0.0 {
-                    let bonus = run.state.hands_left as i64 * 2 + run.state.discards_left as i64;
-                    run.state.money += bonus;
-                }
-            }
-            _ => {}
         }
         HookResult::Continue
     }

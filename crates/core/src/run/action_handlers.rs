@@ -149,6 +149,17 @@ pub(super) fn dispatch_action(
         ActionOp::ClearRule => handle_clear_rule(run, joker, ctx, card_mut, score, money, results),
         ActionOp::SetVar => handle_set_var(run, joker, ctx, card_mut, score, money, results),
         ActionOp::AddVar => handle_add_var(run, joker, ctx, card_mut, score, money, results),
+        // Card modifier / deck-only ops — handled by their own dispatch paths, not the joker DSL.
+        ActionOp::GrantRandomConsumable
+        | ActionOp::GrantPlanetForHand
+        | ActionOp::RemoveRanks
+        | ActionOp::SetDeckSuits
+        | ActionOp::RandomizeDeck
+        | ActionOp::AddVoucherById
+        | ActionOp::AddConsumableById
+        | ActionOp::AddJokerSlots
+        | ActionOp::AddConsumableSlots
+        | ActionOp::AddHandSizeBase => {}
     }
 }
 

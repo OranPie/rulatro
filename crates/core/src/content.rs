@@ -16,6 +16,16 @@ pub enum CardModifierKind {
     Seal,
 }
 
+/// Timing phase for modifier effects (used by joker edition scoring).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ModifierPhase {
+    /// Applied before the main scoring/independent pass.
+    #[default]
+    Pre,
+    /// Applied after the main scoring/independent pass.
+    Post,
+}
+
 /// Data-driven definition for a card modifier's scoring/held effects.
 #[derive(Debug, Clone)]
 pub struct CardModifierDef {
@@ -35,6 +45,10 @@ pub struct CardModifierDef {
     pub lucky_money_odds: u32,
     /// Money added when the lucky money roll succeeds.
     pub lucky_money_add: i64,
+    /// Number of times this modifier retriggers the card (Red seal = 2). 0 means default (1).
+    pub retrigger_count: u32,
+    /// Timing phase for joker edition scoring (Pre = before DSL, Post = after).
+    pub phase: ModifierPhase,
 }
 
 impl CardModifierDef {
@@ -53,6 +67,8 @@ impl CardModifierDef {
             lucky_mult_add: 0.0,
             lucky_money_odds: 0,
             lucky_money_add: 0,
+            retrigger_count: 0,
+            phase: ModifierPhase::default(),
         }
     }
 
@@ -113,6 +129,32 @@ pub struct DeckDef {
     pub id: String,
     pub name: String,
     pub description: String,
+    /// One-time effects applied at run start (e.g., add money, set vouchers).
+    #[serde(default)]
+    pub startup_effects: Vec<DeckEffect>,
+    /// Recurring effects applied at specific triggers during the run.
+    #[serde(default)]
+    pub ongoing_effects: Vec<DeckEffect>,
+}
+
+/// A single deck effect, using the same action vocabulary as the DSL.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DeckEffect {
+    /// When this effect fires (only used for ongoing_effects; startup_effects ignore this).
+    #[serde(default = "default_passive_trigger")]
+    pub trigger: ActivationType,
+    /// The action keyword (e.g., "add_money", "add_discards", "set_rule").
+    pub op: String,
+    /// Optional target for the action (e.g., voucher id, rule name).
+    #[serde(default)]
+    pub target: Option<String>,
+    /// Numeric value for the action.
+    #[serde(default)]
+    pub value: f64,
+}
+
+fn default_passive_trigger() -> ActivationType {
+    ActivationType::Passive
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

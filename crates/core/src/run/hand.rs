@@ -407,8 +407,9 @@ impl RunState {
         let mut destroyed_indices = Vec::new();
         for (scoring_pos, &idx) in breakdown.scoring_indices.iter().enumerate() {
             let debuffed = self.is_card_debuffed(played[idx]);
-            let mut remaining = if !debuffed && played[idx].seal == Some(Seal::Red) {
-                2
+            // Retrigger count from seal (Red seal = 2, default = 1).
+            let mut remaining = if !debuffed {
+                self.seal_retrigger_count(played[idx].seal).max(1) as usize
             } else {
                 1
             };
@@ -571,8 +572,9 @@ impl RunState {
     ) {
         for &card in held_cards {
             let debuffed = self.is_card_debuffed(card);
-            let mut remaining = if !debuffed && card.seal == Some(Seal::Red) {
-                2
+            // Retrigger count from seal (Red seal = 2, default = 1).
+            let mut remaining = if !debuffed {
+                self.seal_retrigger_count(card.seal).max(1) as usize
             } else {
                 1
             };
@@ -763,6 +765,112 @@ impl RunState {
         }
     }
 
+    /// Look up the data-driven retrigger count for a seal (0 = default/1 trigger).
+    fn seal_retrigger_count(&self, seal: Option<Seal>) -> u32 {
+        let Some(seal) = seal else { return 1 };
+        let id = Self::seal_to_id(seal);
+        self.content
+            .modifier_def(CardModifierKind::Seal, id)
+            .map(|def| {
+                if def.retrigger_count > 0 {
+                    def.retrigger_count
+                } else {
+                    1
+                }
+            })
+            .unwrap_or(1)
+    }
+
+    /// Apply data-driven on_discard effects from card modifiers (seals/enhancements).
+    fn apply_card_modifier_discard_effects(&mut self, card: &Card) {
+        let modifiers: Vec<(CardModifierKind, String)> = [
+            card.seal
+                .map(|s| (CardModifierKind::Seal, Self::seal_to_id(s).to_string())),
+            card.enhancement.map(|e| {
+                (
+                    CardModifierKind::Enhancement,
+                    Self::enhancement_to_id(e).to_string(),
+                )
+            }),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+
+        for (kind, id) in modifiers {
+            let def = self.content.modifier_def(kind, &id).cloned();
+            let Some(def) = def else { continue };
+            for effect in &def.effects {
+                if effect.trigger != ActivationType::OnDiscard {
+                    continue;
+                }
+                for action in &effect.actions {
+                    match &action.op {
+                        ActionOpKind::Builtin(ActionOp::GrantRandomConsumable) => {
+                            let kind_str = action.target.as_deref().unwrap_or("tarot");
+                            let cons_kind = match kind_str {
+                                "planet" => crate::ConsumableKind::Planet,
+                                "spectral" => crate::ConsumableKind::Spectral,
+                                _ => crate::ConsumableKind::Tarot,
+                            };
+                            let picked = self
+                                .content
+                                .pick_consumable(cons_kind, &mut self.rng)
+                                .map(|c| c.id.clone());
+                            if let Some(id) = picked {
+                                let _ = self.inventory.add_consumable(id, cons_kind);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+
+    /// Apply data-driven on_round_end effects from card modifiers (Gold enh, Blue seal, etc.)
+    fn apply_card_modifier_round_end_effects(&mut self, card: &Card, hand_kind: crate::HandKind) {
+        let modifiers: Vec<(CardModifierKind, String)> = [
+            card.enhancement.map(|e| {
+                (
+                    CardModifierKind::Enhancement,
+                    Self::enhancement_to_id(e).to_string(),
+                )
+            }),
+            card.seal
+                .map(|s| (CardModifierKind::Seal, Self::seal_to_id(s).to_string())),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+
+        for (kind, id) in modifiers {
+            let def = self.content.modifier_def(kind, &id).cloned();
+            let Some(def) = def else { continue };
+            for effect in &def.effects {
+                if effect.trigger != ActivationType::OnRoundEnd {
+                    continue;
+                }
+                for action in &effect.actions {
+                    let value = match &action.value {
+                        Expr::Number(v) => *v,
+                        Expr::Lookup(key) => self.tables.card_attrs.resolve_lookup(key, &id),
+                        _ => 0.0,
+                    };
+                    match &action.op {
+                        ActionOpKind::Builtin(ActionOp::AddMoney) => {
+                            self.state.money += value.floor() as i64;
+                        }
+                        ActionOpKind::Builtin(ActionOp::GrantPlanetForHand) => {
+                            self.grant_planet_for_hand(hand_kind);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+
     pub(super) fn apply_discard_effects(&mut self, discarded: &[Card], events: &mut EventBus) {
         let eval_rules = self.hand_eval_rules();
         let hand_kind = crate::evaluate_hand_with_rules(discarded, eval_rules);
@@ -783,19 +891,8 @@ impl RunState {
         self.invoke_hooks(HookPoint::DiscardBatch, &mut batch_args, events);
         for card in discarded {
             let debuffed = self.is_card_debuffed(*card);
-            if !debuffed && card.seal == Some(Seal::Purple) {
-                let seal_def = self.tables.card_attrs.seal("purple");
-                if seal_def.grant_tarot_discard.unwrap_or(true) {
-                    let tarot_id = self
-                        .content
-                        .pick_consumable(crate::ConsumableKind::Tarot, &mut self.rng)
-                        .map(|tarot| tarot.id.clone());
-                    if let Some(id) = tarot_id {
-                        let _ = self
-                            .inventory
-                            .add_consumable(id, crate::ConsumableKind::Tarot);
-                    }
-                }
+            if !debuffed {
+                self.apply_card_modifier_discard_effects(card);
             }
             if debuffed {
                 continue;
@@ -839,18 +936,9 @@ impl RunState {
             .saturating_add(self.state.discards_left as u32);
         let hand_kind = self.state.last_hand.unwrap_or(crate::HandKind::HighCard);
         let hand = self.hand.clone();
+        // Apply data-driven round-end card modifier effects (Gold enhancement, Blue seal, etc.)
         for card in &hand {
-            if card.enhancement == Some(Enhancement::Gold) {
-                let amount = self.tables.card_attrs.seal("gold").money_held;
-                self.state.money += amount;
-            }
-            if card.seal == Some(Seal::Blue) {
-                let seal_def = self.tables.card_attrs.seal("blue");
-                // grant_planet defaults to true (standard Blue seal behavior)
-                if seal_def.grant_planet.unwrap_or(true) {
-                    self.grant_planet_for_hand(hand_kind);
-                }
-            }
+            self.apply_card_modifier_round_end_effects(card, hand_kind);
         }
         let mut scratch_score = Score::default();
         let mut results = TriggerResults::default();
