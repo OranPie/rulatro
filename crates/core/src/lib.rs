@@ -28,6 +28,7 @@ pub use inventory::*;
 pub use modding::*;
 pub use rng::*;
 pub use rules::*;
+pub use run::utils::render_joker_description;
 pub use run::*;
 pub use scoring::*;
 pub use shop::*;

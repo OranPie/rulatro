@@ -857,7 +857,7 @@ fn parse_trigger(value: &str) -> Option<ActivationType> {
         "onscoredpre" | "scoredpre" => Some(ActivationType::OnScoredPre),
         "onscored" | "scored" => Some(ActivationType::OnScored),
         "onheld" | "held" => Some(ActivationType::OnHeld),
-        "independent" => Some(ActivationType::Independent),
+        "independent" | "onindependent" => Some(ActivationType::Independent),
         "onotherjokers" | "otherjokers" => Some(ActivationType::OnOtherJokers),
         "ondiscard" | "discard" => Some(ActivationType::OnDiscard),
         "ondiscardbatch" | "discardbatch" => Some(ActivationType::OnDiscardBatch),

@@ -484,6 +484,7 @@ impl HookRegistry {
         registry.register(Box::new(BossHook::new()));
         registry.register(Box::new(TagHook::new()));
         registry.register(Box::new(JokerDslHook::new()));
+        registry.register(Box::new(DeckHook));
         registry.register(Box::new(ModRuntimeHook::new(crate::ModHookPhase::Post)));
         registry
     }
@@ -615,6 +616,14 @@ impl RuleHook for ModRuntimeHook {
             consumable_kind: view.consumable_kind,
             consumable_id: view.consumable_id,
             joker_count: run.inventory.jokers.len(),
+            joker_counts: run.inventory.jokers.iter().fold(
+                std::collections::HashMap::new(),
+                |mut map, j| {
+                    *map.entry(j.id.clone()).or_insert(0) += 1;
+                    map
+                },
+            ),
+            is_boss_blind: run.state.blind == crate::BlindKind::Boss,
         };
         let mut result = runtime.on_hook(&ctx);
         if !result.effects.is_empty() {
@@ -1109,6 +1118,51 @@ fn apply_effect_list(
     }
 
     triggered
+}
+
+struct DeckHook;
+
+impl RuleHook for DeckHook {
+    fn id(&self) -> &'static str {
+        "deck"
+    }
+
+    fn priority(&self) -> HookPriority {
+        HookPriority::Post
+    }
+
+    fn on_hook(
+        &mut self,
+        point: HookPoint,
+        run: &mut RunState,
+        _events: &mut EventBus,
+        _args: &mut HookArgs<'_>,
+    ) -> HookResult {
+        match point {
+            HookPoint::BlindStart => {
+                if run.rule_vars.get("deck_red").copied().unwrap_or(0.0) > 0.0 {
+                    run.state.discards_left = run.state.discards_left.saturating_add(1);
+                    run.state.discards_max = run.state.discards_max.saturating_add(1);
+                }
+                if run.rule_vars.get("deck_blue").copied().unwrap_or(0.0) > 0.0 {
+                    run.state.hands_left = run.state.hands_left.saturating_add(1);
+                    run.state.hands_max = run.state.hands_max.saturating_add(1);
+                }
+                if run.rule_vars.get("deck_black").copied().unwrap_or(0.0) > 0.0 {
+                    run.state.hands_left = run.state.hands_left.saturating_sub(1);
+                    run.state.hands_max = run.state.hands_max.saturating_sub(1);
+                }
+            }
+            HookPoint::RoundEnd => {
+                if run.rule_vars.get("deck_green").copied().unwrap_or(0.0) > 0.0 {
+                    let bonus = run.state.hands_left as i64 * 2 + run.state.discards_left as i64;
+                    run.state.money += bonus;
+                }
+            }
+            _ => {}
+        }
+        HookResult::Continue
+    }
 }
 
 #[cfg(test)]

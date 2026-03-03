@@ -215,11 +215,13 @@ fn parse_jokers(src: &str, locale: Option<&str>) -> Result<Vec<JokerDef>> {
         let rarity_str =
             token_to_string(block.tokens.get(3)).ok_or_else(|| anyhow!("joker rarity missing"))?;
         let rarity = parse_rarity(&rarity_str)?;
+        let description = parse_description(&block.body);
         let effects = parse_effects(&block.body)?;
         jokers.push(JokerDef {
             id,
             name,
             rarity,
+            description,
             effects,
         });
     }
@@ -300,6 +302,20 @@ fn resolve_localized_name(base_name: String, body: &str, locale: Option<&str>) -
     }
     let overrides = parse_name_overrides(body)?;
     Ok(overrides.get(&locale).cloned().unwrap_or(base_name))
+}
+
+fn parse_description(body: &str) -> Option<String> {
+    for raw_line in body.lines() {
+        let clean = strip_comments(raw_line);
+        let line = clean.trim();
+        if let Some(rest) = line.strip_prefix("desc ") {
+            let s = rest.trim();
+            if s.starts_with('"') && s.ends_with('"') && s.len() >= 2 {
+                return Some(s[1..s.len() - 1].to_string());
+            }
+        }
+    }
+    None
 }
 
 fn parse_name_overrides(body: &str) -> Result<HashMap<String, String>> {
@@ -419,17 +435,48 @@ fn parse_blocks(src: &str, keyword: &str) -> Result<Vec<Block>> {
 
 fn parse_effects(body: &str) -> Result<Vec<JokerEffect>> {
     let mut effects = Vec::new();
+    let mut pending: Option<String> = None;
+    let mut depth: i32 = 0;
+
     for line in body.lines() {
         let clean = strip_comments(line);
         let trimmed = clean.trim();
         if trimmed.is_empty() {
             continue;
         }
-        if !trimmed.starts_with("on ") {
-            continue;
+
+        if pending.is_none() {
+            if !trimmed.starts_with("on ") {
+                continue;
+            }
+            depth = 0;
+            pending = Some(trimmed.to_string());
+        } else {
+            let buf = pending.as_mut().unwrap();
+            buf.push(' ');
+            buf.push_str(trimmed);
         }
-        effects.push(parse_effect_line(trimmed)?);
+
+        for ch in trimmed.chars() {
+            match ch {
+                '{' => depth += 1,
+                '}' => depth -= 1,
+                _ => {}
+            }
+        }
+
+        if depth <= 0 {
+            if let Some(buf) = pending.take() {
+                effects.push(parse_effect_line(&buf)?);
+            }
+            depth = 0;
+        }
     }
+
+    if pending.is_some() {
+        bail!("unterminated effect block");
+    }
+
     Ok(effects)
 }
 

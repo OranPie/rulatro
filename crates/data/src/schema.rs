@@ -2,9 +2,9 @@ use serde::{Deserialize, Serialize};
 
 pub use rulatro_core::{
     ActivationType, AnteRule, BlindRule, BossDef, CardAttrRules, Condition, ConsumableDef,
-    ConsumableKind, Content, EconomyRule, EffectBlock, EffectOp, GameConfig, HandRule, JokerDef,
-    JokerRarity, JokerRarityWeight, PackPrice, PackSize, PriceRange, RankRule, ShopPrices,
-    ShopRule, TagDef,
+    ConsumableKind, Content, DeckDef, EconomyRule, EffectBlock, EffectOp, GameConfig, HandRule,
+    JokerDef, JokerRarity, JokerRarityWeight, PackPrice, PackSize, PriceRange, RankRule,
+    ShopPrices, ShopRule, TagDef,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -17,6 +17,7 @@ mod hooks;
 mod joker;
 mod shop;
 mod state;
+pub mod utils;
 
 use context::{EvalContext, EvalValue};
 #[allow(unused_imports)]

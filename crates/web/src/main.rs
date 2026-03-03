@@ -1,14 +1,13 @@
 use rulatro_core::{
-    format_joker_effect_compact, BlindKind, Card, ConsumableKind, EventBus,
-    PackOpen, PackOption, Phase, RuleEffect, RunState, ScoreBreakdown, ScoreTables, ScoreTraceStep,
-    ShopOfferRef,
+    format_joker_effect_compact, BlindKind, Card, ConsumableKind, EventBus, PackOpen, PackOption,
+    Phase, RuleEffect, RunState, ScoreBreakdown, ScoreTables, ScoreTraceStep, ShopOfferRef,
 };
 use rulatro_data::{load_content_with_mods_locale, load_game_config, normalize_locale};
 use rulatro_modding::ModManager;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tiny_http::{Header, Method, Response, Server, StatusCode};
 
@@ -46,13 +45,21 @@ impl AppState {
     }
 
     fn new_with_seed(locale: &str, seed: u64) -> Self {
+        Self::new_with_seed_deck(locale, seed, None)
+    }
+
+    fn new_with_seed_deck(locale: &str, seed: u64, deck_id: Option<&str>) -> Self {
         let config = load_game_config(Path::new("assets")).expect("load config");
         let modded =
             load_content_with_mods_locale(Path::new("assets"), Path::new("mods"), Some(locale))
                 .expect("load content");
         let mut runtime = ModManager::new();
         runtime.load_mods(&modded.mods).expect("load mod runtime");
-        let mut run = RunState::new(config, modded.content, seed);
+        let mut run = if let Some(deck) = deck_id {
+            RunState::new_with_deck(config, modded.content, seed, deck)
+        } else {
+            RunState::new(config, modded.content, seed)
+        };
         run.set_mod_runtime(Some(Box::new(runtime)));
         let content_signature =
             compute_content_signature(locale).unwrap_or_else(|_| "".to_string());
@@ -133,6 +140,7 @@ struct UiJoker {
     rarity: rulatro_core::JokerRarity,
     edition: Option<rulatro_core::Edition>,
     buy_price: i64,
+    description: String,
 }
 
 #[derive(Serialize)]
@@ -251,6 +259,8 @@ struct ActionRequest {
     indices: Vec<usize>,
     #[serde(default)]
     target: Option<String>,
+    #[serde(default)]
+    deck: Option<String>,
 }
 
 fn handle_request(
@@ -259,19 +269,32 @@ fn handle_request(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let url = request.url().to_string();
     match (request.method(), url.as_str()) {
-        (&Method::Get, "/") => {
-            respond_with_file(request, web_path("index.html"), "text/html; charset=utf-8")?;
-        }
-        (&Method::Get, "/app.js") => {
-            respond_with_file(request, web_path("app.js"), "application/javascript")?;
-        }
-        (&Method::Get, "/styles.css") => {
-            respond_with_file(request, web_path("styles.css"), "text/css; charset=utf-8")?;
-        }
         (&Method::Get, "/api/state") => {
             let mut guard = state.lock().unwrap();
             let response = build_response(&mut *guard, None);
             respond_json(request, response)?;
+        }
+        (&Method::Get, "/api/decks") => {
+            let guard = state.lock().unwrap();
+            #[derive(Serialize)]
+            struct DeckEntry<'a> {
+                id: &'a str,
+                name: &'a str,
+                description: &'a str,
+            }
+            let decks: Vec<DeckEntry> = guard
+                .run
+                .content
+                .decks
+                .iter()
+                .map(|d| DeckEntry {
+                    id: &d.id,
+                    name: &d.name,
+                    description: &d.description,
+                })
+                .collect();
+            let json = serde_json::to_string(&decks).unwrap_or_else(|_| "[]".to_string());
+            respond_json_raw(request, json)?;
         }
         (&Method::Post, "/api/action") => {
             let mut body = String::new();
@@ -281,6 +304,14 @@ fn handle_request(
             let err = apply_action(&mut *guard, action);
             let response = build_response(&mut *guard, err);
             respond_json(request, response)?;
+        }
+        (&Method::Get, path) => {
+            if path.starts_with("/api/") {
+                let response = Response::empty(StatusCode(404));
+                request.respond(response)?;
+            } else {
+                respond_with_frontend_asset(request, path)?;
+            }
         }
         _ => {
             let response = Response::empty(StatusCode(404));
@@ -296,6 +327,82 @@ fn web_path(file: &str) -> PathBuf {
         .join("..")
         .join("web")
         .join(file)
+}
+
+fn web_roots() -> Vec<PathBuf> {
+    let root = web_path("");
+    let vite_dist = root.join("vite").join("dist");
+    let mut paths = Vec::new();
+    if vite_dist.join("index.html").exists() {
+        paths.push(vite_dist);
+    }
+    paths.push(root);
+    paths
+}
+
+fn sanitize_request_path(url: &str) -> Option<String> {
+    let path = url.split('?').next().unwrap_or("/");
+    let trimmed = path.trim_start_matches('/');
+    let normalized = if trimmed.is_empty() {
+        "index.html"
+    } else {
+        trimmed
+    };
+    let parsed = Path::new(normalized);
+    if parsed.components().any(|part| {
+        matches!(
+            part,
+            Component::Prefix(_) | Component::RootDir | Component::ParentDir
+        )
+    }) {
+        return None;
+    }
+    Some(normalized.to_string())
+}
+
+fn content_type_for_path(path: &Path) -> &'static str {
+    match path.extension().and_then(|ext| ext.to_str()).unwrap_or("") {
+        "html" => "text/html; charset=utf-8",
+        "js" | "mjs" | "cjs" => "application/javascript; charset=utf-8",
+        "css" => "text/css; charset=utf-8",
+        "json" => "application/json; charset=utf-8",
+        "svg" => "image/svg+xml",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "ico" => "image/x-icon",
+        "map" => "application/json; charset=utf-8",
+        _ => "application/octet-stream",
+    }
+}
+
+fn respond_with_frontend_asset(
+    request: tiny_http::Request,
+    url: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let Some(rel_path) = sanitize_request_path(url) else {
+        let response = Response::empty(StatusCode(404));
+        request.respond(response)?;
+        return Ok(());
+    };
+    let fallback_to_index = Path::new(&rel_path).extension().is_none();
+    for root in web_roots() {
+        let target = root.join(&rel_path);
+        if target.is_file() {
+            respond_with_file(request, target.clone(), content_type_for_path(&target))?;
+            return Ok(());
+        }
+        if fallback_to_index {
+            let index = root.join("index.html");
+            if index.is_file() {
+                respond_with_file(request, index, "text/html; charset=utf-8")?;
+                return Ok(());
+            }
+        }
+    }
+    let response = Response::empty(StatusCode(404));
+    request.respond(response)?;
+    Ok(())
 }
 
 fn parse_locale_from_args() -> String {
@@ -407,6 +514,16 @@ fn respond_json(
     Ok(())
 }
 
+fn respond_json_raw(
+    request: tiny_http::Request,
+    json: String,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let header = Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..])
+        .expect("valid json content-type header");
+    request.respond(Response::from_string(json).with_header(header))?;
+    Ok(())
+}
+
 fn build_response(state: &mut AppState, err: Option<String>) -> ApiResponse {
     let events: Vec<_> = state.events.drain().collect();
     ApiResponse {
@@ -443,6 +560,14 @@ fn snapshot_state(run: &RunState, content_signature: &str, locale: &str) -> UiSt
             rarity: joker.rarity,
             edition: joker.edition,
             buy_price: joker.buy_price,
+            description: run
+                .content
+                .jokers
+                .iter()
+                .find(|d| d.id == joker.id)
+                .and_then(|d| d.description.as_deref())
+                .map(|d| rulatro_core::render_joker_description(d, &joker.vars))
+                .unwrap_or_default(),
         })
         .collect();
     let consumables = run
@@ -684,7 +809,8 @@ fn apply_action(state: &mut AppState, req: ActionRequest) -> Option<String> {
                 .as_deref()
                 .and_then(|value| value.parse::<u64>().ok())
                 .unwrap_or_else(|| state.run.rng.seed());
-            *state = AppState::new_with_seed(&locale, seed);
+            let deck_id = req.deck.as_deref();
+            *state = AppState::new_with_seed_deck(&locale, seed, deck_id);
             None
         }
         "start_blind" => {

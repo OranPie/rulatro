@@ -88,6 +88,7 @@ pub struct JokerDef {
     pub id: String,
     pub name: String,
     pub rarity: JokerRarity,
+    pub description: Option<String>,
     pub effects: Vec<JokerEffect>,
 }
 
@@ -105,6 +106,13 @@ pub struct TagDef {
     pub id: String,
     pub name: String,
     pub effects: Vec<JokerEffect>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct DeckDef {
+    pub id: String,
+    pub name: String,
+    pub description: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -166,6 +174,8 @@ pub struct Content {
     pub tarots: Vec<ConsumableDef>,
     pub planets: Vec<ConsumableDef>,
     pub spectrals: Vec<ConsumableDef>,
+    /// Deck definitions loaded from `assets/decks.json`.
+    pub decks: Vec<DeckDef>,
     /// Data-driven definitions for Enhancement, Edition, and Seal scoring behaviors.
     pub card_modifiers: Vec<CardModifierDef>,
     /// Voucher definitions, loaded from `assets/vouchers.json` by `rulatro-data`.

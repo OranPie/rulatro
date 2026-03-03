@@ -22,6 +22,7 @@ const state = {
     steps: false,
   },
   highlightScoring: true,
+  selectedDeck: null,
 };
 
 const UI_TEXT = {
@@ -464,6 +465,7 @@ async function callAction(action, payload = {}, options = {}) {
     action,
     indices: payload.indices || [],
     target: payload.target ?? null,
+    deck: payload.deck ?? null,
   };
   const res = await fetch("/api/action", {
     method: "POST",
@@ -1071,8 +1073,14 @@ function renderInventory(run) {
     if (state.selectedJoker === idx) {
       el.classList.add("selected");
     }
-    el.title = `rarity ${joker.rarity}${joker.edition ? ` | edition ${joker.edition}` : ""}`;
+    el.title = `rarity ${joker.rarity}${joker.edition ? ` | edition ${joker.edition}` : ""}${joker.description ? ` | ${joker.description}` : ""}`;
     el.innerHTML = `[${idx}] ${joker.name || joker.id} (${joker.rarity})`;
+    if (joker.description) {
+      const desc = document.createElement("div");
+      desc.className = "joker-desc";
+      desc.textContent = joker.description;
+      el.appendChild(desc);
+    }
     el.addEventListener("click", () => {
       state.selectedJoker = idx;
       state.selectedConsumable = null;
@@ -1830,7 +1838,68 @@ if (initialLocalSave) {
 }
 updateQuickBuyButton();
 
-fetchState().catch((err) => {
-  pushLog(`init error: ${err}`);
-  renderLog();
-});
+async function initDeckSelect() {
+  try {
+    const res = await fetch("/api/decks");
+    const decks = await res.json();
+    if (!Array.isArray(decks) || decks.length === 0) {
+      fetchState().catch((err) => {
+        pushLog(`init error: ${err}`);
+        renderLog();
+      });
+      return;
+    }
+    const deckSection = document.getElementById("deck-select");
+    const deckList = document.getElementById("deck-list");
+    if (!deckSection || !deckList) {
+      fetchState().catch((err) => {
+        pushLog(`init error: ${err}`);
+        renderLog();
+      });
+      return;
+    }
+
+    // Render deck cards
+    deckList.innerHTML = "";
+    decks.forEach((deck) => {
+      const card = document.createElement("div");
+      card.className = "deck-card";
+      card.dataset.deckId = deck.id;
+      card.innerHTML = `<h3>${deck.name}</h3><p>${deck.description}</p>`;
+      card.addEventListener("click", () => {
+        document.querySelectorAll(".deck-card").forEach((c) => c.classList.remove("selected"));
+        card.classList.add("selected");
+        state.selectedDeck = deck.id;
+      });
+      deckList.appendChild(card);
+    });
+
+    // Add confirm button
+    const confirmBtn = document.createElement("button");
+    confirmBtn.id = "deck-confirm";
+    confirmBtn.textContent = "Start Run with Selected Deck";
+    confirmBtn.style.display = "block";
+    confirmBtn.addEventListener("click", async () => {
+      const deckId = state.selectedDeck;
+      if (!deckId) {
+        alert("Please select a deck first.");
+        return;
+      }
+      deckSection.style.display = "none";
+      const data = await callAction("reset", { deck: deckId });
+      if (data && data.ok) {
+        await callAction("start_blind");
+      }
+    });
+    deckList.appendChild(confirmBtn);
+
+    // Show the deck select section, hide controls initially
+    deckSection.style.display = "";
+  } catch (err) {
+    pushLog(`deck init error: ${err}`);
+    renderLog();
+    fetchState().catch(() => {});
+  }
+}
+
+initDeckSelect();

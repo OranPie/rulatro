@@ -73,6 +73,7 @@ fn add_rule_joker(run: &mut RunState, id: &str, key: &str, value: f64) {
         id: id.to_string(),
         name: id.to_string(),
         rarity: JokerRarity::Common,
+        description: None,
         effects: vec![JokerEffect {
             trigger: ActivationType::Passive,
             when: Expr::Bool(true),
@@ -93,6 +94,7 @@ fn add_joker_effect(run: &mut RunState, id: &str, trigger: ActivationType, actio
         id: id.to_string(),
         name: id.to_string(),
         rarity: JokerRarity::Common,
+        description: None,
         effects: vec![JokerEffect {
             trigger,
             when: Expr::Bool(true),
@@ -122,6 +124,7 @@ fn add_scoring_joker(run: &mut RunState, id: &str, op: ActionOp, value: f64) {
         id: id.to_string(),
         name: id.to_string(),
         rarity: JokerRarity::Common,
+        description: None,
         effects: vec![JokerEffect {
             trigger: ActivationType::Independent,
             when: Expr::Bool(true),
@@ -142,6 +145,7 @@ fn add_plain_joker_with_edition(run: &mut RunState, id: &str, edition: Edition) 
         id: id.to_string(),
         name: id.to_string(),
         rarity: JokerRarity::Common,
+        description: None,
         effects: Vec::new(),
     });
     run.inventory
@@ -901,6 +905,7 @@ fn shop_add_joker_offer_action_adds_card() {
         id: "add_shop_joker".to_string(),
         name: "Add Shop Joker".to_string(),
         rarity: JokerRarity::Common,
+        description: None,
         effects: vec![JokerEffect {
             trigger: ActivationType::OnShopEnter,
             when: Expr::Bool(true),
@@ -932,6 +937,7 @@ fn shop_set_reroll_cost_action_applies() {
         id: "set_reroll".to_string(),
         name: "Set Reroll".to_string(),
         rarity: JokerRarity::Common,
+        description: None,
         effects: vec![JokerEffect {
             trigger: ActivationType::OnShopEnter,
             when: Expr::Bool(true),
@@ -959,6 +965,7 @@ fn shop_add_voucher_action_increases_slots() {
         id: "add_voucher".to_string(),
         name: "Add Voucher".to_string(),
         rarity: JokerRarity::Common,
+        description: None,
         effects: vec![JokerEffect {
             trigger: ActivationType::OnShopEnter,
             when: Expr::Bool(true),
@@ -987,6 +994,7 @@ fn prevent_death_action_clears_failed_blind() {
         id: "prevent_death".to_string(),
         name: "Prevent Death".to_string(),
         rarity: JokerRarity::Common,
+        description: None,
         effects: vec![JokerEffect {
             trigger: ActivationType::OnBlindFailed,
             when: Expr::Bool(true),
@@ -1019,6 +1027,7 @@ fn duplicate_next_tag_action_duplicates_tag() {
         id: "dup_tag".to_string(),
         name: "Dup Tag".to_string(),
         rarity: JokerRarity::Common,
+        description: None,
         effects: vec![JokerEffect {
             trigger: ActivationType::OnBlindStart,
             when: Expr::Bool(true),
@@ -1033,6 +1042,7 @@ fn duplicate_next_tag_action_duplicates_tag() {
         id: "add_tag".to_string(),
         name: "Add Tag".to_string(),
         rarity: JokerRarity::Common,
+        description: None,
         effects: vec![JokerEffect {
             trigger: ActivationType::OnBlindStart,
             when: Expr::Bool(true),
@@ -1063,6 +1073,7 @@ fn duplicate_next_tag_exclude_skips_duplicate() {
         id: "dup_tag_exclude".to_string(),
         name: "Dup Tag Exclude".to_string(),
         rarity: JokerRarity::Common,
+        description: None,
         effects: vec![JokerEffect {
             trigger: ActivationType::OnBlindStart,
             when: Expr::Bool(true),
@@ -1077,6 +1088,7 @@ fn duplicate_next_tag_exclude_skips_duplicate() {
         id: "add_tag".to_string(),
         name: "Add Tag".to_string(),
         rarity: JokerRarity::Common,
+        description: None,
         effects: vec![JokerEffect {
             trigger: ActivationType::OnBlindStart,
             when: Expr::Bool(true),
@@ -1114,6 +1126,7 @@ fn add_pack_action_adds_pack_offer() {
         id: "add_pack".to_string(),
         name: "Add Pack".to_string(),
         rarity: JokerRarity::Common,
+        description: None,
         effects: vec![JokerEffect {
             trigger: ActivationType::OnShopEnter,
             when: Expr::Bool(true),
@@ -1684,6 +1697,7 @@ fn shop_reroll_price_override_ordered_jokers() {
         id: "price_all".to_string(),
         name: "Price All".to_string(),
         rarity: JokerRarity::Common,
+        description: None,
         effects: vec![JokerEffect {
             trigger: ActivationType::OnShopReroll,
             when: Expr::Bool(true),
@@ -1698,6 +1712,7 @@ fn shop_reroll_price_override_ordered_jokers() {
         id: "price_planet".to_string(),
         name: "Price Planet".to_string(),
         rarity: JokerRarity::Common,
+        description: None,
         effects: vec![JokerEffect {
             trigger: ActivationType::OnShopReroll,
             when: Expr::Bool(true),
@@ -2112,6 +2127,7 @@ fn tag_coupon_then_joker_overrides_card_prices() {
         id: "price_override".to_string(),
         name: "Price Override".to_string(),
         rarity: JokerRarity::Common,
+        description: None,
         effects: vec![JokerEffect {
             trigger: ActivationType::OnShopEnter,
             when: Expr::Bool(true),
@@ -3114,12 +3130,14 @@ fn shop_restrictions_block_owned_joker() {
             id: "owned".to_string(),
             name: "owned".to_string(),
             rarity: JokerRarity::Common,
+            description: None,
             effects: Vec::new(),
         },
         JokerDef {
             id: "free".to_string(),
             name: "free".to_string(),
             rarity: JokerRarity::Common,
+            description: None,
             effects: Vec::new(),
         },
     ];
@@ -3154,6 +3172,7 @@ fn shop_restrictions_all_owned_yields_empty() {
         id: "owned".to_string(),
         name: "owned".to_string(),
         rarity: JokerRarity::Common,
+        description: None,
         effects: Vec::new(),
     }];
     let mut rule = run.config.shop.clone();
@@ -4077,6 +4096,7 @@ fn trigger_on_any_sell_fires_when_joker_sold() {
         id: "sell_target".to_string(),
         name: "Sell Target".to_string(),
         rarity: JokerRarity::Common,
+        description: None,
         effects: vec![],
     });
     run.inventory
@@ -4108,6 +4128,7 @@ fn trigger_on_acquire_fires_when_joker_bought() {
         id: "acquire_joker".to_string(),
         name: "Acquire Joker".to_string(),
         rarity: JokerRarity::Common,
+        description: None,
         effects: vec![JokerEffect {
             trigger: ActivationType::OnAcquire,
             when: Expr::Bool(true),
@@ -4460,6 +4481,7 @@ fn action_destroy_random_joker_removes_one() {
         id: "victim_j".to_string(),
         name: "Victim".to_string(),
         rarity: JokerRarity::Common,
+        description: None,
         effects: vec![],
     });
     run.inventory
@@ -4495,6 +4517,7 @@ fn action_destroy_joker_left_removes_left_neighbor() {
         id: "left_j".to_string(),
         name: "Left".to_string(),
         rarity: JokerRarity::Common,
+        description: None,
         effects: vec![],
     });
     run.inventory
@@ -4652,6 +4675,7 @@ fn action_add_sell_bonus_increases_joker_sell_value() {
         id: "bonus_target".to_string(),
         name: "Bonus Target".to_string(),
         rarity: JokerRarity::Common,
+        description: None,
         effects: vec![],
     });
     run.inventory
@@ -4832,6 +4856,7 @@ fn action_set_var_and_add_var_accumulate_on_joker() {
         id: "var_joker".to_string(),
         name: "Var Joker".to_string(),
         rarity: JokerRarity::Common,
+        description: None,
         effects: vec![
             JokerEffect {
                 trigger: ActivationType::OnPlayed,
@@ -4889,6 +4914,7 @@ fn action_retrigger_scored_fires_card_effects_again() {
         id: "retrigger_j".to_string(),
         name: "Retrigger".to_string(),
         rarity: JokerRarity::Common,
+        description: None,
         effects: vec![JokerEffect {
             trigger: ActivationType::OnScored,
             when: Expr::Binary {
@@ -4942,6 +4968,7 @@ fn action_retrigger_held_fires_held_effects_again() {
         id: "retrigger_held_j".to_string(),
         name: "Retrigger Held".to_string(),
         rarity: JokerRarity::Common,
+        description: None,
         effects: vec![JokerEffect {
             trigger: ActivationType::OnHeld,
             when: Expr::Binary {
@@ -4992,6 +5019,7 @@ fn add_scored_conditional_joker(run: &mut RunState, id: &str, when: Expr, amount
         id: id.to_string(),
         name: id.to_string(),
         rarity: JokerRarity::Common,
+        description: None,
         effects: vec![JokerEffect {
             trigger: ActivationType::OnScored,
             when,
@@ -5160,6 +5188,7 @@ fn condition_is_boss_blind_gates_boss_blind() {
         id: "boss_blind_money".to_string(),
         name: "Boss Blind Money".to_string(),
         rarity: JokerRarity::Common,
+        description: None,
         effects: vec![JokerEffect {
             trigger: ActivationType::Independent,
             when: Expr::Ident("is_boss_blind".to_string()),
@@ -5201,6 +5230,7 @@ fn condition_hand_variable_gates_by_hand_type() {
         id: "flush_money".to_string(),
         name: "Flush Money".to_string(),
         rarity: JokerRarity::Common,
+        description: None,
         effects: vec![JokerEffect {
             trigger: ActivationType::Independent,
             when: Expr::Binary {
@@ -5249,6 +5279,7 @@ fn condition_hands_left_variable_gates_by_count() {
         id: "last_hand_money".to_string(),
         name: "Last Hand Money".to_string(),
         rarity: JokerRarity::Common,
+        description: None,
         effects: vec![JokerEffect {
             trigger: ActivationType::Independent,
             when: Expr::Binary {
@@ -5290,6 +5321,7 @@ fn condition_money_variable_gates_by_amount() {
         id: "rich_bonus".to_string(),
         name: "Rich Bonus".to_string(),
         rarity: JokerRarity::Common,
+        description: None,
         effects: vec![JokerEffect {
             trigger: ActivationType::Independent,
             when: Expr::Binary {
@@ -5347,6 +5379,7 @@ fn scoring_retrigger_scored_stacks_with_joker_editions() {
         id: "retrig2".to_string(),
         name: "Retrig2".to_string(),
         rarity: JokerRarity::Common,
+        description: None,
         effects: vec![JokerEffect {
             trigger: ActivationType::OnScored,
             when: Expr::Binary {
@@ -5414,4 +5447,100 @@ fn scoring_multiple_mul_mult_compound() {
     let bd = run.play_hand(&[0], &mut EventBus::default()).expect("play");
     // base_mult * 2 * 3 = base_mult * 6
     assert_eq!(bd.total.mult, bd.base.mult * 6.0);
+}
+
+#[test]
+fn deck_yellow_gives_ten_dollars() {
+    let config = load_game_config(&assets_root()).expect("config");
+    let content = load_content(&assets_root()).expect("content");
+    let run = RunState::new_with_deck(config, content, 42, "yellow");
+    assert_eq!(run.state.money, 10);
+}
+
+#[test]
+fn deck_red_applies_without_error() {
+    let config = load_game_config(&assets_root()).expect("config");
+    let content = load_content(&assets_root()).expect("content");
+    // Red deck only sets a rule_var (handled at BlindStart); just ensure it doesn't panic.
+    let _run = RunState::new_with_deck(config, content, 42, "red");
+}
+
+#[test]
+fn deck_black_adds_joker_slot() {
+    let config = load_game_config(&assets_root()).expect("config");
+    let content = load_content(&assets_root()).expect("content");
+    let base = {
+        let c = load_content(&assets_root()).expect("content");
+        let cfg = load_game_config(&assets_root()).expect("config");
+        RunState::new(cfg, c, 42).inventory.joker_slots
+    };
+    let run = RunState::new_with_deck(config, content, 42, "black");
+    assert_eq!(run.inventory.joker_slots, base + 1);
+}
+
+#[test]
+fn deck_painted_adjusts_hand_size_and_joker_slot() {
+    let config = load_game_config(&assets_root()).expect("config");
+    let content = load_content(&assets_root()).expect("content");
+    let base_slots = {
+        let c = load_content(&assets_root()).expect("content");
+        let cfg = load_game_config(&assets_root()).expect("config");
+        RunState::new(cfg, c, 42).inventory.joker_slots
+    };
+    let run = RunState::new_with_deck(config, content, 42, "painted");
+    assert_eq!(run.state.hand_size_base, 10); // 8 base + 2
+    assert_eq!(run.inventory.joker_slots, base_slots.saturating_sub(1));
+}
+
+#[test]
+fn deck_abandoned_removes_face_cards() {
+    let config = load_game_config(&assets_root()).expect("config");
+    let content = load_content(&assets_root()).expect("content");
+    let run = RunState::new_with_deck(config, content, 42, "abandoned");
+    let has_face = run
+        .deck
+        .draw
+        .iter()
+        .any(|c| matches!(c.rank, Rank::Jack | Rank::Queen | Rank::King));
+    assert!(!has_face, "abandoned deck should have no face cards");
+}
+
+#[test]
+fn deck_checkered_has_only_spades_and_hearts() {
+    let config = load_game_config(&assets_root()).expect("config");
+    let content = load_content(&assets_root()).expect("content");
+    let run = RunState::new_with_deck(config, content, 42, "checkered");
+    assert_eq!(run.deck.draw.len(), 26);
+    let all_spades_hearts = run
+        .deck
+        .draw
+        .iter()
+        .all(|c| matches!(c.suit, Suit::Spades | Suit::Hearts));
+    assert!(all_spades_hearts);
+}
+
+#[test]
+fn deck_nebula_sets_voucher_and_reduces_consumable_slots() {
+    let config = load_game_config(&assets_root()).expect("config");
+    let content = load_content(&assets_root()).expect("content");
+    let base_slots = {
+        let c = load_content(&assets_root()).expect("content");
+        let cfg = load_game_config(&assets_root()).expect("config");
+        RunState::new(cfg, c, 42).inventory.consumable_slots
+    };
+    let run = RunState::new_with_deck(config, content, 42, "nebula");
+    assert!(run
+        .state
+        .active_vouchers
+        .contains(&"v_telescope".to_string()));
+    assert_eq!(run.inventory.consumable_slots, base_slots.saturating_sub(1));
+}
+
+#[test]
+fn deck_load_from_assets() {
+    let content = load_content(&assets_root()).expect("content");
+    assert_eq!(content.decks.len(), 15, "should load 15 decks");
+    let red = content.decks.iter().find(|d| d.id == "red");
+    assert!(red.is_some());
+    assert_eq!(red.unwrap().name, "Red Deck");
 }

@@ -67,6 +67,7 @@ fn add_joker_effect(run: &mut RunState, id: &str, trigger: ActivationType, actio
         id: id.to_string(),
         name: id.to_string(),
         rarity: JokerRarity::Common,
+        description: None,
         effects: vec![JokerEffect {
             trigger,
             when: Expr::Bool(true),

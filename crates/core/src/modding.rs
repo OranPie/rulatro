@@ -1,5 +1,6 @@
 use crate::{ActivationType, BlindKind, Card, ConsumableKind, EffectBlock, GameState, HandKind};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // FLOW KERNEL — unified mod interception architecture
@@ -598,6 +599,10 @@ pub struct ModHookContext<'a> {
     pub consumable_kind: Option<ConsumableKind>,
     pub consumable_id: Option<&'a str>,
     pub joker_count: usize,
+    /// Count of each held joker by ID, e.g. `joker_counts["j_mystic_summit"] == 1`.
+    pub joker_counts: HashMap<String, usize>,
+    /// Convenience: true when the current blind is the boss blind.
+    pub is_boss_blind: bool,
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

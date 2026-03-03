@@ -1,16 +1,21 @@
-use crate::app::{App, FocusPane, PathPromptMode};
+use crate::app::{App, AppScreen, FocusPane, PathPromptMode};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::prelude::{Alignment, Color, Line, Modifier, Style, Stylize};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap};
 use ratatui::Frame;
 
 pub fn draw(frame: &mut Frame, app: &App) {
+    if app.screen == AppScreen::DeckSelect {
+        draw_deck_select(frame, frame.area(), app);
+        return;
+    }
     let root = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(5),
-            Constraint::Min(12),
-            Constraint::Length(12),
+            Constraint::Min(10),
+            Constraint::Length(8),
+            Constraint::Length(10),
         ])
         .split(frame.area());
 
@@ -35,7 +40,8 @@ pub fn draw(frame: &mut Frame, app: &App) {
     draw_hand(frame, left[1], app);
     draw_shop_or_pack(frame, right[0], app);
     draw_inventory(frame, right[1], app);
-    draw_events(frame, root[2], app);
+    draw_details(frame, root[2], app);
+    draw_events(frame, root[3], app);
 
     if app.show_help {
         draw_help_popup(frame, app);
@@ -174,13 +180,28 @@ fn draw_hand(frame: &mut Frame, area: Rect, app: &App) {
             .hand
             .iter()
             .enumerate()
-            .map(|(idx, card)| ListItem::new(app.card_label(idx, card)))
+            .map(|(idx, card)| {
+                let mut item = ListItem::new(app.card_label(idx, card));
+                if app.selected_hand.contains(&idx) {
+                    item = item.style(
+                        Style::default()
+                            .fg(Color::Cyan)
+                            .add_modifier(Modifier::BOLD),
+                    );
+                }
+                item
+            })
             .collect()
     };
-    let block = pane_block(
+    let hand_title = format!(
+        "{} {}/{} {} {}",
         app.locale.text("Hand", "手牌"),
-        app.focus == FocusPane::Hand,
+        app.run.hand.len(),
+        app.run.state.hand_size,
+        app.locale.text("sel", "选中"),
+        app.explicit_selected_hand_indices().len()
     );
+    let block = pane_block(hand_title.as_str(), app.focus == FocusPane::Hand);
     let list = List::new(items)
         .block(block)
         .highlight_style(
@@ -207,15 +228,26 @@ fn draw_shop_or_pack(frame: &mut Frame, area: Rect, app: &App) {
             open.options
                 .iter()
                 .enumerate()
-                .map(|(idx, option)| ListItem::new(app.pack_option_label(idx, option)))
+                .map(|(idx, option)| {
+                    let mut item = ListItem::new(app.pack_option_label(idx, option));
+                    if app.selected_pack.contains(&idx) {
+                        item = item.style(
+                            Style::default()
+                                .fg(Color::Cyan)
+                                .add_modifier(Modifier::BOLD),
+                        );
+                    }
+                    item
+                })
                 .collect()
         };
         let pack_title = format!(
-            "{} {:?}/{:?} {} {}",
+            "{} {:?}/{:?} {} {}/{}",
             app.locale.text("Pack", "卡包"),
             open.offer.kind,
             open.offer.size,
-            app.locale.text("picks", "可选"),
+            app.locale.text("pick", "可选"),
+            app.selected_pack.len(),
             open.offer.picks
         );
         let block = pane_block(pack_title.as_str(), app.focus == FocusPane::Shop);
@@ -261,8 +293,10 @@ fn draw_shop_or_pack(frame: &mut Frame, area: Rect, app: &App) {
         .map(|row| ListItem::new(row.label.clone()))
         .collect();
     let shop_title = format!(
-        "{} {} ${}",
+        "{} {} {}  {} ${}",
         app.locale.text("Shop", "商店"),
+        rows.len(),
+        app.locale.text("offers", "项"),
         app.locale.text("reroll", "刷新"),
         app.run
             .shop
@@ -294,10 +328,13 @@ fn draw_inventory(frame: &mut Frame, area: Rect, app: &App) {
             .map(|row| ListItem::new(row.label.clone()))
             .collect()
     };
-    let block = pane_block(
+    let inventory_title = format!(
+        "{} J{} C{}",
         app.locale.text("Inventory", "库存"),
-        app.focus == FocusPane::Inventory,
+        app.run.inventory.jokers.len(),
+        app.run.inventory.consumable_count()
     );
+    let block = pane_block(inventory_title.as_str(), app.focus == FocusPane::Inventory);
     let list = List::new(items)
         .block(block)
         .highlight_style(
@@ -314,6 +351,21 @@ fn draw_inventory(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_stateful_widget(list, area, &mut state);
 }
 
+fn draw_details(frame: &mut Frame, area: Rect, app: &App) {
+    let capacity = area.height.saturating_sub(2) as usize;
+    let lines: Vec<Line<'_>> = app
+        .detail_lines(capacity.saturating_sub(1))
+        .into_iter()
+        .map(Line::from)
+        .collect();
+    let title = app.detail_title();
+    let block = pane_block(title.as_str(), true).border_style(Style::default().fg(Color::Cyan));
+    frame.render_widget(
+        Paragraph::new(lines).block(block).wrap(Wrap { trim: true }),
+        area,
+    );
+}
+
 fn draw_events(frame: &mut Frame, area: Rect, app: &App) {
     let capacity = area.height.saturating_sub(2) as usize;
     let start = app.event_log.len().saturating_sub(capacity);
@@ -323,10 +375,12 @@ fn draw_events(frame: &mut Frame, area: Rect, app: &App) {
         .skip(start)
         .map(|line| Line::from(line.clone()))
         .collect();
-    let block = pane_block(
+    let title = format!(
+        "{} {}",
         app.locale.text("Events", "事件"),
-        app.focus == FocusPane::Events,
+        app.event_log.len()
     );
+    let block = pane_block(title.as_str(), app.focus == FocusPane::Events);
     frame.render_widget(Paragraph::new(lines).block(block), area);
 }
 
@@ -369,6 +423,10 @@ fn draw_help_popup(frame: &mut Frame, app: &App) {
         Line::from(app.locale.text(
             "play now writes detailed effect trace to Events",
             "出牌后会在事件面板写入详细效果轨迹",
+        )),
+        Line::from(app.locale.text(
+            "Details pane follows current focus/cursor context",
+            "详情面板会随当前焦点与光标展示上下文",
         )),
     ];
     let block = Block::default()
@@ -444,4 +502,49 @@ fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
             Constraint::Percentage((100 - percent_x) / 2),
         ])
         .split(popup_layout[1])[1]
+}
+
+fn draw_deck_select(frame: &mut Frame, area: Rect, app: &App) {
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(app.locale.text(" Select Deck ", " 选择牌组 "));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(2), Constraint::Min(1)])
+        .split(inner);
+
+    let hint = Paragraph::new(app.locale.text(
+        "Use ↑/↓ to navigate, Enter to select",
+        "使用 ↑/↓ 导航，回车选择",
+    ))
+    .style(Style::default().fg(Color::DarkGray));
+    frame.render_widget(hint, chunks[0]);
+
+    let decks = &app.run.content.decks;
+    let items: Vec<ListItem> = decks
+        .iter()
+        .enumerate()
+        .map(|(i, deck)| {
+            let selected = i == app.deck_cursor;
+            let style = if selected {
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+            };
+            let prefix = if selected { "▶ " } else { "  " };
+            let line = Line::from(format!("{}{} — {}", prefix, deck.name, deck.description));
+            ListItem::new(line).style(style)
+        })
+        .collect();
+
+    let mut list_state = ListState::default();
+    list_state.select(Some(app.deck_cursor));
+
+    let list = List::new(items).block(Block::default());
+    frame.render_stateful_widget(list, chunks[1], &mut list_state);
 }

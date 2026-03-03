@@ -4,9 +4,9 @@ use crate::persistence::{
 use anyhow::{Context, Result};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use rulatro_core::{
-    BlindKind, BlindOutcome, Card, ConsumableKind, Edition, EffectBlock, EffectOp,
-    Enhancement, Event, EventBus, PackOpen, PackOption, Phase, RankFilter, RuleEffect, RunError,
-    RunState, ScoreBreakdown, Seal, ShopOfferRef, ShopPurchase,
+    BlindKind, BlindOutcome, Card, ConsumableKind, Edition, EffectBlock, EffectOp, Enhancement,
+    Event, EventBus, PackOpen, PackOption, Phase, RankFilter, RuleEffect, RunError, RunState,
+    ScoreBreakdown, Seal, ShopOfferRef, ShopPurchase,
 };
 use rulatro_data::{load_content_with_mods_locale, load_game_config, normalize_locale};
 use rulatro_modding::ModManager;
@@ -64,6 +64,12 @@ pub enum PathPromptMode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AppScreen {
+    DeckSelect,
+    Game,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InventoryRowKind {
     Joker(usize),
     Consumable(usize),
@@ -84,6 +90,9 @@ pub struct ShopRow {
 pub struct App {
     pub locale: UiLocale,
     pub seed: u64,
+    pub screen: AppScreen,
+    pub deck_cursor: usize,
+    pub selected_deck: Option<String>,
     pub content_signature: String,
     pub recorded_actions: Vec<SavedAction>,
     pub run: RunState,
@@ -142,9 +151,17 @@ impl App {
     pub fn bootstrap(locale: UiLocale, seed: u64) -> Result<Self> {
         let (run, content_signature, startup_notes) = build_run_with_seed(locale, seed)?;
 
+        let has_decks = !run.content.decks.is_empty();
         let mut app = Self {
             locale,
             seed,
+            screen: if has_decks {
+                AppScreen::DeckSelect
+            } else {
+                AppScreen::Game
+            },
+            deck_cursor: 0,
+            selected_deck: None,
             content_signature,
             recorded_actions: Vec::new(),
             run,
@@ -165,10 +182,12 @@ impl App {
             should_quit: false,
         };
 
-        app.run
-            .start_blind(1, BlindKind::Small, &mut app.events)
-            .map_err(|err| anyhow::anyhow!(err.to_string()))
-            .context("start blind")?;
+        if !has_decks {
+            app.run
+                .start_blind(1, BlindKind::Small, &mut app.events)
+                .map_err(|err| anyhow::anyhow!(err.to_string()))
+                .context("start blind")?;
+        }
 
         for line in startup_notes {
             app.push_event_line(line);
@@ -269,6 +288,11 @@ impl App {
     }
 
     pub fn move_cursor(&mut self, down: bool) {
+        if self.screen == AppScreen::DeckSelect {
+            let len = self.run.content.decks.len();
+            move_index(&mut self.deck_cursor, len, down);
+            return;
+        }
         match self.focus {
             FocusPane::Hand => {
                 let len = self.hand_len();
@@ -830,9 +854,30 @@ impl App {
         Ok(())
     }
 
+    pub fn confirm_deck_selection(&mut self) {
+        let decks = &self.run.content.decks;
+        if decks.is_empty() {
+            return;
+        }
+        let idx = self.deck_cursor.min(decks.len().saturating_sub(1));
+        let deck_id = decks[idx].id.clone();
+        self.selected_deck = Some(deck_id.clone());
+        self.run.apply_deck(&deck_id);
+        self.screen = AppScreen::Game;
+        if let Err(err) = self.run.start_blind(1, BlindKind::Small, &mut self.events) {
+            self.push_status(err.to_string());
+        }
+        self.flush_events();
+        self.normalize_cursors();
+    }
+
     pub fn activate_primary(&mut self) {
         if self.show_help {
             self.show_help = false;
+            return;
+        }
+        if self.screen == AppScreen::DeckSelect {
+            self.confirm_deck_selection();
             return;
         }
         if self.open_pack.is_some() {
@@ -1207,6 +1252,51 @@ impl App {
         format!("{marker} {index:>2}: {body}")
     }
 
+    pub fn detail_title(&self) -> String {
+        match self.focus {
+            FocusPane::Hand => self.locale.text("Hand Details", "手牌详情").to_string(),
+            FocusPane::Shop => {
+                if self.open_pack.is_some() {
+                    self.locale.text("Pack Details", "卡包详情").to_string()
+                } else {
+                    self.locale.text("Shop Details", "商店详情").to_string()
+                }
+            }
+            FocusPane::Inventory => self
+                .locale
+                .text("Inventory Details", "库存详情")
+                .to_string(),
+            FocusPane::Events => self.locale.text("Recent Events", "最近事件").to_string(),
+        }
+    }
+
+    pub fn detail_lines(&self, max_lines: usize) -> Vec<String> {
+        let mut lines = match self.focus {
+            FocusPane::Hand => self.hand_detail_lines(),
+            FocusPane::Shop => {
+                if let Some(open) = self.open_pack.as_ref() {
+                    self.pack_detail_lines(open)
+                } else {
+                    self.shop_detail_lines()
+                }
+            }
+            FocusPane::Inventory => self.inventory_detail_lines(),
+            FocusPane::Events => self.event_detail_lines(),
+        };
+        if lines.is_empty() {
+            lines.push(
+                self.locale
+                    .text("no detail available", "暂无可显示详情")
+                    .to_string(),
+            );
+        }
+        if max_lines > 0 && lines.len() > max_lines {
+            lines.truncate(max_lines);
+            lines.push(self.locale.text("...", "...").to_string());
+        }
+        lines
+    }
+
     pub fn push_status(&mut self, value: impl Into<String>) {
         self.status_line = value.into();
     }
@@ -1339,6 +1429,218 @@ impl App {
             return String::new();
         };
         summarize_effect_blocks(self.locale, &def.effects, def.hand, max_parts)
+    }
+
+    fn hand_detail_lines(&self) -> Vec<String> {
+        if self.run.hand.is_empty() {
+            return vec![self.locale.text("hand is empty", "手牌为空").to_string()];
+        }
+        let index = self.hand_cursor.min(self.run.hand.len() - 1);
+        let card = self.run.hand[index];
+        let mut lines = vec![
+            format!(
+                "{} #{index}: {}",
+                self.locale.text("card", "卡牌"),
+                format_card(&card)
+            ),
+            format!(
+                "{}: {}",
+                self.locale.text("value", "价值"),
+                card_value(&card, &self.run.tables)
+            ),
+            format!(
+                "{}: {}",
+                self.locale.text("detail", "详情"),
+                card_detail(&card)
+            ),
+        ];
+        let selected = self.explicit_selected_hand_indices();
+        lines.push(format!(
+            "{}: {}",
+            self.locale.text("selected", "已选"),
+            if selected.is_empty() {
+                self.locale.text("none", "无").to_string()
+            } else {
+                selected
+                    .iter()
+                    .map(|idx| idx.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            }
+        ));
+        lines
+    }
+
+    fn shop_detail_lines(&self) -> Vec<String> {
+        let rows = self.shop_rows();
+        if rows.is_empty() {
+            return vec![self
+                .locale
+                .text("shop unavailable", "商店不可用")
+                .to_string()];
+        }
+        let index = self.shop_cursor.min(rows.len() - 1);
+        let mut lines = vec![
+            format!("{} #{index}", self.locale.text("offer", "商品")),
+            rows[index].label.clone(),
+            format!(
+                "{}: {}",
+                self.locale.text("hint", "提示"),
+                self.locale
+                    .text("Enter/B buys current offer", "回车/B 购买当前商品")
+            ),
+        ];
+        if let Some(shop) = self.run.shop.as_ref() {
+            lines.push(format!(
+                "{}: ${}",
+                self.locale.text("reroll", "刷新"),
+                shop.reroll_cost
+            ));
+            // Show joker description for the focused shop offer
+            if let Some(ShopOfferRef::Card(card_idx)) = self.current_shop_offer() {
+                if let Some(card) = shop.cards.get(card_idx) {
+                    if card.kind == rulatro_core::ShopCardKind::Joker {
+                        if let Some(desc) = self
+                            .run
+                            .content
+                            .jokers
+                            .iter()
+                            .find(|d| d.id == card.item_id)
+                            .and_then(|d| d.description.as_deref())
+                        {
+                            let vars = std::collections::HashMap::new();
+                            lines.push(rulatro_core::render_joker_description(desc, &vars));
+                        }
+                    }
+                }
+            }
+        }
+        lines
+    }
+
+    fn pack_detail_lines(&self, open: &PackOpen) -> Vec<String> {
+        if open.options.is_empty() {
+            return vec![self
+                .locale
+                .text("no open pack", "当前没有打开的卡包")
+                .to_string()];
+        }
+        let index = self.pack_cursor.min(open.options.len() - 1);
+        let selected = self
+            .selected_pack
+            .iter()
+            .copied()
+            .filter(|idx| *idx < open.options.len())
+            .collect::<Vec<_>>();
+        let mut lines = vec![
+            format!(
+                "{:?}/{:?} {}:{} {}:{}",
+                open.offer.kind,
+                open.offer.size,
+                self.locale.text("options", "选项"),
+                open.offer.options,
+                self.locale.text("pick", "可选"),
+                open.offer.picks
+            ),
+            format!(
+                "{} #{index}: {}",
+                self.locale.text("option", "选项"),
+                self.pack_option_label(index, &open.options[index])
+            ),
+            format!(
+                "{}: {}",
+                self.locale.text("selected", "已选"),
+                if selected.is_empty() {
+                    self.locale.text("none", "无").to_string()
+                } else {
+                    selected
+                        .iter()
+                        .map(|idx| idx.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                }
+            ),
+        ];
+        lines.push(format!(
+            "{}: {}",
+            self.locale.text("hint", "提示"),
+            self.locale.text("C picks, Z skips", "C 确认选择，Z 跳过")
+        ));
+        lines
+    }
+
+    fn inventory_detail_lines(&self) -> Vec<String> {
+        let rows = self.inventory_rows();
+        if rows.is_empty() {
+            return vec![self
+                .locale
+                .text("inventory is empty", "库存为空")
+                .to_string()];
+        }
+        let index = self.inventory_cursor.min(rows.len() - 1);
+        let row = &rows[index];
+        let mut lines = vec![
+            format!("{} #{index}", self.locale.text("row", "条目")),
+            row.label.clone(),
+        ];
+        match row.kind {
+            InventoryRowKind::Joker(joker_index) => {
+                if let Some(joker) = self.run.inventory.jokers.get(joker_index) {
+                    let sell_value = self.run.joker_sell_value(joker_index).unwrap_or(0);
+                    lines.push(format!(
+                        "{}: ${}",
+                        self.locale.text("sell value", "出售价值"),
+                        sell_value
+                    ));
+                    if let Some(desc) = self
+                        .run
+                        .content
+                        .jokers
+                        .iter()
+                        .find(|d| d.id == joker.id)
+                        .and_then(|d| d.description.as_deref())
+                    {
+                        let rendered = rulatro_core::render_joker_description(desc, &joker.vars);
+                        lines.push(rendered);
+                    }
+                    lines.push(
+                        self.locale
+                            .text("V sells focused joker", "V 出售当前小丑")
+                            .to_string(),
+                    );
+                }
+            }
+            InventoryRowKind::Consumable(item_index) => {
+                if let Some(item) = self.run.inventory.consumables.get(item_index) {
+                    let effect = self.consumable_effect_summary(item.kind, &item.id, 4);
+                    if !effect.is_empty() {
+                        lines.push(format!("{}: {effect}", self.locale.text("effect", "效果")));
+                    }
+                    lines.push(
+                        self.locale
+                            .text("U uses focused consumable", "U 使用当前消耗牌")
+                            .to_string(),
+                    );
+                }
+            }
+        }
+        lines
+    }
+
+    fn event_detail_lines(&self) -> Vec<String> {
+        if self.event_log.is_empty() {
+            return vec![self.locale.text("no events yet", "暂无事件").to_string()];
+        }
+        let mut lines = Vec::new();
+        lines.push(format!(
+            "{}: {}",
+            self.locale.text("total", "总计"),
+            self.event_log.len()
+        ));
+        for line in self.event_log.iter().rev().take(5) {
+            lines.push(line.clone());
+        }
+        lines
     }
 }
 

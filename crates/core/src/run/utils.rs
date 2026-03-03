@@ -1,5 +1,22 @@
 use crate::{BlindKind, Card, ConsumableKind, Edition, Enhancement, HandKind, Rank, Seal, Suit};
 
+pub fn render_joker_description(
+    desc: &str,
+    vars: &std::collections::HashMap<String, f64>,
+) -> String {
+    let mut result = desc.to_string();
+    for (key, val) in vars {
+        let token = format!("{{{key}}}");
+        let display = if val.fract().abs() < f64::EPSILON {
+            format!("{}", *val as i64)
+        } else {
+            format!("{val:.1}")
+        };
+        result = result.replace(&token, &display);
+    }
+    result
+}
+
 pub(super) fn normalize(value: &str) -> String {
     value.trim().to_lowercase()
 }
@@ -19,6 +36,7 @@ pub(super) fn hand_name(kind: HandKind) -> &'static str {
         HandKind::FiveOfAKind => "FiveOfAKind",
         HandKind::FlushHouse => "FlushHouse",
         HandKind::FlushFive => "FlushFive",
+        HandKind::Custom(_) => "Custom",
     }
 }
 
@@ -243,7 +261,10 @@ pub(super) fn hand_contains_kind(hand: HandKind, target: HandKind) -> bool {
             Trips | FullHouse | Quads | FiveOfAKind | FlushHouse | FlushFive
         ),
         Straight => matches!(hand, Straight | StraightFlush | RoyalFlush),
-        Flush => matches!(hand, Flush | StraightFlush | RoyalFlush | FlushHouse | FlushFive),
+        Flush => matches!(
+            hand,
+            Flush | StraightFlush | RoyalFlush | FlushHouse | FlushFive
+        ),
         FullHouse => matches!(hand, FullHouse | FlushHouse),
         Quads => matches!(hand, Quads | FiveOfAKind | FlushFive),
         StraightFlush => matches!(hand, StraightFlush | RoyalFlush),
@@ -251,5 +272,6 @@ pub(super) fn hand_contains_kind(hand: HandKind, target: HandKind) -> bool {
         FiveOfAKind => matches!(hand, FiveOfAKind | FlushFive),
         FlushHouse => matches!(hand, FlushHouse),
         FlushFive => matches!(hand, FlushFive),
+        Custom(_) => false,
     }
 }

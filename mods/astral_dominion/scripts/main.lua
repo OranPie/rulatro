@@ -43,7 +43,7 @@ local ARCANE_JOKERS = {
 rulatro.register_hook("OnShopEnter", function(ctx)
   local count = 0
   for _, id in ipairs(CELESTIAL_JOKERS) do
-    count = count + (ctx.joker_count(id) or 0)
+    count = count + (ctx.joker_counts[id] or 0)
   end
 
   if count >= 4 then
@@ -72,8 +72,8 @@ end)
 --  on every blind start grant +$5 — dark powers trade favours.
 -- ─────────────────────────────────────────────────────
 rulatro.register_hook("OnBlindStart", function(ctx)
-  local has_cannon = (ctx.joker_count("ad_glass_cannon") or 0) > 0
-  local has_moon   = (ctx.joker_count("ad_blood_moon")   or 0) > 0
+  local has_cannon = (ctx.joker_counts["ad_glass_cannon"] or 0) > 0
+  local has_moon   = (ctx.joker_counts["ad_blood_moon"]   or 0) > 0
 
   if has_cannon and has_moon then
     rulatro.log("[" .. MOD_ID .. "] Shadow Pact: Glass Cannon + Blood Moon — +$5")
@@ -103,7 +103,7 @@ end)
 rulatro.register_hook("OnRoundEnd", function(ctx)
   local count = 0
   for _, id in ipairs(FORTUNE_JOKERS) do
-    count = count + (ctx.joker_count(id) or 0)
+    count = count + (ctx.joker_counts[id] or 0)
   end
 
   if count >= 3 then
@@ -134,9 +134,9 @@ end)
 --  The three scholars have unified their knowledge.
 -- ─────────────────────────────────────────────────────
 rulatro.register_hook("OnUse", function(ctx)
-  local has_wraith  = (ctx.joker_count("ad_wraith_hunter") or 0) > 0
-  local has_ritual  = (ctx.joker_count("ad_ritual_master")  or 0) > 0
-  local has_sage    = (ctx.joker_count("ad_tarot_sage")     or 0) > 0
+  local has_wraith  = (ctx.joker_counts["ad_wraith_hunter"] or 0) > 0
+  local has_ritual  = (ctx.joker_counts["ad_ritual_master"]  or 0) > 0
+  local has_sage    = (ctx.joker_counts["ad_tarot_sage"]     or 0) > 0
 
   if has_wraith and has_ritual and has_sage then
     rulatro.log("[" .. MOD_ID .. "] Arcane Ritual Convergence: upgrading random hand on consumable use")
@@ -166,8 +166,8 @@ end)
 --  Implemented by granting both effects regardless of phase.
 -- ─────────────────────────────────────────────────────
 rulatro.register_hook("OnIndependent", function(ctx)
-  local has_eclipse = (ctx.joker_count("ad_eclipse") or 0) > 0
-  local has_pulsar  = (ctx.joker_count("ad_pulsar")  or 0) > 0
+  local has_eclipse = (ctx.joker_counts["ad_eclipse"] or 0) > 0
+  local has_pulsar  = (ctx.joker_counts["ad_pulsar"]  or 0) > 0
 
   if has_eclipse and has_pulsar then
     rulatro.log("[" .. MOD_ID .. "] Eclipse+Pulsar Phase Lock: guaranteed +30 chips and +9 mult supplement")
@@ -196,8 +196,8 @@ end)
 --  free planet card — the conductor plays the celestial music.
 -- ─────────────────────────────────────────────────────
 rulatro.register_hook("OnRoundEnd", function(ctx)
-  local has_conductor = (ctx.joker_count("ad_the_conductor") or 0) > 0
-  local has_star      = (ctx.joker_count("ad_star_eater")    or 0) > 0
+  local has_conductor = (ctx.joker_counts["ad_the_conductor"] or 0) > 0
+  local has_star      = (ctx.joker_counts["ad_star_eater"]    or 0) > 0
 
   if has_conductor and has_star then
     rulatro.log("[" .. MOD_ID .. "] Conductor+StarEater Crescendo: bonus planet on round end")
@@ -225,8 +225,8 @@ end)
 --  on top of the individual DSL effects — an execution bonus.
 -- ─────────────────────────────────────────────────────
 rulatro.register_hook("OnAnySell", function(ctx)
-  local has_collector   = (ctx.joker_count("ad_bone_collector") or 0) > 0
-  local has_executioner = (ctx.joker_count("ad_executioner")    or 0) > 0
+  local has_collector   = (ctx.joker_counts["ad_bone_collector"] or 0) > 0
+  local has_executioner = (ctx.joker_counts["ad_executioner"]    or 0) > 0
 
   if has_collector and has_executioner then
     rulatro.log("[" .. MOD_ID .. "] Death Engine: Bone Collector + Executioner — +$2 execution bonus")
@@ -259,10 +259,10 @@ rulatro.register_hook("OnBlindStart", function(ctx)
   local fortune_count   = 0
   local arcane_count    = 0
 
-  for _, id in ipairs(CELESTIAL_JOKERS) do celestial_count = celestial_count + (ctx.joker_count(id) or 0) end
-  for _, id in ipairs(SHADOW_JOKERS)    do shadow_count    = shadow_count    + (ctx.joker_count(id) or 0) end
-  for _, id in ipairs(FORTUNE_JOKERS)   do fortune_count   = fortune_count   + (ctx.joker_count(id) or 0) end
-  for _, id in ipairs(ARCANE_JOKERS)    do arcane_count    = arcane_count    + (ctx.joker_count(id) or 0) end
+  for _, id in ipairs(CELESTIAL_JOKERS) do celestial_count = celestial_count + (ctx.joker_counts[id] or 0) end
+  for _, id in ipairs(SHADOW_JOKERS)    do shadow_count    = shadow_count    + (ctx.joker_counts[id] or 0) end
+  for _, id in ipairs(FORTUNE_JOKERS)   do fortune_count   = fortune_count   + (ctx.joker_counts[id] or 0) end
+  for _, id in ipairs(ARCANE_JOKERS)    do arcane_count    = arcane_count    + (ctx.joker_counts[id] or 0) end
 
   if celestial_count >= 1 and shadow_count >= 1 and fortune_count >= 1 and arcane_count >= 1 then
     rulatro.log("[" .. MOD_ID .. "] FULL FACTION MASTERY — granting spectral on blind start")
@@ -291,8 +291,8 @@ end)
 --  The Devourer has grown strong enough to protect it.
 -- ─────────────────────────────────────────────────────
 rulatro.register_hook("OnBlindFailed", function(ctx)
-  local devourer_owned = (ctx.joker_count("ad_devourer")     or 0) > 0
-  local cannon_owned   = (ctx.joker_count("ad_glass_cannon") or 0) > 0
+  local devourer_owned = (ctx.joker_counts["ad_devourer"]     or 0) > 0
+  local cannon_owned   = (ctx.joker_counts["ad_glass_cannon"] or 0) > 0
 
   -- We can't read var state directly from Lua, but we can check if both are present
   -- and grant prevent_death as a safety measure (the DSL destroy_self fires last).

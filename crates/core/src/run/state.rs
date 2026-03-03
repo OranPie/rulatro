@@ -58,6 +58,135 @@ impl RunState {
         }
     }
 
+    /// Apply deck startup effects. Call after `RunState::new()` to customise the starting state.
+    pub fn apply_deck(&mut self, deck_id: &str) {
+        match deck_id {
+            "red" => { /* +1 discard per round handled by DeckHook at BlindStart */ }
+            "blue" => { /* +1 hand per round handled by DeckHook at BlindStart */ }
+            "yellow" => {
+                self.state.money += 10;
+            }
+            "green" => { /* money bonus handled by DeckHook at RoundEnd */ }
+            "black" => {
+                self.inventory.joker_slots += 1;
+                // -1 hand per round handled by DeckHook at BlindStart
+            }
+            "magic" => {
+                self.state
+                    .active_vouchers
+                    .push("v_crystal_ball".to_string());
+                for _ in 0..2 {
+                    if self.inventory.consumables.len() < self.inventory.consumable_slots {
+                        self.inventory.consumables.push(ConsumableInstance {
+                            id: "c_fool".to_string(),
+                            kind: ConsumableKind::Tarot,
+                            edition: None,
+                            sell_bonus: 0.0,
+                        });
+                    }
+                }
+            }
+            "nebula" => {
+                self.state.active_vouchers.push("v_telescope".to_string());
+                self.inventory.consumable_slots = self.inventory.consumable_slots.saturating_sub(1);
+            }
+            "ghost" => {
+                self.rule_vars.insert("deck_ghost".to_string(), 1.0);
+                if self.inventory.consumables.len() < self.inventory.consumable_slots {
+                    self.inventory.consumables.push(ConsumableInstance {
+                        id: "c_hex".to_string(),
+                        kind: ConsumableKind::Spectral,
+                        edition: None,
+                        sell_bonus: 0.0,
+                    });
+                }
+            }
+            "abandoned" => {
+                self.deck
+                    .draw
+                    .retain(|card| !matches!(card.rank, Rank::Jack | Rank::Queen | Rank::King));
+            }
+            "checkered" => {
+                let mut new_draw: Vec<Card> = Vec::new();
+                let mut card_id = self.next_card_id;
+                for suit in [Suit::Spades, Suit::Hearts] {
+                    for rank in [
+                        Rank::Ace,
+                        Rank::Two,
+                        Rank::Three,
+                        Rank::Four,
+                        Rank::Five,
+                        Rank::Six,
+                        Rank::Seven,
+                        Rank::Eight,
+                        Rank::Nine,
+                        Rank::Ten,
+                        Rank::Jack,
+                        Rank::Queen,
+                        Rank::King,
+                    ] {
+                        let mut c = Card::standard(suit, rank);
+                        c.id = card_id;
+                        card_id = card_id.saturating_add(1);
+                        new_draw.push(c);
+                    }
+                }
+                self.next_card_id = card_id;
+                self.deck.draw = new_draw;
+                self.deck.discard.clear();
+                self.deck.shuffle(&mut self.rng);
+            }
+            "zodiac" => {
+                for v in ["v_tarot_merchant", "v_planet_merchant", "v_overstock"] {
+                    self.state.active_vouchers.push(v.to_string());
+                }
+            }
+            "painted" => {
+                self.state.hand_size_base += 2;
+                self.state.hand_size += 2;
+                self.inventory.joker_slots = self.inventory.joker_slots.saturating_sub(1);
+            }
+            "anaglyph" => {
+                self.rule_vars.insert("deck_anaglyph".to_string(), 1.0);
+            }
+            "plasma" => {
+                self.rule_vars.insert("deck_plasma".to_string(), 1.0);
+            }
+            "erratic" => {
+                for card in &mut self.deck.draw {
+                    let rank_idx = self.rng.next_u64() % 13;
+                    let suit_idx = self.rng.next_u64() % 4;
+                    card.rank = [
+                        Rank::Ace,
+                        Rank::Two,
+                        Rank::Three,
+                        Rank::Four,
+                        Rank::Five,
+                        Rank::Six,
+                        Rank::Seven,
+                        Rank::Eight,
+                        Rank::Nine,
+                        Rank::Ten,
+                        Rank::Jack,
+                        Rank::Queen,
+                        Rank::King,
+                    ][rank_idx as usize];
+                    card.suit = [Suit::Spades, Suit::Hearts, Suit::Clubs, Suit::Diamonds]
+                        [suit_idx as usize];
+                }
+            }
+            _ => {}
+        }
+        self.rule_vars.insert(format!("deck_{}", deck_id), 1.0);
+    }
+
+    /// Create a new run and immediately apply the given deck's starting effects.
+    pub fn new_with_deck(config: GameConfig, content: Content, seed: u64, deck_id: &str) -> Self {
+        let mut run = Self::new(config, content, seed);
+        run.apply_deck(deck_id);
+        run
+    }
+
     pub fn set_mod_runtime(&mut self, runtime: Option<Box<dyn ModRuntime>>) {
         self.mod_runtime = runtime;
     }

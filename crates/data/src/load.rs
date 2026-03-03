@@ -7,8 +7,8 @@ use crate::joker_dsl::{
 };
 use crate::schema::{
     AnteRule, BlindRule, BossDef, CardAttrRules, ConsumableDef, ConsumableKind, Content,
-    ContentPack, EconomyRule, EffectBlock, GameConfig, HandRule, JokerDef, RankRule, ShopRule,
-    TagDef,
+    ContentPack, DeckDef, EconomyRule, EffectBlock, GameConfig, HandRule, JokerDef, RankRule,
+    ShopRule, TagDef,
 };
 use crate::voucher_defs::load_builtin_vouchers;
 use anyhow::{bail, Context};
@@ -65,6 +65,10 @@ pub fn load_content_with_locale(dir: &Path, locale: Option<&str>) -> anyhow::Res
     content.vouchers = load_builtin_vouchers();
     content.debuff_rules = load_builtin_debuff_rules();
     content.draw_facedown_rules = load_builtin_draw_facedown_rules();
+    let decks_path = dir.join("decks.json");
+    if decks_path.exists() {
+        content.decks = load_json(decks_path)?;
+    }
     Ok(content)
 }
 
@@ -234,6 +238,7 @@ fn load_content_dir(
         tarots,
         planets,
         spectrals,
+        decks: Vec::new(),
         card_modifiers: Vec::new(),
         vouchers: Vec::new(),
         debuff_rules: Vec::new(),

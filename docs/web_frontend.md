@@ -6,10 +6,11 @@
 > Doc Type: Guide
 
 This frontend talks to the Rust game core via a local HTTP API. No mock logic.
+The interactive UI is now a React + Vite app (`web/vite/`) with a legacy static fallback (`web/`).
 
 ## 1) Run
 
-From repo root:
+Backend (state + API, also serves frontend assets):
 
 ```
 cargo run -p rulatro-web
@@ -27,11 +28,36 @@ Then open:
 http://localhost:7878
 ```
 
+Frontend build (served by the backend from `web/vite/dist`):
+
+```
+cd web/vite
+npm install
+npm run build
+```
+
+Frontend dev server (hot reload, API proxied to `:7878`):
+
+```
+cd web/vite
+npm install
+npm run dev
+```
+
+Then open:
+
+```
+http://localhost:5173
+```
+
 ## 2) Notes
 
-- The server serves the static UI from `web/` and exposes JSON endpoints:
+- The backend always exposes JSON endpoints:
   - `GET /api/state`
   - `POST /api/action`
+- Static serving order:
+  1. `web/vite/dist` (if built)
+  2. `web/` legacy static assets (fallback)
 - API responses include `locale` so the frontend can localize static/dynamic text.
 - The UI buttons send API actions such as `deal`, `play`, `enter_shop`, `buy_card`, `pick_pack`, etc.
 - Selecting hand cards, jokers, and consumables in the UI determines indices sent to actions.
