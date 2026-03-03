@@ -967,6 +967,10 @@ impl RunState {
         );
         self.invoke_hooks(HookPoint::RoundEnd, &mut args, events);
         self.state.money = money;
+        events.push(Event::RoundEnded {
+            hands_used: (self.state.hands_max as u32).saturating_sub(self.state.hands_left as u32),
+            discards_used: self.state.unused_discards,
+        });
     }
 
     pub(super) fn grant_planet_for_hand(&mut self, hand_kind: crate::HandKind) {
@@ -1055,6 +1059,11 @@ impl RunState {
             .ok_or(RunError::InvalidSelection)?;
         self.validate_consumable_selection(&def, selected)?;
         let _ = self.inventory.consumables.remove(index);
+        events.push(Event::ConsumableUsed {
+            id: def.id.clone(),
+            name: def.name.clone(),
+            kind: def.kind,
+        });
         self.apply_consumable_effects(&def, selected, events)
     }
 

@@ -856,13 +856,16 @@ joker perkeo "Perkeo" Legendary {
 }
 
 joker shortcut_joker "Shortcut" Uncommon {
+  desc "Straights can be made with gaps (non-consecutive ranks count)"
   mixin shortcut_hand
 }
 
 joker card_shark "Card Shark" Uncommon {
+  desc "Gain 1 free reroll every time you enter the shop"
   mixin free_reroll_on_enter
 }
 
 joker restructure "Restructure" Rare {
+  desc "Reroll the Boss Blind whenever any Joker is sold"
   mixin boss_reroll_on_sell
 }

@@ -1776,7 +1776,7 @@ fn shop_buy_joker_adds_inventory() {
     let purchase = run
         .buy_shop_offer(ShopOfferRef::Card(0), &mut events)
         .expect("buy offer");
-    run.apply_purchase(&purchase).expect("apply purchase");
+    run.apply_purchase(&purchase, &mut rulatro_core::EventBus::default()).expect("apply purchase");
     assert_eq!(run.inventory.jokers.len(), 1);
     assert_eq!(run.state.money, 50 - price);
 }
@@ -1800,7 +1800,7 @@ fn shop_buy_voucher_decrements_and_costs() {
     let shop = run.shop.as_ref().expect("shop");
     assert_eq!(shop.vouchers, run.config.shop.voucher_slots as usize - 1);
     assert_eq!(run.state.money, initial_money - voucher_price);
-    run.apply_purchase(&purchase).expect("apply purchase");
+    run.apply_purchase(&purchase, &mut rulatro_core::EventBus::default()).expect("apply purchase");
 }
 
 #[test]
@@ -1808,7 +1808,7 @@ fn voucher_overstock_increases_future_shop_card_slots() {
     let mut run = new_run();
     run.apply_purchase(&ShopPurchase::Voucher(rulatro_core::VoucherOffer {
         id: "overstock".to_string(),
-    }))
+    }), &mut EventBus::default())
     .expect("apply overstock");
     mark_blind_cleared(&mut run);
     run.enter_shop(&mut EventBus::default())
@@ -1826,7 +1826,7 @@ fn voucher_clearance_sale_discounts_shop_prices() {
     }];
     run.apply_purchase(&ShopPurchase::Voucher(rulatro_core::VoucherOffer {
         id: "clearance_sale".to_string(),
-    }))
+    }), &mut EventBus::default())
     .expect("apply clearance sale");
     mark_blind_cleared(&mut run);
     run.enter_shop(&mut EventBus::default())
@@ -4159,7 +4159,7 @@ fn trigger_on_acquire_fires_when_joker_bought() {
     let purchase = run
         .buy_shop_offer(ShopOfferRef::Card(offer_idx), &mut EventBus::default())
         .expect("buy joker");
-    run.apply_purchase(&purchase).expect("apply");
+    run.apply_purchase(&purchase, &mut rulatro_core::EventBus::default()).expect("apply");
     // OnAcquire fired, adding 15 money (minus 0 price = net +15)
     assert!(
         run.state.money >= before + 15,

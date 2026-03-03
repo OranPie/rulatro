@@ -527,7 +527,7 @@ fn complex_buy_flow_after_tag_and_joker_price_override() {
     let purchase = run
         .buy_shop_offer(ShopOfferRef::Card(0), &mut EventBus::default())
         .expect("buy first card");
-    run.apply_purchase(&purchase).expect("apply purchase");
+    run.apply_purchase(&purchase, &mut rulatro_core::EventBus::default()).expect("apply purchase");
     assert_eq!(run.state.money, before_money - 3);
 }
 

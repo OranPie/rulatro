@@ -1027,7 +1027,7 @@ fn handle_purchase(state: &mut AppState, offer: ShopOfferRef) -> Option<String> 
         }
         _ => state
             .run
-            .apply_purchase(&purchase)
+            .apply_purchase(&purchase, &mut state.events)
             .map_err(|err| err.to_string())
             .err(),
     }

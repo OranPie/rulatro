@@ -208,25 +208,63 @@ impl RunState {
         Ok(purchase)
     }
 
-    pub fn apply_purchase(&mut self, purchase: &ShopPurchase) -> Result<(), RunError> {
+    pub fn apply_purchase(&mut self, purchase: &ShopPurchase, events: &mut EventBus) -> Result<(), RunError> {
         match purchase {
             ShopPurchase::Card(card) => match card.kind {
                 crate::ShopCardKind::Joker => {
                     let rarity = card.rarity.unwrap_or(crate::JokerRarity::Common);
+                    let name = self
+                        .content
+                        .jokers
+                        .iter()
+                        .find(|d| d.id == card.item_id)
+                        .map(|d| d.name.clone())
+                        .unwrap_or_else(|| card.item_id.clone());
                     self.add_joker_with_trigger_edition(
                         card.item_id.clone(),
                         rarity,
                         card.price,
                         card.edition,
                     )?;
+                    events.push(Event::JokerAcquired {
+                        id: card.item_id.clone(),
+                        name,
+                        rarity,
+                        cost: card.price,
+                        money: self.state.money,
+                    });
                 }
                 crate::ShopCardKind::Tarot => {
+                    let name = self
+                        .content
+                        .tarots
+                        .iter()
+                        .find(|d| d.id == card.item_id)
+                        .map(|d| d.name.clone())
+                        .unwrap_or_else(|| card.item_id.clone());
                     self.inventory
                         .add_consumable(card.item_id.clone(), crate::ConsumableKind::Tarot)?;
+                    events.push(Event::ConsumableGained {
+                        id: card.item_id.clone(),
+                        name,
+                        kind: crate::ConsumableKind::Tarot,
+                    });
                 }
                 crate::ShopCardKind::Planet => {
+                    let name = self
+                        .content
+                        .planets
+                        .iter()
+                        .find(|d| d.id == card.item_id)
+                        .map(|d| d.name.clone())
+                        .unwrap_or_else(|| card.item_id.clone());
                     self.inventory
                         .add_consumable(card.item_id.clone(), crate::ConsumableKind::Planet)?;
+                    events.push(Event::ConsumableGained {
+                        id: card.item_id.clone(),
+                        name,
+                        kind: crate::ConsumableKind::Planet,
+                    });
                 }
             },
             ShopPurchase::Voucher(voucher) => {
@@ -243,6 +281,11 @@ impl RunState {
                 self.apply_voucher_state_effect(&voucher.id);
                 let new_rule = self.effective_shop_rule();
                 self.reprice_open_shop_after_voucher(&old_rule, &new_rule);
+                events.push(Event::VoucherBought {
+                    id: voucher.id.clone(),
+                    cost: 0,
+                    money: self.state.money,
+                });
             }
             ShopPurchase::Pack(_) => {}
         }
@@ -289,7 +332,14 @@ impl RunState {
         self.invoke_hooks(HookPoint::AnySell, &mut any_sell_args, events);
         self.state.money = money;
         events.push(Event::JokerSold {
-            id: joker.id,
+            id: joker.id.clone(),
+            name: self
+                .content
+                .jokers
+                .iter()
+                .find(|d| d.id == joker.id)
+                .map(|d| d.name.clone())
+                .unwrap_or_else(|| joker.id.clone()),
             sell_value,
             money: self.state.money,
         });

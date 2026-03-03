@@ -316,7 +316,7 @@ impl Simulator {
                     .buy_shop_offer(ShopOfferRef::Card(*index), &mut self.events)
                     .map_err(|err| AutoplayError::Run(err.to_string()))?;
                 self.run
-                    .apply_purchase(&purchase)
+                    .apply_purchase(&purchase, &mut self.events)
                     .map_err(|err| AutoplayError::Run(err.to_string()))?;
             }
             AutoAction::BuyPack { index } => {
@@ -336,7 +336,7 @@ impl Simulator {
                     .buy_shop_offer(ShopOfferRef::Voucher(*index), &mut self.events)
                     .map_err(|err| AutoplayError::Run(err.to_string()))?;
                 self.run
-                    .apply_purchase(&purchase)
+                    .apply_purchase(&purchase, &mut self.events)
                     .map_err(|err| AutoplayError::Run(err.to_string()))?;
             }
             AutoAction::PickPack { indices } => {

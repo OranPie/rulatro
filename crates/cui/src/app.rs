@@ -596,16 +596,18 @@ impl App {
                 .edition
                 .map(edition_short)
                 .unwrap_or_else(|| "-".to_string());
+            let rarity_sym = match joker.rarity {
+                rulatro_core::JokerRarity::Common => "○",
+                rulatro_core::JokerRarity::Uncommon => "◑",
+                rulatro_core::JokerRarity::Rare => "●",
+                rulatro_core::JokerRarity::Legendary => "★",
+            };
+            let name = self.find_joker_name(&joker.id);
+            let sell_value = self.run.joker_sell_value(idx).unwrap_or(0);
             rows.push(InventoryRow {
                 kind: InventoryRowKind::Joker(idx),
                 label: format!(
-                    "J{idx} {} ({}) {} {:?} {} {}",
-                    joker.id,
-                    self.find_joker_name(&joker.id),
-                    self.locale.text("rarity", "稀有度"),
-                    joker.rarity,
-                    self.locale.text("edition", "版本"),
-                    edition
+                    "{rarity_sym} {name}  [{edition}]  ${sell_value}"
                 ),
             });
         }
@@ -615,20 +617,20 @@ impl App {
                 .map(edition_short)
                 .unwrap_or_else(|| "-".to_string());
             let effect = self.consumable_effect_summary(item.kind, &item.id, 2);
+            let name = self.find_consumable_name(item.kind, &item.id);
+            let kind_sym = match item.kind {
+                rulatro_core::ConsumableKind::Tarot    => "✦",
+                rulatro_core::ConsumableKind::Planet   => "⊕",
+                rulatro_core::ConsumableKind::Spectral => "◈",
+            };
             rows.push(InventoryRow {
                 kind: InventoryRowKind::Consumable(idx),
                 label: format!(
-                    "C{idx} {} ({}) {} {} {} {}{}",
-                    item.id,
-                    self.find_consumable_name(item.kind, &item.id),
-                    self.locale.text("type", "类型"),
-                    consumable_kind_label(self.locale, item.kind),
-                    self.locale.text("edition", "版本"),
-                    edition,
+                    "{kind_sym} {name}  [{edition}]{}",
                     if effect.is_empty() {
                         String::new()
                     } else {
-                        format!(" {} {}", self.locale.text("effect", "效果"), effect)
+                        format!("  — {effect}")
                     }
                 ),
             });
@@ -1072,7 +1074,7 @@ impl App {
                             Err(err) => Err(err),
                         }
                     }
-                    _ => self.run.apply_purchase(&purchase),
+                    _ => self.run.apply_purchase(&purchase, &mut self.events),
                 };
                 match result {
                     Ok(_) => {
@@ -1579,29 +1581,52 @@ impl App {
         }
         let index = self.inventory_cursor.min(rows.len() - 1);
         let row = &rows[index];
-        let mut lines = vec![
-            format!("{} #{index}", self.locale.text("row", "条目")),
-            row.label.clone(),
-        ];
+        let mut lines = vec![row.label.clone()];
         match row.kind {
             InventoryRowKind::Joker(joker_index) => {
                 if let Some(joker) = self.run.inventory.jokers.get(joker_index) {
                     let sell_value = self.run.joker_sell_value(joker_index).unwrap_or(0);
+                    // Show rarity, edition, sell value on one line
                     lines.push(format!(
-                        "{}: ${}",
-                        self.locale.text("sell value", "出售价值"),
+                        "{:?}  {}  {} ${}",
+                        joker.rarity,
+                        joker.edition.map(|e| format!("{e:?}")).unwrap_or_else(|| self.locale.text("no edition", "无版本").to_string()),
+                        self.locale.text("sell", "出售"),
                         sell_value
                     ));
-                    if let Some(desc) = self
-                        .run
-                        .content
-                        .jokers
-                        .iter()
-                        .find(|d| d.id == joker.id)
-                        .and_then(|d| d.description.as_deref())
-                    {
-                        let rendered = rulatro_core::render_joker_description(desc, &joker.vars);
-                        lines.push(rendered);
+                    // Show rendered description (with live var substitution)
+                    if let Some(def) = self.run.content.jokers.iter().find(|d| d.id == joker.id) {
+                        if let Some(desc) = def.description.as_deref() {
+                            let rendered = rulatro_core::render_joker_description(desc, &joker.vars);
+                            lines.push(rendered);
+                        }
+                        // Show trigger summary
+                        let trigger_summary = def.effects.iter()
+                            .map(|e| format!("{:?}", e.trigger))
+                            .collect::<std::collections::BTreeSet<_>>()
+                            .into_iter()
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        if !trigger_summary.is_empty() {
+                            lines.push(format!(
+                                "{}: {trigger_summary}",
+                                self.locale.text("triggers", "触发")
+                            ));
+                        }
+                        // Show live vars if any
+                        if !joker.vars.is_empty() {
+                            let vars: Vec<String> = joker.vars.iter()
+                                .filter(|(k, _)| k.as_str() != "init")
+                                .map(|(k, v)| format!("{k}={v:.2}"))
+                                .collect();
+                            if !vars.is_empty() {
+                                lines.push(format!(
+                                    "{}: {}",
+                                    self.locale.text("vars", "变量"),
+                                    vars.join("  ")
+                                ));
+                            }
+                        }
                     }
                     lines.push(
                         self.locale
@@ -1634,10 +1659,10 @@ impl App {
         let mut lines = Vec::new();
         lines.push(format!(
             "{}: {}",
-            self.locale.text("total", "总计"),
+            self.locale.text("total events", "事件总数"),
             self.event_log.len()
         ));
-        for line in self.event_log.iter().rev().take(5) {
+        for line in self.event_log.iter().rev().take(10) {
             lines.push(line.clone());
         }
         lines
@@ -1692,7 +1717,7 @@ fn apply_saved_action(
             let purchase = run
                 .buy_shop_offer(ShopOfferRef::Card(idx), events)
                 .map_err(|err| err.to_string())?;
-            run.apply_purchase(&purchase)
+            run.apply_purchase(&purchase, events)
                 .map_err(|err| err.to_string())?;
         }
         "buy_pack" => {
@@ -1710,7 +1735,7 @@ fn apply_saved_action(
             let purchase = run
                 .buy_shop_offer(ShopOfferRef::Voucher(idx), events)
                 .map_err(|err| err.to_string())?;
-            run.apply_purchase(&purchase)
+            run.apply_purchase(&purchase, events)
                 .map_err(|err| err.to_string())?;
         }
         "pick_pack" => {
@@ -1805,44 +1830,48 @@ fn format_event(locale: UiLocale, event: &Event) -> String {
             hands,
             discards,
         } => format!(
-            "{} A{ante} {} {} {target} H{hands}/D{discards}",
-            locale.text("blind started", "盲注开始"),
+            "▶ {} A{ante} {} → {target}  H{hands} D{discards}",
+            locale.text("Blind", "盲注"),
             blind_label(locale, *blind),
-            locale.text("target", "目标")
         ),
         Event::BlindSkipped { ante, blind, tag } => {
             format!(
-                "{} A{ante} {} {} {}",
-                locale.text("blind skipped", "盲注已跳过"),
+                "⏭ {} A{ante} {}  [{}]",
+                locale.text("Skipped", "跳过"),
                 blind_label(locale, *blind),
-                locale.text("tag", "标签"),
-                tag.as_deref().unwrap_or(locale.text("-", "无"))
+                tag.as_deref().unwrap_or("-")
             )
         }
-        Event::HandDealt { count } => format!("{} {count}", locale.text("dealt", "已发牌")),
+        Event::HandDealt { count } => {
+            format!("🃏 {} {count}", locale.text("Dealt", "发牌"))
+        }
         Event::HandScored {
             hand,
             chips,
             mult,
             total,
         } => format!(
-            "{} {hand:?}: {chips} x{mult:.2} = {total}",
-            locale.text("scored", "计分")
+            "✦ {hand:?}  {chips}×{mult:.2} = {total}",
+        ),
+        Event::RoundEnded {
+            hands_used,
+            discards_used,
+        } => format!(
+            "↺ {}  {} {hands_used}  {} {discards_used}",
+            locale.text("Round end", "回合结束"),
+            locale.text("hands", "手牌"),
+            locale.text("discards", "弃牌"),
         ),
         Event::ShopEntered {
             offers,
             reroll_cost,
             reentered,
         } => format!(
-            "{} {} {offers} {} {reroll_cost}{}",
-            locale.text("shop entered", "进入商店"),
-            locale.text("offers", "商品数"),
-            locale.text("reroll", "刷新价"),
-            if *reentered {
-                locale.text(" reentered", "（重复进入）")
-            } else {
-                ""
-            }
+            "🛒 {}  {offers} {}  ${reroll_cost} {}{}",
+            locale.text("Shop", "商店"),
+            locale.text("offers", "商品"),
+            locale.text("reroll", "刷新"),
+            if *reentered { locale.text(" (re)", "（再次）") } else { "" }
         ),
         Event::ShopRerolled {
             offers,
@@ -1850,58 +1879,74 @@ fn format_event(locale: UiLocale, event: &Event) -> String {
             cost,
             money,
         } => format!(
-            "{} {} {offers} {} {cost} {} {reroll_cost} {} {money}",
-            locale.text("shop rerolled", "商店刷新"),
-            locale.text("offers", "商品数"),
-            locale.text("cost", "花费"),
-            locale.text("next", "下次"),
-            locale.text("money", "金钱")
+            "🔄 {}  -${cost}  {offers} {}  next ${reroll_cost}  💰{money}",
+            locale.text("Reroll", "刷新"),
+            locale.text("offers", "商品"),
         ),
         Event::ShopBought { offer, cost, money } => format!(
-            "{} {} {} {cost} {} {money}",
-            locale.text("shop bought", "商店购买"),
+            "💰 {} {}  -${cost}  💰{money}",
+            locale.text("Bought", "购买"),
             shop_offer_label(locale, *offer),
-            locale.text("cost", "花费"),
-            locale.text("money", "金钱")
+        ),
+        Event::JokerAcquired {
+            name,
+            rarity,
+            cost,
+            money,
+            ..
+        } => format!(
+            "🃏 {} [{rarity:?}] «{name}»  -${cost}  💰{money}",
+            locale.text("Joker", "小丑"),
+        ),
+        Event::ConsumableGained { name, kind, .. } => format!(
+            "＋ {} «{name}»",
+            consumable_kind_label(locale, *kind),
+        ),
+        Event::ConsumableUsed { name, kind, .. } => format!(
+            "✧ {} «{name}»",
+            consumable_kind_label(locale, *kind),
+        ),
+        Event::VoucherBought { id, cost, money } => format!(
+            "🏷 {}  [{id}]  -${cost}  💰{money}",
+            locale.text("Voucher", "优惠券"),
+        ),
+        Event::TagApplied { tag_id } => format!(
+            "🏷 {}  [{tag_id}]",
+            locale.text("Tag", "标签"),
         ),
         Event::PackOpened {
             kind,
             options,
             picks,
         } => format!(
-            "{} {kind:?} {} {options} {} {picks}",
-            locale.text("pack opened", "卡包打开"),
+            "📦 {} {kind:?}  {options} {}  {picks} {}",
+            locale.text("Pack", "卡包"),
             locale.text("options", "选项"),
-            locale.text("pick", "可选")
+            locale.text("pick", "可选"),
         ),
         Event::PackChosen { picks } => {
-            format!("{} {picks}", locale.text("pack chosen", "卡包已选择"))
+            format!("✓ {} {picks}", locale.text("Pack chosen", "已选择"))
         }
         Event::JokerSold {
-            id,
+            name,
             sell_value,
             money,
+            ..
         } => format!(
-            "{} {id} {} {sell_value} {} {money}",
-            locale.text("joker sold", "出售小丑"),
-            locale.text("value", "价值"),
-            locale.text("money", "金钱")
+            "💸 {} «{name}»  +${sell_value}  💰{money}",
+            locale.text("Sold", "出售"),
         ),
         Event::BlindCleared {
             score,
             reward,
             money,
         } => format!(
-            "{} {} {score} {} {reward} {} {money}",
-            locale.text("blind cleared", "盲注通过"),
-            locale.text("score", "分数"),
-            locale.text("reward", "奖励"),
-            locale.text("money", "金钱")
+            "✅ {}  {score}  +${reward}  💰{money}",
+            locale.text("Cleared!", "通过！"),
         ),
         Event::BlindFailed { score } => format!(
-            "{} {} {score}",
-            locale.text("blind failed", "盲注失败"),
-            locale.text("score", "分数")
+            "❌ {}  {score}",
+            locale.text("Failed", "失败"),
         ),
     }
 }

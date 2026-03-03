@@ -512,7 +512,7 @@ fn apply_saved_action(
             let purchase = run
                 .buy_shop_offer(ShopOfferRef::Card(idx), events)
                 .map_err(|err| err.to_string())?;
-            run.apply_purchase(&purchase)
+            run.apply_purchase(&purchase, events)
                 .map_err(|err| err.to_string())?;
         }
         "buy_pack" => {
@@ -540,7 +540,7 @@ fn apply_saved_action(
             let purchase = run
                 .buy_shop_offer(ShopOfferRef::Voucher(idx), events)
                 .map_err(|err| err.to_string())?;
-            run.apply_purchase(&purchase)
+            run.apply_purchase(&purchase, events)
                 .map_err(|err| err.to_string())?;
         }
         "pick_pack" => {
@@ -1454,7 +1454,7 @@ fn run_auto(locale: UiLocale) {
                     } else if let Ok(purchase) =
                         run.buy_shop_offer(ShopOfferRef::Card(0), &mut events)
                     {
-                        let _ = run.apply_purchase(&purchase);
+                        let _ = run.apply_purchase(&purchase, &mut events);
                         println!("bought card 0");
                     }
                     run.leave_shop();
@@ -2293,7 +2293,7 @@ fn run_cui(locale: UiLocale, menu_mode: bool) {
                         ("card", Some(idx)) => {
                             match run.buy_shop_offer(ShopOfferRef::Card(idx), &mut events) {
                                 Ok(purchase) => {
-                                    if let Err(err) = run.apply_purchase(&purchase) {
+                                    if let Err(err) = run.apply_purchase(&purchase, &mut events) {
                                         print_run_error(locale, &run, open_pack.as_ref(), &err);
                                     } else {
                                         println!(
@@ -2336,7 +2336,7 @@ fn run_cui(locale: UiLocale, menu_mode: bool) {
                         ("voucher", Some(idx)) => {
                             match run.buy_shop_offer(ShopOfferRef::Voucher(idx), &mut events) {
                                 Ok(purchase) => {
-                                    if let Err(err) = run.apply_purchase(&purchase) {
+                                    if let Err(err) = run.apply_purchase(&purchase, &mut events) {
                                         print_run_error(locale, &run, open_pack.as_ref(), &err);
                                     } else {
                                         println!(
@@ -4286,9 +4286,10 @@ fn format_event(event: &Event) -> String {
         Event::PackChosen { picks } => format!("pack chosen: {picks}"),
         Event::JokerSold {
             id,
+            name,
             sell_value,
             money,
-        } => format!("joker sold: {id} value {sell_value} money {money}"),
+        } => format!("joker sold: {name} ({id}) value {sell_value} money {money}"),
         Event::BlindCleared {
             score,
             reward,
@@ -4297,6 +4298,12 @@ fn format_event(event: &Event) -> String {
             format!("blind cleared: score {score} reward {reward} money {money}")
         }
         Event::BlindFailed { score } => format!("blind failed: score {score}"),
+        Event::RoundEnded { hands_used, discards_used } => format!("round ended: hands {hands_used} discards {discards_used}"),
+        Event::JokerAcquired { id, name, .. } => format!("joker acquired: {name} ({id})"),
+        Event::ConsumableGained { id, name, kind } => format!("consumable gained: {name} ({id}) {kind:?}"),
+        Event::ConsumableUsed { id, name, kind } => format!("consumable used: {name} ({id}) {kind:?}"),
+        Event::VoucherBought { id, cost, money } => format!("voucher bought: {id} cost {cost} money {money}"),
+        Event::TagApplied { tag_id } => format!("tag applied: {tag_id}"),
     }
 }
 
@@ -4352,9 +4359,10 @@ fn format_event_localized(locale: UiLocale, event: &Event) -> String {
         Event::PackChosen { picks } => format!("卡包选择：{picks}"),
         Event::JokerSold {
             id,
+            name,
             sell_value,
             money,
-        } => format!("出售小丑：{id} 价值 {sell_value} 金钱 {money}"),
+        } => format!("出售小丑：{name}（{id}）价值 {sell_value} 金钱 {money}"),
         Event::BlindCleared {
             score,
             reward,
@@ -4363,6 +4371,12 @@ fn format_event_localized(locale: UiLocale, event: &Event) -> String {
             format!("盲注通过：分数 {score} 奖励 {reward} 金钱 {money}")
         }
         Event::BlindFailed { score } => format!("盲注失败：分数 {score}"),
+        Event::RoundEnded { hands_used, discards_used } => format!("回合结束：手牌 {hands_used} 弃牌 {discards_used}"),
+        Event::JokerAcquired { id, name, .. } => format!("获得小丑：{name}（{id}）"),
+        Event::ConsumableGained { id, name, kind } => format!("获得消耗品：{name}（{id}）{kind:?}"),
+        Event::ConsumableUsed { id, name, kind } => format!("使用消耗品：{name}（{id}）{kind:?}"),
+        Event::VoucherBought { id, cost, money } => format!("购买代金券：{id} 花费 {cost} 金钱 {money}"),
+        Event::TagApplied { tag_id } => format!("标签应用：{tag_id}"),
     }
 }
 

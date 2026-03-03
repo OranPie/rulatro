@@ -1,4 +1,4 @@
-use crate::{BlindKind, HandKind, ShopOfferKind};
+use crate::{BlindKind, ConsumableKind, HandKind, JokerRarity, ShopOfferKind};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -24,6 +24,10 @@ pub enum Event {
         mult: f64,
         total: i64,
     },
+    RoundEnded {
+        hands_used: u32,
+        discards_used: u32,
+    },
     ShopEntered {
         offers: usize,
         reroll_cost: i64,
@@ -40,6 +44,31 @@ pub enum Event {
         cost: i64,
         money: i64,
     },
+    JokerAcquired {
+        id: String,
+        name: String,
+        rarity: JokerRarity,
+        cost: i64,
+        money: i64,
+    },
+    ConsumableGained {
+        id: String,
+        name: String,
+        kind: ConsumableKind,
+    },
+    ConsumableUsed {
+        id: String,
+        name: String,
+        kind: ConsumableKind,
+    },
+    VoucherBought {
+        id: String,
+        cost: i64,
+        money: i64,
+    },
+    TagApplied {
+        tag_id: String,
+    },
     PackOpened {
         kind: ShopOfferKind,
         options: usize,
@@ -50,6 +79,7 @@ pub enum Event {
     },
     JokerSold {
         id: String,
+        name: String,
         sell_value: i64,
         money: i64,
     },
